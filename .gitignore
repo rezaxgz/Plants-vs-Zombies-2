@@ -1,0 +1,10 @@
+*.class
+.vscode/
+.idea/
+.history/
+*.code-workspace
+
+*.log
+*.log.[0-9]*
+
+/db
