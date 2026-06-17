@@ -8,3 +8,9 @@
 *.log.[0-9]*
 
 /db
+
+input.txt
+output.txt
+sources.txt
+
+out/
