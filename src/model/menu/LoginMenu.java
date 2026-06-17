@@ -9,9 +9,8 @@ public class LoginMenu extends Menu {
     }
 
     @Override
-    public void parseCommand(String command) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'parseCommand'");
+    public String getName() {
+        return "login";
     }
 
 }

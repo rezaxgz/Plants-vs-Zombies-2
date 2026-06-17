@@ -1,6 +1,6 @@
 package model.menu;
 
-public class CollectionMenu extends Menu {
+public class GameMenu extends Menu {
 
     @Override
     public void exit() {
@@ -10,7 +10,7 @@ public class CollectionMenu extends Menu {
 
     @Override
     public String getName() {
-        return "collection";
+        return "game";
     }
 
 }

@@ -1,14 +1,25 @@
 package commands;
 
-public class LoginMenuCommand implements Command {
-    ;
-    private final String pattern;
+import model.CommandResult;
 
-    LoginMenuCommand(String pattern) {
+public enum LoginMenuCommand implements Command<CommandResult> {
+    ;
+
+    private final String pattern;
+    private final CommandAction<CommandResult> action;
+
+    LoginMenuCommand(String pattern, CommandAction<CommandResult> action) {
         this.pattern = pattern;
+        this.action = action;
     }
 
+    @Override
     public String getPattern() {
         return this.pattern;
+    }
+
+    @Override
+    public CommandAction<CommandResult> getAction() {
+        return action;
     }
 }

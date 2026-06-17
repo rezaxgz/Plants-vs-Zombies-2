@@ -1,14 +1,24 @@
 package commands;
 
-public class GameMenuCommand implements Command {
+import model.CommandResult;
+
+public enum GameMenuCommand implements Command<CommandResult> {
     ;
     private final String pattern;
+    private final CommandAction<CommandResult> action;
 
-    GameMenuCommand(String pattern) {
+    GameMenuCommand(String pattern, CommandAction<CommandResult> action) {
         this.pattern = pattern;
+        this.action = action;
     }
 
+    @Override
     public String getPattern() {
         return this.pattern;
+    }
+
+    @Override
+    public CommandAction<CommandResult> getAction() {
+        return action;
     }
 }
