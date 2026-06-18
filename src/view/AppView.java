@@ -7,14 +7,20 @@ import model.App;
 import model.CommandResult;
 
 public class AppView {
+    private static AppView instance = new AppView();
+
     private Scanner scanner = new Scanner(System.in);
     private CommandProcessor commandProcessor = new CommandProcessor(new CommandRegistry());
 
-    private String getInput() {
+    public static AppView getInstance() {
+        return instance;
+    }
+
+    public String getInput() {
         return scanner.nextLine();
     }
 
-    private boolean hasNext() {
+    public boolean hasNext() {
         return scanner.hasNextLine();
     }
 

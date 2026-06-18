@@ -5,7 +5,15 @@ import java.util.List;
 import model.user.User;
 
 public class UserManager {
-    public List<User> loadAllUsers() {
+    public static List<User> loadAllUsers() {
         return null;
+    }
+
+    public static boolean usernameExists(String username) {
+        return false;
+    }
+
+    public static void addUserToDatabase(User u) {
+
     }
 }
