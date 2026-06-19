@@ -67,7 +67,7 @@ public class SignupMenuController {
         }
 
         User user = new User(username, password, nickname, email, gender);
-        UserManager.addUserToDatabase(user);
+        menu.setTempUser(user);
 
         return CommandResult
                 .success("user data saved! pick a security quesion and answer it.\n" + Question.getAllQuestions());
