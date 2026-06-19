@@ -9,4 +9,12 @@ public class SecurityQuestion {
         this.answer = answer;
     }
 
+    public String getQuestion() {
+        return question;
+    }
+
+    public boolean isAnswerCorrect(String answer) {
+        return answer.equals(this.answer);
+    }
+
 }

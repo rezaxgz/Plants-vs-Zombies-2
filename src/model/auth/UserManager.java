@@ -16,4 +16,8 @@ public class UserManager {
     public static void addUserToDatabase(User u) {
 
     }
+
+    public static User getUserByUsername(String username) {
+        return null;
+    }
 }
