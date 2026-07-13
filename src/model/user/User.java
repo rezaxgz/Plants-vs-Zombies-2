@@ -47,6 +47,10 @@ public class User {
         this.gender = gender;
     }
 
+    public String getUsername() {
+        return username;
+    }
+
     public void setSecurityQuestion(int n, String answer) {
         this.securityQuestion = new SecurityQuestion(Question.getByNumber(n).getText(), answer);
     }
@@ -56,5 +60,26 @@ public class User {
     }
 
     public void payForItem(ShopItem item) {
+    }
+
+    public boolean doesMatchPassword(String password) {
+        String hashPassword = Sha256.hash(password);
+        return hashPassword.equals(this.passwordHash);
+    }
+
+    public boolean doesMatchEmail(String email) {
+        return email.equals(this.email);
+    }
+
+    public String getSecurityQuestion() {
+        return securityQuestion.getQuestion();
+    }
+
+    public boolean isCorrectSecurityAnswer(String answer) {
+        return securityQuestion.isAnswerCorrect(answer);
+    }
+
+    public void changePassword(String password) {
+        passwordHash = Sha256.hash(password);
     }
 }
