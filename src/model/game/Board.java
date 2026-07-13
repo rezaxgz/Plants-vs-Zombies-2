@@ -19,6 +19,7 @@ public class Board {
     private final List<Tile> tiles;
     private final List<Entity> allEntities;
     private final List<BaseStructure> structures;
+    private final List<String> pendingResults;
 
     public Board() {
         this(Constants.DEFAULT_BOARD_ROWS, Constants.DEFAULT_BOARD_COLUMNS);
@@ -33,6 +34,7 @@ public class Board {
         this.tiles = new ArrayList<>();
         this.allEntities = new ArrayList<>();
         this.structures = new ArrayList<>();
+        this.pendingResults = new ArrayList<>();
     }
 
     public void update(float deltaSeconds) {
@@ -50,7 +52,11 @@ public class Board {
 
             if (entity instanceof SunProducer) {
                 SunProducer producer = (SunProducer) entity;
-                entitiesToAdd.addAll(producer.drainProducedSuns());
+                List<Sun> producedSuns = producer.drainProducedSuns();
+                entitiesToAdd.addAll(producedSuns);
+                for (int i = 0; i < producedSuns.size(); i++) {
+                    pendingResults.add(buildSunProductionResult(producer));
+                }
             }
         }
 
@@ -58,6 +64,19 @@ public class Board {
         for (Entity entity : entitiesToAdd) {
             addEntity(entity);
         }
+    }
+
+    public List<String> drainResults() {
+        if (pendingResults.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> results = new ArrayList<>(pendingResults);
+        pendingResults.clear();
+        return Collections.unmodifiableList(results);
+    }
+
+    private static String buildSunProductionResult(SunProducer producer) {
+        return "plant " + producer.getType().getDisplayName() + " produced a sun at " + producer.getEntityPosition();
     }
 
     public void addEntity(Entity entity) {

@@ -17,6 +17,7 @@ public class SunProducer extends BasePlant {
 
     private double secondsSinceLastProduction;
     private boolean activated;
+    private Sun lastProducedSun;
 
     public SunProducer() {
         this(SunProducerPlantType.SUNFLOWER, null);
@@ -27,8 +28,8 @@ public class SunProducer extends BasePlant {
     }
 
     public SunProducer(SunProducerPlantType type, EntityPosition entityPosition) {
-        super(requireType(type).getDisplayName(), PlantCategory.SUN_PRODUCER,
-                type.getTags(), 1, type.getCost(), type.getBaseHP(), type.getDamage(), entityPosition);
+        super(requireType(type).getDisplayName(), PlantCategory.SUN_PRODUCER, type.getTags(), 1, type.getCost(),
+                type.getBaseHP(), type.getDamage(), entityPosition);
         this.type = type;
     }
 
@@ -48,32 +49,46 @@ public class SunProducer extends BasePlant {
         super.update(deltaSeconds);
 
         switch (type.getBehavior()) {
-            case PERIODIC:
-                updatePeriodicProduction(deltaSeconds);
-                break;
-            case INSTANT:
-                activateInstantProducer();
-                break;
-            case FAMILY_BOOST:
-                activateFamilyBoostPlaceholder();
-                break;
-            default:
-                throw new IllegalStateException("Unknown sun producer behavior: " + type.getBehavior());
+        case PERIODIC:
+            updatePeriodicProduction(deltaSeconds);
+            break;
+        case INSTANT:
+            activateInstantProducer();
+            break;
+        case FAMILY_BOOST:
+            activateFamilyBoostPlaceholder();
+            break;
+        default:
+            throw new IllegalStateException("Unknown sun producer behavior: " + type.getBehavior());
         }
     }
 
     private void updatePeriodicProduction(float deltaSeconds) {
+        if (isWaitingForLastSun()) {
+            return;
+        }
+
         float intervalSeconds = type.getActionIntervalSeconds();
         if (intervalSeconds <= 0.0f) {
             return;
         }
 
         secondsSinceLastProduction += deltaSeconds;
-        while (secondsSinceLastProduction + TIMER_EPSILON >= intervalSeconds) {
-            secondsSinceLastProduction -= intervalSeconds;
-            double productionAgeSeconds = getElapsedSeconds() - secondsSinceLastProduction;
-            produceSun(type.getSunAmountAt(productionAgeSeconds));
+        if (secondsSinceLastProduction + TIMER_EPSILON >= intervalSeconds) {
+            secondsSinceLastProduction = 0.0;
+            produceSun(type.getSunAmountAt(getElapsedSeconds()));
         }
+    }
+
+    private boolean isWaitingForLastSun() {
+        if (lastProducedSun == null) {
+            return false;
+        }
+        if (lastProducedSun.isRemoved()) {
+            lastProducedSun = null;
+            return false;
+        }
+        return true;
     }
 
     private void activateInstantProducer() {
@@ -97,7 +112,9 @@ public class SunProducer extends BasePlant {
 
     private void produceSun(int amount) {
         if (amount > 0) {
-            pendingSuns.add(new Sun(amount, getEntityPosition()));
+            Sun sun = new Sun(amount, getEntityPosition());
+            lastProducedSun = sun;
+            pendingSuns.add(sun);
         }
     }
 
@@ -116,5 +133,9 @@ public class SunProducer extends BasePlant {
 
     public double getSecondsSinceLastProduction() {
         return secondsSinceLastProduction;
+    }
+
+    public boolean isWaitingForProducedSun() {
+        return lastProducedSun != null && !lastProducedSun.isRemoved();
     }
 }

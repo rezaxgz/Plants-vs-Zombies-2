@@ -15,6 +15,7 @@ public class Game {
     private int sunCount;
     private int zombieWaveNumber;
     private final List<ZombieWave> zombieWaves;
+    private final List<String> pendingResults = new ArrayList<>();
 
     public Game() {
         this(new Board(), null, 0, Collections.emptyList());
@@ -35,21 +36,38 @@ public class Game {
         this.board = board;
         this.gameType = gameType;
         this.sunCount = initialSunCount;
-        this.zombieWaves = zombieWaves == null
-                ? new ArrayList<>()
-                : new ArrayList<>(zombieWaves);
+        this.zombieWaves = zombieWaves == null ? new ArrayList<>() : new ArrayList<>(zombieWaves);
     }
 
     /**
-     * Terminal/game-loop entry point. A tick is converted to seconds here and
-     * every model update below this point works only with seconds.
+     * Terminal/game-loop entry point. A tick is converted to seconds here and every
+     * model update below this point works only with seconds.
      */
     public final void tick() {
         update(Constants.ONE_TICK_IN_SECONDS);
     }
 
+    public void advanceTicks(int tickCount) {
+        if (tickCount < 0) {
+            throw new IllegalArgumentException("tickCount cannot be negative");
+        }
+        for (int i = 0; i < tickCount; i++) {
+            tick();
+        }
+    }
+
     public void update(float deltaSeconds) {
         board.update(deltaSeconds);
+        pendingResults.addAll(board.drainResults());
+    }
+
+    public List<String> drainResults() {
+        if (pendingResults.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> results = new ArrayList<>(pendingResults);
+        pendingResults.clear();
+        return Collections.unmodifiableList(results);
     }
 
     public boolean collectSun(Sun sun) {

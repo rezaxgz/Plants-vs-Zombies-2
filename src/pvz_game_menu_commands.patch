@@ -1,0 +1,409 @@
+diff --git a/commands/GameMenuCommand.java b/commands/GameMenuCommand.java
+index 4480217..b098994 100644
+--- a/commands/GameMenuCommand.java
++++ b/commands/GameMenuCommand.java
+@@ -1,9 +1,16 @@
+ package commands;
+ 
++import controller.GameMenuController;
+ import model.CommandResult;
+ 
+ public enum GameMenuCommand implements Command<CommandResult> {
+-    ;
++    ADVANCE_TIME(
++            "^advance\\s+time\\s+-t\\s+(?<count>\\d+)\\s+ticks$",
++            GameMenuController::handleAdvanceTime),
++    COLLECT_SUN(
++            "^collect\\s+sun\\s+-l\\s+\\(\\s*(?<x>\\d+)\\s*,\\s*(?<y>\\d+)\\s*\\)$",
++            GameMenuController::handleCollectSun);
++
+     private final String pattern;
+     private final CommandAction<CommandResult> action;
+ 
+diff --git a/controller/GameMenuController.java b/controller/GameMenuController.java
+new file mode 100644
+index 0000000..e629c21
+--- /dev/null
++++ b/controller/GameMenuController.java
+@@ -0,0 +1,84 @@
++package controller;
++
++import java.util.List;
++import java.util.regex.Matcher;
++
++import model.App;
++import model.CommandResult;
++import model.game.Game;
++import model.menu.GameMenu;
++import model.menu.Menu;
++
++public final class GameMenuController {
++    private GameMenuController() {
++    }
++
++    public static CommandResult handleAdvanceTime(Matcher matcher) {
++        Game game = getCurrentGame();
++        if (game == null) {
++            return CommandResult.error("game is not active!");
++        }
++
++        List<String> preCommandResults = game.drainResults();
++        int tickCount;
++        try {
++            tickCount = Integer.parseInt(matcher.group("count"));
++        } catch (NumberFormatException exception) {
++            return CommandResult.error("tick count is too large!")
++                    .addPreCommandResults(preCommandResults);
++        }
++
++        if (tickCount <= 0) {
++            return CommandResult.error("tick count must be positive!")
++                    .addPreCommandResults(preCommandResults);
++        }
++
++        game.advanceTicks(tickCount);
++        return CommandResult.success("time advanced by " + tickCount + " ticks")
++                .addPreCommandResults(preCommandResults)
++                .addPostCommandResults(game.drainResults());
++    }
++
++    public static CommandResult handleCollectSun(Matcher matcher) {
++        Game game = getCurrentGame();
++        if (game == null) {
++            return CommandResult.error("game is not active!");
++        }
++
++        List<String> preCommandResults = game.drainResults();
++        int x;
++        int y;
++        try {
++            x = Integer.parseInt(matcher.group("x"));
++            y = Integer.parseInt(matcher.group("y"));
++        } catch (NumberFormatException exception) {
++            return CommandResult.error("sun location is invalid!")
++                    .addPreCommandResults(preCommandResults);
++        }
++
++        if (x >= game.getBoard().getNumberOfRows()
++                || y >= game.getBoard().getNumberOfColumns()) {
++            return CommandResult.error("sun location is outside the board!")
++                    .addPreCommandResults(preCommandResults);
++        }
++
++        int collectedAmount = game.collectSunAt(x, y);
++        if (collectedAmount <= 0) {
++            return CommandResult.error("there is no sun at (" + x + ", " + y + ")")
++                    .addPreCommandResults(preCommandResults);
++        }
++
++        return CommandResult.success(
++                "collected " + collectedAmount + " sun at (" + x + ", " + y + ")")
++                .addPreCommandResults(preCommandResults)
++                .addPostCommandResults(game.drainResults());
++    }
++
++    private static Game getCurrentGame() {
++        Menu currentMenu = App.getInstance().getCurrentMenu();
++        if (!(currentMenu instanceof GameMenu)) {
++            return null;
++        }
++        return ((GameMenu) currentMenu).getGame();
++    }
++}
+diff --git a/model/CommandResult.java b/model/CommandResult.java
+index 0e68aa4..f6164b5 100644
+--- a/model/CommandResult.java
++++ b/model/CommandResult.java
+@@ -1,11 +1,17 @@
+ package model;
+ 
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.List;
++
+ public class CommandResult {
+-    private String message;
+-    private boolean isSuccsesful;
++    private final String message;
++    private final boolean isSuccsesful;
++    private final List<String> preCommandResults = new ArrayList<>();
++    private final List<String> postCommandResults = new ArrayList<>();
+ 
+     private CommandResult(String message, boolean isSuccsesful) {
+-        this.message = message;
++        this.message = message == null ? "" : message;
+         this.isSuccsesful = isSuccsesful;
+     }
+ 
+@@ -17,12 +23,58 @@ public class CommandResult {
+         return new CommandResult(message, false);
+     }
+ 
++    public CommandResult addPreCommandResult(String result) {
++        addNonBlank(preCommandResults, result);
++        return this;
++    }
++
++    public CommandResult addPreCommandResults(Collection<String> results) {
++        addAllNonBlank(preCommandResults, results);
++        return this;
++    }
++
++    public CommandResult addPostCommandResult(String result) {
++        addNonBlank(postCommandResults, result);
++        return this;
++    }
++
++    public CommandResult addPostCommandResults(Collection<String> results) {
++        addAllNonBlank(postCommandResults, results);
++        return this;
++    }
++
+     public String getMessage() {
+-        return message;
++        List<String> outputLines = new ArrayList<>();
++        outputLines.addAll(preCommandResults);
++        addNonBlank(outputLines, message);
++        outputLines.addAll(postCommandResults);
++        return String.join(System.lineSeparator(), outputLines);
+     }
+ 
+     public boolean isSuccsesful() {
+         return isSuccsesful;
+     }
+ 
++    public List<String> getPreCommandResults() {
++        return List.copyOf(preCommandResults);
++    }
++
++    public List<String> getPostCommandResults() {
++        return List.copyOf(postCommandResults);
++    }
++
++    private static void addAllNonBlank(List<String> destination, Collection<String> results) {
++        if (results == null) {
++            return;
++        }
++        for (String result : results) {
++            addNonBlank(destination, result);
++        }
++    }
++
++    private static void addNonBlank(List<String> destination, String result) {
++        if (result != null && !result.isBlank()) {
++            destination.add(result);
++        }
++    }
+ }
+diff --git a/model/game/Board.java b/model/game/Board.java
+index bbb63ed..c3e4b87 100644
+--- a/model/game/Board.java
++++ b/model/game/Board.java
+@@ -19,6 +19,7 @@ public class Board {
+     private final List<Tile> tiles;
+     private final List<Entity> allEntities;
+     private final List<BaseStructure> structures;
++    private final List<String> pendingResults;
+ 
+     public Board() {
+         this(Constants.DEFAULT_BOARD_ROWS, Constants.DEFAULT_BOARD_COLUMNS);
+@@ -33,6 +34,7 @@ public class Board {
+         this.tiles = new ArrayList<>();
+         this.allEntities = new ArrayList<>();
+         this.structures = new ArrayList<>();
++        this.pendingResults = new ArrayList<>();
+     }
+ 
+     public void update(float deltaSeconds) {
+@@ -50,7 +52,11 @@ public class Board {
+ 
+             if (entity instanceof SunProducer) {
+                 SunProducer producer = (SunProducer) entity;
+-                entitiesToAdd.addAll(producer.drainProducedSuns());
++                List<Sun> producedSuns = producer.drainProducedSuns();
++                entitiesToAdd.addAll(producedSuns);
++                for (int i = 0; i < producedSuns.size(); i++) {
++                    pendingResults.add(buildSunProductionResult(producer));
++                }
+             }
+         }
+ 
+@@ -60,6 +66,20 @@ public class Board {
+         }
+     }
+ 
++    public List<String> drainResults() {
++        if (pendingResults.isEmpty()) {
++            return Collections.emptyList();
++        }
++        List<String> results = new ArrayList<>(pendingResults);
++        pendingResults.clear();
++        return Collections.unmodifiableList(results);
++    }
++
++    private static String buildSunProductionResult(SunProducer producer) {
++        return "plant " + producer.getType().getDisplayName()
++                + " produced a sun at " + producer.getEntityPosition();
++    }
++
+     public void addEntity(Entity entity) {
+         if (entity == null) {
+             throw new IllegalArgumentException("entity cannot be null");
+diff --git a/model/game/Game.java b/model/game/Game.java
+index ecff725..b2a0411 100644
+--- a/model/game/Game.java
++++ b/model/game/Game.java
+@@ -15,6 +15,7 @@ public class Game {
+     private int sunCount;
+     private int zombieWaveNumber;
+     private final List<ZombieWave> zombieWaves;
++    private final List<String> pendingResults = new ArrayList<>();
+ 
+     public Game() {
+         this(new Board(), null, 0, Collections.emptyList());
+@@ -48,8 +49,27 @@ public class Game {
+         update(Constants.ONE_TICK_IN_SECONDS);
+     }
+ 
++    public void advanceTicks(int tickCount) {
++        if (tickCount < 0) {
++            throw new IllegalArgumentException("tickCount cannot be negative");
++        }
++        for (int i = 0; i < tickCount; i++) {
++            tick();
++        }
++    }
++
+     public void update(float deltaSeconds) {
+         board.update(deltaSeconds);
++        pendingResults.addAll(board.drainResults());
++    }
++
++    public List<String> drainResults() {
++        if (pendingResults.isEmpty()) {
++            return Collections.emptyList();
++        }
++        List<String> results = new ArrayList<>(pendingResults);
++        pendingResults.clear();
++        return Collections.unmodifiableList(results);
+     }
+ 
+     public boolean collectSun(Sun sun) {
+diff --git a/model/game/entities/plants/sunProducer/SunProducer.java b/model/game/entities/plants/sunProducer/SunProducer.java
+index 8e5613a..a291624 100644
+--- a/model/game/entities/plants/sunProducer/SunProducer.java
++++ b/model/game/entities/plants/sunProducer/SunProducer.java
+@@ -17,6 +17,7 @@ public class SunProducer extends BasePlant {
+ 
+     private double secondsSinceLastProduction;
+     private boolean activated;
++    private Sun lastProducedSun;
+ 
+     public SunProducer() {
+         this(SunProducerPlantType.SUNFLOWER, null);
+@@ -63,19 +64,33 @@ public class SunProducer extends BasePlant {
+     }
+ 
+     private void updatePeriodicProduction(float deltaSeconds) {
++        if (isWaitingForLastSun()) {
++            return;
++        }
++
+         float intervalSeconds = type.getActionIntervalSeconds();
+         if (intervalSeconds <= 0.0f) {
+             return;
+         }
+ 
+         secondsSinceLastProduction += deltaSeconds;
+-        while (secondsSinceLastProduction + TIMER_EPSILON >= intervalSeconds) {
+-            secondsSinceLastProduction -= intervalSeconds;
+-            double productionAgeSeconds = getElapsedSeconds() - secondsSinceLastProduction;
+-            produceSun(type.getSunAmountAt(productionAgeSeconds));
++        if (secondsSinceLastProduction + TIMER_EPSILON >= intervalSeconds) {
++            secondsSinceLastProduction = 0.0;
++            produceSun(type.getSunAmountAt(getElapsedSeconds()));
+         }
+     }
+ 
++    private boolean isWaitingForLastSun() {
++        if (lastProducedSun == null) {
++            return false;
++        }
++        if (lastProducedSun.isRemoved()) {
++            lastProducedSun = null;
++            return false;
++        }
++        return true;
++    }
++
+     private void activateInstantProducer() {
+         if (activated) {
+             return;
+@@ -97,7 +112,9 @@ public class SunProducer extends BasePlant {
+ 
+     private void produceSun(int amount) {
+         if (amount > 0) {
+-            pendingSuns.add(new Sun(amount, getEntityPosition()));
++            Sun sun = new Sun(amount, getEntityPosition());
++            lastProducedSun = sun;
++            pendingSuns.add(sun);
+         }
+     }
+ 
+@@ -117,4 +134,8 @@ public class SunProducer extends BasePlant {
+     public double getSecondsSinceLastProduction() {
+         return secondsSinceLastProduction;
+     }
++
++    public boolean isWaitingForProducedSun() {
++        return lastProducedSun != null && !lastProducedSun.isRemoved();
++    }
+ }
+diff --git a/model/menu/GameMenu.java b/model/menu/GameMenu.java
+index a3ab44d..87636a2 100644
+--- a/model/menu/GameMenu.java
++++ b/model/menu/GameMenu.java
+@@ -1,6 +1,24 @@
+ package model.menu;
+ 
++import model.game.Game;
++
+ public class GameMenu extends Menu {
++    private final Game game;
++
++    public GameMenu() {
++        this(new Game());
++    }
++
++    public GameMenu(Game game) {
++        if (game == null) {
++            throw new IllegalArgumentException("game cannot be null");
++        }
++        this.game = game;
++    }
++
++    public Game getGame() {
++        return game;
++    }
+ 
+     @Override
+     public void exit() {
+@@ -12,5 +30,4 @@ public class GameMenu extends Menu {
+     public String getName() {
+         return "game";
+     }
+-
+ }
+diff --git a/view/CommandProcessor.java b/view/CommandProcessor.java
+index 605a3d9..778af3a 100644
+--- a/view/CommandProcessor.java
++++ b/view/CommandProcessor.java
+@@ -16,7 +16,7 @@ public class CommandProcessor {
+     public CommandResult process(String menuId, String input) {
+         for (Command<CommandResult> cmd : registry.getCommands(menuId)) {
+             Matcher m = cmd.getMatcher(input.trim());
+-            if (m.matches()) {
++            if (m != null) {
+                 return cmd.getAction().execute(m);
+             }
+         }

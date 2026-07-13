@@ -16,7 +16,7 @@ public class CommandProcessor {
     public CommandResult process(String menuId, String input) {
         for (Command<CommandResult> cmd : registry.getCommands(menuId)) {
             Matcher m = cmd.getMatcher(input.trim());
-            if (m.matches()) {
+            if (m != null) {
                 return cmd.getAction().execute(m);
             }
         }
