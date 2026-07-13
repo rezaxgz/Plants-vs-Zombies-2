@@ -24,4 +24,8 @@ public class App {
     public Menu getCurrentMenu() {
         return currentMenu;
     }
+
+    public void setLoggedInUser(User loggedInUser) {
+        this.loggedInUser = loggedInUser;
+    }
 }
