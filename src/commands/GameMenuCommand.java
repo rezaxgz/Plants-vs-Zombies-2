@@ -13,7 +13,8 @@ public enum GameMenuCommand implements Command<CommandResult> {
             "^plant\\s+plant\\s+-t\\s+(?<type>.+?)\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
             GameMenuController::handlePlant),
     PLUCK_PLANT("^pluck\\s+plant\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
-            GameMenuController::handlePluckPlant);
+            GameMenuController::handlePluckPlant),
+    SHOW_SUN_AMOUNT("^show\\s+sun\\s+amount$", GameMenuController::handleShowSunAmount);
 
     private final String pattern;
     private final CommandAction<CommandResult> action;

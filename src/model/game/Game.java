@@ -3,10 +3,12 @@ package model.game;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 import model.Constants;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
+import model.game.entities.other.SunType;
 import model.game.entities.plants.BasePlant;
 import model.game.gameTypes.GameType;
 
@@ -17,6 +19,9 @@ public class Game {
     private int zombieWaveNumber;
     private final List<ZombieWave> zombieWaves;
     private final List<String> pendingResults = new ArrayList<>();
+    private final Random random;
+    private double elapsedSeconds;
+    private double nextSkySunDropAtSeconds;
 
     public Game() {
         this(new Board(), null, 0, Collections.emptyList());
@@ -27,17 +32,26 @@ public class Game {
     }
 
     public Game(Board board, GameType gameType, int initialSunCount, List<ZombieWave> zombieWaves) {
+        this(board, gameType, initialSunCount, zombieWaves, new Random());
+    }
+
+    Game(Board board, GameType gameType, int initialSunCount, List<ZombieWave> zombieWaves, Random random) {
         if (board == null) {
             throw new IllegalArgumentException("board cannot be null");
         }
         if (initialSunCount < 0) {
             throw new IllegalArgumentException("initialSunCount cannot be negative");
         }
+        if (random == null) {
+            throw new IllegalArgumentException("random cannot be null");
+        }
 
         this.board = board;
         this.gameType = gameType;
         this.sunCount = initialSunCount;
         this.zombieWaves = zombieWaves == null ? new ArrayList<>() : new ArrayList<>(zombieWaves);
+        this.random = random;
+        this.nextSkySunDropAtSeconds = getSkySunDropIntervalSeconds(0.0);
     }
 
     /**
@@ -58,8 +72,33 @@ public class Game {
     }
 
     public void update(float deltaSeconds) {
+        if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f) {
+            throw new IllegalArgumentException("deltaSeconds must be finite and non-negative");
+        }
+
         board.update(deltaSeconds);
         pendingResults.addAll(board.drainResults());
+        elapsedSeconds += deltaSeconds;
+
+        while (elapsedSeconds + 0.000001 >= nextSkySunDropAtSeconds) {
+            dropSkySun();
+            nextSkySunDropAtSeconds += getSkySunDropIntervalSeconds(nextSkySunDropAtSeconds);
+        }
+    }
+
+    private void dropSkySun() {
+        SunType type = random.nextDouble() < Constants.SPECIAL_SKY_SUN_CHANCE ? SunType.SPECIAL : SunType.NORMAL;
+        EntityPosition position = new EntityPosition(random.nextInt(board.getNumberOfRows()),
+                random.nextInt(board.getNumberOfColumns()));
+        board.addEntity(Sun.createSkySun(type, position));
+        pendingResults.add("New " + type.getDisplayName() + " sun is dropping at position " + position);
+    }
+
+    public static double getSkySunDropIntervalSeconds(double timePassedSeconds) {
+        if (!Double.isFinite(timePassedSeconds) || timePassedSeconds < 0.0) {
+            throw new IllegalArgumentException("timePassedSeconds must be finite and non-negative");
+        }
+        return Math.max(6.0 + 0.05 * timePassedSeconds, 12.0);
     }
 
     public List<String> drainResults() {
@@ -162,6 +201,10 @@ public class Game {
 
     public int getSunCount() {
         return sunCount;
+    }
+
+    public double getElapsedSeconds() {
+        return elapsedSeconds;
     }
 
     public int getZombieWaveNumber() {

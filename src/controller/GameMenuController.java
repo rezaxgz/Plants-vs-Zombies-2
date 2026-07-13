@@ -60,10 +60,14 @@ public final class GameMenuController {
             return CommandResult.error("sun location is outside the board!").addPreCommandResults(preCommandResults);
         }
 
+        boolean hasDroppingSun = game.getBoard().getSunsAt(new EntityPosition(x, y)).stream()
+                .anyMatch(sun -> sun.isDropping());
         int collectedAmount = game.collectSunAt(x, y);
         if (collectedAmount <= 0) {
-            return CommandResult.error("there is no sun at (" + x + ", " + y + ")")
-                    .addPreCommandResults(preCommandResults);
+            String message = hasDroppingSun
+                    ? "sun at (" + x + ", " + y + ") has not reached the ground yet!"
+                    : "there is no sun at (" + x + ", " + y + ")";
+            return CommandResult.error(message).addPreCommandResults(preCommandResults);
         }
 
         return CommandResult.success("collected " + collectedAmount + " sun at (" + x + ", " + y + ")")
@@ -179,6 +183,18 @@ public final class GameMenuController {
 
         return CommandResult.success("plucked " + removedPlant.getName() + " from " + position)
                 .addPreCommandResults(preCommandResults).addPostCommandResults(game.drainResults());
+    }
+
+
+    public static CommandResult handleShowSunAmount(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        return CommandResult.success("sun amount: " + game.getSunCount())
+                .addPreCommandResults(game.drainResults())
+                .addPostCommandResults(game.drainResults());
     }
 
     private static boolean isInsideBoard(Game game, int x, int y) {

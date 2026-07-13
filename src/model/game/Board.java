@@ -48,7 +48,12 @@ public class Board {
                 continue;
             }
 
+            boolean sunWasDropping = entity instanceof Sun && ((Sun) entity).isDropping();
             entity.update(deltaSeconds);
+
+            if (sunWasDropping && entity instanceof Sun && !((Sun) entity).isDropping()) {
+                pendingResults.add("Sun reached the ground at position " + entity.getEntityPosition());
+            }
 
             if (entity instanceof SunProducer) {
                 SunProducer producer = (SunProducer) entity;
