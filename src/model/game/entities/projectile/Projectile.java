@@ -11,8 +11,8 @@ public class Projectile extends Entity {
     private ProjectileMovement movement;
 
     @Override
-    public void tick() {
-        super.tick();
-        
+    public void update(float deltaSeconds) {
+        super.update(deltaSeconds);
+        // Projectile movement/effects will use deltaSeconds when implemented.
     }
 }
