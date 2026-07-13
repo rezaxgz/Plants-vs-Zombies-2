@@ -35,8 +35,4 @@ public class UserManager {
 
         return null;
     }
-
-    public static User getUserByUsername(String username) {
-        return null;
-    }
 }
