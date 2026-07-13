@@ -4,6 +4,7 @@ import controller.MainController;
 import model.CommandResult;
 
 public enum MainMenuCommand implements Command<CommandResult> {
+    START_GAME("^start\\s+game$", MainController::handleStartGame),
     LOGOUT("^menu\\s+logout$", MainController::handleLogout);
 
     private final String pattern;

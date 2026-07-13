@@ -2,6 +2,8 @@ package model.game.entities.plants.sunProducer;
 
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 import model.game.entities.plants.PlantTag;
@@ -104,6 +106,26 @@ public enum SunProducerPlantType {
             return Collections.emptySet();
         }
         return Collections.unmodifiableSet(EnumSet.copyOf(tags));
+    }
+
+
+    public static Optional<SunProducerPlantType> findByName(String rawName) {
+        if (rawName == null || rawName.isBlank()) {
+            return Optional.empty();
+        }
+
+        String normalizedName = normalizeName(rawName);
+        for (SunProducerPlantType type : values()) {
+            if (normalizeName(type.name()).equals(normalizedName)
+                    || normalizeName(type.displayName).equals(normalizedName)) {
+                return Optional.of(type);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String normalizeName(String name) {
+        return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
     public int getSunAmountAt(double ageSeconds) {

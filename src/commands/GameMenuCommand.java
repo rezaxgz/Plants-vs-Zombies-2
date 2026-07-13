@@ -6,7 +6,14 @@ import model.CommandResult;
 public enum GameMenuCommand implements Command<CommandResult> {
     ADVANCE_TIME("^advance\\s+time\\s+-t\\s+(?<count>\\d+)\\s+ticks$", GameMenuController::handleAdvanceTime),
     COLLECT_SUN("^collect\\s+sun\\s+-l\\s+\\(\\s*(?<x>\\d+)\\s*,\\s*(?<y>\\d+)\\s*\\)$",
-            GameMenuController::handleCollectSun);
+            GameMenuController::handleCollectSun),
+    CHEAT_ADD_SUNS("^cheat\\s+add\\s+-n\\s+(?<count>-?\\d+)\\s+suns$",
+            GameMenuController::handleCheatAddSuns),
+    PLANT_PLANT(
+            "^plant\\s+plant\\s+-t\\s+(?<type>.+?)\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameMenuController::handlePlant),
+    PLUCK_PLANT("^pluck\\s+plant\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameMenuController::handlePluckPlant);
 
     private final String pattern;
     private final CommandAction<CommandResult> action;

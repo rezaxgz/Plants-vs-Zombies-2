@@ -7,6 +7,7 @@ import java.util.List;
 import model.Constants;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
+import model.game.entities.plants.BasePlant;
 import model.game.gameTypes.GameType;
 
 public class Game {
@@ -99,6 +100,41 @@ public class Game {
             }
         }
         return collectedAmount;
+    }
+
+    public void addSun(int amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("amount must be positive");
+        }
+        if (sunCount > Integer.MAX_VALUE - amount) {
+            throw new IllegalArgumentException("sun total is too large");
+        }
+        sunCount += amount;
+    }
+
+    public PlantPlacementResult plant(BasePlant plant) {
+        if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
+            return PlantPlacementResult.INVALID_POSITION;
+        }
+        if (board.getPlantAt(plant.getEntityPosition()) != null) {
+            return PlantPlacementResult.POSITION_OCCUPIED;
+        }
+        if (sunCount < plant.getCost()) {
+            return PlantPlacementResult.NOT_ENOUGH_SUN;
+        }
+        if (!board.addPlant(plant)) {
+            return PlantPlacementResult.POSITION_OCCUPIED;
+        }
+
+        sunCount -= plant.getCost();
+        return PlantPlacementResult.SUCCESS;
+    }
+
+    public BasePlant pluckPlantAt(EntityPosition position) {
+        if (!board.isPositionInsideBoard(position)) {
+            return null;
+        }
+        return board.removePlantAt(position);
     }
 
     public boolean spendSun(int amount) {

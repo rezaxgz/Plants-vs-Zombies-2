@@ -138,6 +138,32 @@ public class Board {
         return Collections.unmodifiableList(suns);
     }
 
+    public BasePlant getPlantAt(EntityPosition position) {
+        if (position == null) {
+            return null;
+        }
+        for (BasePlant plant : getPlants()) {
+            if (position.equals(plant.getEntityPosition())) {
+                return plant;
+            }
+        }
+        return null;
+    }
+
+    public BasePlant removePlantAt(EntityPosition position) {
+        BasePlant plant = getPlantAt(position);
+        if (plant != null) {
+            removeEntity(plant);
+        }
+        return plant;
+    }
+
+    public boolean isPositionInsideBoard(EntityPosition position) {
+        return position != null
+                && position.getRow() < numberOfRows
+                && position.getColumn() < numberOfColumns;
+    }
+
     public List<Sun> getSunsAt(EntityPosition position) {
         if (position == null) {
             return Collections.emptyList();
