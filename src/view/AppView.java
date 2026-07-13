@@ -7,10 +7,10 @@ import model.App;
 import model.CommandResult;
 
 public class AppView {
-    private static AppView instance = new AppView();
+    private static final AppView instance = new AppView();
 
-    private Scanner scanner = new Scanner(System.in);
-    private CommandProcessor commandProcessor = new CommandProcessor(new CommandRegistry());
+    private final Scanner scanner = new Scanner(System.in);
+    private final CommandProcessor commandProcessor = new CommandProcessor(new CommandRegistry());
 
     public static AppView getInstance() {
         return instance;
@@ -25,14 +25,19 @@ public class AppView {
     }
 
     public void run() {
-        while (hasNext()) {
+        App app = App.getInstance();
+        while (app.isRunning() && hasNext()) {
             parseCommand(getInput());
         }
     }
 
     public void parseCommand(String command) {
-        CommandResult res = commandProcessor.process(App.getInstance().getCurrentMenu().getName(), command);
-        printOutput(res.getMessage());
+        CommandResult result = commandProcessor.process(
+                App.getInstance().getCurrentMenu().getName(), command);
+        String output = result.getMessage();
+        if (!output.isBlank()) {
+            printOutput(output);
+        }
     }
 
     public static void printError(String error) {

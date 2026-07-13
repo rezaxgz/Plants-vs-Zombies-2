@@ -1,9 +1,11 @@
 package commands;
 
+import controller.MainController;
 import model.CommandResult;
 
 public enum MainMenuCommand implements Command<CommandResult> {
-    ;
+    LOGOUT("^menu\\s+logout$", MainController::handleLogout);
+
     private final String pattern;
     private final CommandAction<CommandResult> action;
 
@@ -14,7 +16,7 @@ public enum MainMenuCommand implements Command<CommandResult> {
 
     @Override
     public String getPattern() {
-        return this.pattern;
+        return pattern;
     }
 
     @Override

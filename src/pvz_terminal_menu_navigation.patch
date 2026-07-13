@@ -1,0 +1,761 @@
+diff --git a/commands/CommandRegistry.java b/commands/CommandRegistry.java
+index 1c49bdccc309b36708c6d00d86d682cf24d1794a..7be961d6859d39086cec15da412f527765658382 100644
+--- a/commands/CommandRegistry.java
++++ b/commands/CommandRegistry.java
+@@ -1,13 +1,20 @@
+ package commands;
+ 
+-import java.util.*;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
+ 
+ import model.CommandResult;
+ 
+ public class CommandRegistry {
+     private final Map<String, List<Command<CommandResult>>> menus = new HashMap<>();
++    private final List<Command<CommandResult>> commonCommands;
+ 
+     public CommandRegistry() {
++        commonCommands = commandsFrom(MenuCommand.class);
++
+         registerMenu("main", MainMenuCommand.class);
+         registerMenu("game", GameMenuCommand.class);
+         registerMenu("collection", CollectionMenuCommand.class);
+@@ -15,15 +22,24 @@ public class CommandRegistry {
+         registerMenu("signup", SignUpMenuCommand.class);
+     }
+ 
+-    private <E extends Enum<E> & Command<CommandResult>> void registerMenu(String menuId, Class<E> commandEnum) {
++    private <E extends Enum<E> & Command<CommandResult>> void registerMenu(
++            String menuId, Class<E> commandEnum) {
++        menus.put(menuId, commandsFrom(commandEnum));
++    }
++
++    private static <E extends Enum<E> & Command<CommandResult>> List<Command<CommandResult>> commandsFrom(
++            Class<E> commandEnum) {
+         List<Command<CommandResult>> commands = new ArrayList<>();
+-        for (E cmd : commandEnum.getEnumConstants()) {
+-            commands.add(cmd);
++        for (E command : commandEnum.getEnumConstants()) {
++            commands.add(command);
+         }
+-        menus.put(menuId, Collections.unmodifiableList(commands));
++        return Collections.unmodifiableList(commands);
+     }
+ 
+     public List<Command<CommandResult>> getCommands(String menuId) {
+-        return menus.getOrDefault(menuId, List.of());
++        List<Command<CommandResult>> commands = new ArrayList<>(
++                menus.getOrDefault(menuId, List.of()));
++        commands.addAll(commonCommands);
++        return Collections.unmodifiableList(commands);
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/commands/LoginMenuCommand.java b/commands/LoginMenuCommand.java
+index 959a15b29183ba71597685afc57fee7ec147b886..2195e85956a1557726c665d5dc9297855ee22c96 100644
+--- a/commands/LoginMenuCommand.java
++++ b/commands/LoginMenuCommand.java
+@@ -5,9 +5,11 @@ import model.CommandResult;
+ 
+ public enum LoginMenuCommand implements Command<CommandResult> {
+     ANSWER("^answer\\s+-a\\s+(?<answer>.+)$", LoginMenuController::handleAnswer),
+-    FORGET_PASSWORD("^forget\\s+password\\s+-u\\s+(?<username>.+)\\s+-e\\s+(?<email>.+)$",
++    FORGET_PASSWORD(
++            "^forget\\s+password\\s+-u\\s+(?<username>\\S+)\\s+-e\\s+(?<email>\\S+)$",
+             LoginMenuController::handleForgetPassword),
+-    LOGIN("^login\\s+-u\\s+(?<username>.+)\\s+-p\\s+(?<password>.+)(?:\\s+-stay-logged-in)?$",
++    LOGIN(
++            "^login\\s+-u\\s+(?<username>\\S+)\\s+-p\\s+(?<password>\\S+)(?<stayLoggedIn>\\s+-stay-logged-in)?$",
+             LoginMenuController::handleLogin);
+ 
+     private final String pattern;
+@@ -20,7 +22,7 @@ public enum LoginMenuCommand implements Command<CommandResult> {
+ 
+     @Override
+     public String getPattern() {
+-        return this.pattern;
++        return pattern;
+     }
+ 
+     @Override
+diff --git a/commands/MainMenuCommand.java b/commands/MainMenuCommand.java
+index dc6a52c7d62f39c6d202467382764f896e4913f6..cf35061720faa19e83821fd8088702120b7b2898 100644
+--- a/commands/MainMenuCommand.java
++++ b/commands/MainMenuCommand.java
+@@ -1,9 +1,11 @@
+ package commands;
+ 
++import controller.MainController;
+ import model.CommandResult;
+ 
+ public enum MainMenuCommand implements Command<CommandResult> {
+-    ;
++    LOGOUT("^menu\\s+logout$", MainController::handleLogout);
++
+     private final String pattern;
+     private final CommandAction<CommandResult> action;
+ 
+@@ -14,7 +16,7 @@ public enum MainMenuCommand implements Command<CommandResult> {
+ 
+     @Override
+     public String getPattern() {
+-        return this.pattern;
++        return pattern;
+     }
+ 
+     @Override
+diff --git a/commands/MenuCommand.java b/commands/MenuCommand.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..14f8f353a07bb9f4210a7161725aa7c58d58bdae
+--- /dev/null
++++ b/commands/MenuCommand.java
+@@ -0,0 +1,34 @@
++package commands;
++
++import controller.MenuController;
++import model.CommandResult;
++
++public enum MenuCommand implements Command<CommandResult> {
++    ENTER(
++            "^menu\\s+enter\\s+(?<menuName>[A-Za-z][A-Za-z0-9_\\- ]*)$",
++            MenuController::handleEnter),
++    SHOW_CURRENT(
++            "^menu\\s+show\\s+current$",
++            MenuController::handleShowCurrent),
++    EXIT(
++            "^menu\\s+exit$",
++            MenuController::handleExit);
++
++    private final String pattern;
++    private final CommandAction<CommandResult> action;
++
++    MenuCommand(String pattern, CommandAction<CommandResult> action) {
++        this.pattern = pattern;
++        this.action = action;
++    }
++
++    @Override
++    public String getPattern() {
++        return pattern;
++    }
++
++    @Override
++    public CommandAction<CommandResult> getAction() {
++        return action;
++    }
++}
+diff --git a/commands/SignUpMenuCommand.java b/commands/SignUpMenuCommand.java
+index 017a045487c1ec139853595a14668862f6b6a804..8d4feaad3b7cee16111e06824a6e685ac0a25eeb 100644
+--- a/commands/SignUpMenuCommand.java
++++ b/commands/SignUpMenuCommand.java
+@@ -5,10 +5,10 @@ import model.CommandResult;
+ 
+ public enum SignUpMenuCommand implements Command<CommandResult> {
+     REGISTER(
+-            "^register\\s+-u\\s+(?<username>.+)\\s+-p\\s+(<password>.+)\\s+(?<passwordConfirm>.+)\\s+-n\\s+(?<nickname>.+)\\s+-e\\s+(?<email>.+)\\s+g\\s+(?<gender>.+)$",
++            "^register\\s+-u\\s+(?<username>\\S+)\\s+-p\\s+(?<password>\\S+)\\s+(?<passwordConfirm>\\S+)\\s+-n\\s+(?<nickname>.+?)\\s+-e\\s+(?<email>\\S+)\\s+-g\\s+(?<gender>\\S+)$",
+             SignupMenuController::handleRegister),
+     PICK_QUESTION(
+-            "^pick\\s+question\\s+-q\\s+(?<questionNumber>\\d+)\\s+-a\\s+(?<answer>\\.+)\\s+-c\\s+(?<answerConfirm>\\.+)$",
++            "^pick\\s+question\\s+-q\\s+(?<questionNumber>\\d+)\\s+-a\\s+(?<answer>.+?)\\s+-c\\s+(?<answerConfirm>.+)$",
+             SignupMenuController::handlePickQuestion);
+ 
+     private final String pattern;
+@@ -21,7 +21,7 @@ public enum SignUpMenuCommand implements Command<CommandResult> {
+ 
+     @Override
+     public String getPattern() {
+-        return this.pattern;
++        return pattern;
+     }
+ 
+     @Override
+diff --git a/controller/LoginMenuController.java b/controller/LoginMenuController.java
+index c9533f812fd40a7b20dab9e72808d5772b90b4be..1252d9eb449f436add2ed573be5c78c22495f3c5 100644
+--- a/controller/LoginMenuController.java
++++ b/controller/LoginMenuController.java
+@@ -7,6 +7,7 @@ import model.App;
+ import model.CommandResult;
+ import model.auth.UserManager;
+ import model.menu.LoginMenu;
++import model.menu.MainMenu;
+ import model.user.User;
+ import model.user.UserDataValidator;
+ import view.AppView;
+@@ -22,14 +23,13 @@ public class LoginMenuController {
+         if (!menu.isCorrectPassword(username, password)) {
+             return CommandResult.error("Incorrect password!");
+         }
+-        boolean stayLoggedIn = matcher.group("-stay-logged-in") != null;
++        boolean stayLoggedIn = matcher.group("stayLoggedIn") != null;
+         menu.setStayLoggedIn(stayLoggedIn);
+ 
+         menu.login(username);
++        App.getInstance().changeMenu(new MainMenu());
+ 
+-        menu.exit();
+-
+-        return CommandResult.success("Logged in successfully.");
++        return CommandResult.success("Logged in successfully.\nyou're now in main menu");
+     }
+ 
+     public static CommandResult handleForgetPassword(Matcher matcher) {
+diff --git a/controller/MainController.java b/controller/MainController.java
+index 8bb576d362d61859ba468d153f43c2506825a86e..44334003f9f6ceaf709f367e78eea47da9169597 100644
+--- a/controller/MainController.java
++++ b/controller/MainController.java
+@@ -1,5 +1,16 @@
+ package controller;
+ 
+-public class MainController {
++import java.util.regex.Matcher;
+ 
++import model.App;
++import model.CommandResult;
++
++public final class MainController {
++    private MainController() {
++    }
++
++    public static CommandResult handleLogout(Matcher matcher) {
++        App.getInstance().logout();
++        return CommandResult.success("logged out successfully\nentered signup menu");
++    }
+ }
+diff --git a/controller/MenuController.java b/controller/MenuController.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..55b7fd60b328967e2e7e8f27f0f167009ee5fe03
+--- /dev/null
++++ b/controller/MenuController.java
+@@ -0,0 +1,146 @@
++package controller;
++
++import java.util.Locale;
++import java.util.regex.Matcher;
++
++import model.App;
++import model.CommandResult;
++import model.menu.CollectionMenu;
++import model.menu.GameMenu;
++import model.menu.LoginMenu;
++import model.menu.MainMenu;
++import model.menu.Menu;
++import model.menu.NetworkMenu;
++import model.menu.NewsMenu;
++import model.menu.ProfileMenu;
++import model.menu.SettingsMenu;
++import model.menu.SignUpMenu;
++
++public final class MenuController {
++    private MenuController() {
++    }
++
++    public static CommandResult handleEnter(Matcher matcher) {
++        App app = App.getInstance();
++        Menu currentMenu = app.getCurrentMenu();
++        String requestedName = normalizeMenuName(matcher.group("menuName"));
++
++        if (!isKnownMenu(requestedName)) {
++            return CommandResult.error("menu does not exist!");
++        }
++        if (currentMenu.getName().equals(requestedName)) {
++            return CommandResult.error("you are already in the " + requestedName + " menu!");
++        }
++
++        Menu destination = createDestination(currentMenu, requestedName);
++        if (destination == null) {
++            return CommandResult.error(
++                    "cannot enter the " + requestedName + " menu from the "
++                            + currentMenu.getName() + " menu!");
++        }
++
++        app.changeMenu(destination);
++        return CommandResult.success("entered " + destination.getName() + " menu");
++    }
++
++    public static CommandResult handleShowCurrent(Matcher matcher) {
++        return CommandResult.success(App.getInstance().getCurrentMenu().getName());
++    }
++
++    public static CommandResult handleExit(Matcher matcher) {
++        App app = App.getInstance();
++        Menu currentMenu = app.getCurrentMenu();
++        if (currentMenu instanceof MainMenu) {
++            return CommandResult.error("use menu logout to exit the main menu!");
++        }
++
++        String exitedMenuName = currentMenu.getName();
++        currentMenu.exit();
++        if (!app.isRunning()) {
++            return CommandResult.success("program ended");
++        }
++
++        return CommandResult.success(
++                "exited " + exitedMenuName + " menu\nentered "
++                        + app.getCurrentMenu().getName() + " menu");
++    }
++
++    private static Menu createDestination(Menu currentMenu, String requestedName) {
++        if (currentMenu instanceof SignUpMenu && "login".equals(requestedName)) {
++            return new LoginMenu();
++        }
++        if (currentMenu instanceof LoginMenu && "signup".equals(requestedName)) {
++            return new SignUpMenu();
++        }
++        if (currentMenu instanceof MainMenu) {
++            return createMainChild(requestedName);
++        }
++        if (currentMenu instanceof GameMenu) {
++            if ("collection".equals(requestedName)) {
++                return new CollectionMenu((GameMenu) currentMenu);
++            }
++            if ("main".equals(requestedName)) {
++                return new MainMenu();
++            }
++        }
++        if (currentMenu instanceof CollectionMenu && "game".equals(requestedName)) {
++            return ((CollectionMenu) currentMenu).getParentGameMenu();
++        }
++        if (isMainChild(currentMenu) && "main".equals(requestedName)) {
++            return new MainMenu();
++        }
++        return null;
++    }
++
++    private static Menu createMainChild(String requestedName) {
++        if ("game".equals(requestedName)) {
++            return new GameMenu();
++        }
++        if ("settings".equals(requestedName)) {
++            return new SettingsMenu();
++        }
++        if ("network".equals(requestedName)) {
++            return new NetworkMenu();
++        }
++        if ("news".equals(requestedName)) {
++            return new NewsMenu();
++        }
++        if ("profile".equals(requestedName)) {
++            return new ProfileMenu();
++        }
++        return null;
++    }
++
++    private static boolean isMainChild(Menu menu) {
++        return menu instanceof SettingsMenu
++                || menu instanceof NetworkMenu
++                || menu instanceof NewsMenu
++                || menu instanceof ProfileMenu;
++    }
++
++    private static boolean isKnownMenu(String menuName) {
++        return "signup".equals(menuName)
++                || "login".equals(menuName)
++                || "main".equals(menuName)
++                || "game".equals(menuName)
++                || "collection".equals(menuName)
++                || "settings".equals(menuName)
++                || "network".equals(menuName)
++                || "news".equals(menuName)
++                || "profile".equals(menuName);
++    }
++
++    private static String normalizeMenuName(String menuName) {
++        String normalized = menuName.trim().toLowerCase(Locale.ROOT)
++                .replace("-", "")
++                .replace("_", "")
++                .replace(" ", "");
++        if (normalized.endsWith("menu")) {
++            normalized = normalized.substring(0, normalized.length() - "menu".length());
++        }
++        if ("signup".equals(normalized) || "registration".equals(normalized)) {
++            return "signup";
++        }
++        return normalized;
++    }
++}
+diff --git a/controller/SignupMenuController.java b/controller/SignupMenuController.java
+index a507c96a6398ca78674b3e87c75316777e07d92b..2f88d0dfcbb76102c180046ca1113801774f99ea 100644
+--- a/controller/SignupMenuController.java
++++ b/controller/SignupMenuController.java
+@@ -7,6 +7,7 @@ import model.App;
+ import model.CommandResult;
+ import model.auth.UserManager;
+ import model.enums.Gender;
++import model.menu.LoginMenu;
+ import model.menu.SignUpMenu;
+ import model.security.Question;
+ import model.user.User;
+@@ -94,8 +95,7 @@ public class SignupMenuController {
+ 
+         menu.getTempUser().setSecurityQuestion(n, answer);
+         UserManager.addUserToDatabase(menu.getTempUser());
+-
+-        menu.exit();
++        App.getInstance().changeMenu(new LoginMenu());
+ 
+         return CommandResult.success("user registered successfully\nyou're now in login menu");
+     }
+diff --git a/model/App.java b/model/App.java
+index 76a59521b7a87dcd939ac0c4d54d80aa9e442e3a..3629f9d2bf112f7692ece5020584e1131978f68f 100644
+--- a/model/App.java
++++ b/model/App.java
+@@ -5,19 +5,23 @@ import model.menu.SignUpMenu;
+ import model.user.User;
+ 
+ public class App {
+-    private static App instance = new App();
++    private static final App instance = new App();
+ 
+     private Menu currentMenu = new SignUpMenu();
+-    private User loggedInUser = null;
++    private User loggedInUser;
++    private boolean running = true;
++
++    private App() {
++    }
+ 
+     public static App getInstance() {
+-        if (instance == null) {
+-            instance = new App();
+-        }
+         return instance;
+     }
+ 
+     public void changeMenu(Menu menu) {
++        if (menu == null) {
++            throw new IllegalArgumentException("menu cannot be null");
++        }
+         currentMenu = menu;
+     }
+ 
+@@ -25,7 +29,24 @@ public class App {
+         return currentMenu;
+     }
+ 
++    public User getLoggedInUser() {
++        return loggedInUser;
++    }
++
+     public void setLoggedInUser(User loggedInUser) {
+         this.loggedInUser = loggedInUser;
+     }
++
++    public void logout() {
++        loggedInUser = null;
++        changeMenu(new SignUpMenu());
++    }
++
++    public boolean isRunning() {
++        return running;
++    }
++
++    public void stop() {
++        running = false;
++    }
+ }
+diff --git a/model/menu/CollectionMenu.java b/model/menu/CollectionMenu.java
+index 64b5524e0b3f2fb027c4bf175dd02d326fd6aad4..e0f29c05ae8016a91b516a114198a2bb6aa64816 100644
+--- a/model/menu/CollectionMenu.java
++++ b/model/menu/CollectionMenu.java
+@@ -1,16 +1,32 @@
+ package model.menu;
+ 
++import model.App;
++
+ public class CollectionMenu extends Menu {
++    private final GameMenu parentGameMenu;
++
++    public CollectionMenu() {
++        this(new GameMenu());
++    }
++
++    public CollectionMenu(GameMenu parentGameMenu) {
++        if (parentGameMenu == null) {
++            throw new IllegalArgumentException("parent game menu cannot be null");
++        }
++        this.parentGameMenu = parentGameMenu;
++    }
++
++    public GameMenu getParentGameMenu() {
++        return parentGameMenu;
++    }
+ 
+     @Override
+     public void exit() {
+-        // TODO Auto-generated method stub
+-        throw new UnsupportedOperationException("Unimplemented method 'exit'");
++        App.getInstance().changeMenu(parentGameMenu);
+     }
+ 
+     @Override
+     public String getName() {
+         return "collection";
+     }
+-
+ }
+diff --git a/model/menu/GameMenu.java b/model/menu/GameMenu.java
+index 87636a27d6594c84234b8a546eacaddaa79f06f8..63960a91f2ee324d0583fb713446d8e6ca2416af 100644
+--- a/model/menu/GameMenu.java
++++ b/model/menu/GameMenu.java
+@@ -1,5 +1,6 @@
+ package model.menu;
+ 
++import model.App;
+ import model.game.Game;
+ 
+ public class GameMenu extends Menu {
+@@ -22,8 +23,7 @@ public class GameMenu extends Menu {
+ 
+     @Override
+     public void exit() {
+-        // TODO Auto-generated method stub
+-        throw new UnsupportedOperationException("Unimplemented method 'exit'");
++        App.getInstance().changeMenu(new MainMenu());
+     }
+ 
+     @Override
+diff --git a/model/menu/LoginMenu.java b/model/menu/LoginMenu.java
+index 116f0bfc6270253aab9c497ae49a4f5dee51f8f2..8fe500b8c13ac0476ef85efb7459796d89d08d04 100644
+--- a/model/menu/LoginMenu.java
++++ b/model/menu/LoginMenu.java
+@@ -5,13 +5,12 @@ import model.auth.UserManager;
+ import model.user.User;
+ 
+ public class LoginMenu extends Menu {
+-    private boolean StayLoggedIn;
+-
++    private boolean stayLoggedIn;
+     private User tempUser;
+ 
+     @Override
+     public void exit() {
+-        App.getInstance().changeMenu(new MainMenu());
++        App.getInstance().changeMenu(new SignUpMenu());
+     }
+ 
+     @Override
+@@ -20,15 +19,16 @@ public class LoginMenu extends Menu {
+     }
+ 
+     public boolean isCorrectPassword(String username, String password) {
+-        return UserManager.getUserByUsername(username).doesMatchPassword(password);
++        User user = UserManager.getUserByUsername(username);
++        return user != null && user.doesMatchPassword(password);
+     }
+ 
+     public boolean isStayLoggedIn() {
+-        return StayLoggedIn;
++        return stayLoggedIn;
+     }
+ 
+     public void setStayLoggedIn(boolean stayLoggedIn) {
+-        StayLoggedIn = stayLoggedIn;
++        this.stayLoggedIn = stayLoggedIn;
+     }
+ 
+     public void login(String username) {
+@@ -37,7 +37,8 @@ public class LoginMenu extends Menu {
+     }
+ 
+     public boolean isCorrectEmail(String username, String email) {
+-        return UserManager.getUserByUsername(username).doesMatchEmail(email);
++        User user = UserManager.getUserByUsername(username);
++        return user != null && user.doesMatchEmail(email);
+     }
+ 
+     public void setTempUser(User tempUser) {
+@@ -49,10 +50,10 @@ public class LoginMenu extends Menu {
+     }
+ 
+     public void setTempUserByName(String username) {
+-        this.setTempUser(UserManager.getUserByUsername(username));
++        setTempUser(UserManager.getUserByUsername(username));
+     }
+ 
+     public boolean isCorrectAnswer(String answer, User user) {
+-        return user.isCorrectSecurityAnswer(answer);
++        return user != null && user.isCorrectSecurityAnswer(answer);
+     }
+ }
+diff --git a/model/menu/MainMenu.java b/model/menu/MainMenu.java
+index ac3da4f80c7ae0b4526e231d94b17aa01f24856f..e1aa3937db251e97458f2fcfa7be5082c5ef99f8 100644
+--- a/model/menu/MainMenu.java
++++ b/model/menu/MainMenu.java
+@@ -4,8 +4,7 @@ public class MainMenu extends Menu {
+ 
+     @Override
+     public void exit() {
+-        // TODO Auto-generated method stub
+-        throw new UnsupportedOperationException("Unimplemented method 'exit'");
++        // The main menu can only be left with the "menu logout" command.
+     }
+ 
+     @Override
+diff --git a/model/menu/NetworkMenu.java b/model/menu/NetworkMenu.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..e56500312dc1c5139678c353989ab8c69cf72b21
+--- /dev/null
++++ b/model/menu/NetworkMenu.java
+@@ -0,0 +1,15 @@
++package model.menu;
++
++import model.App;
++
++public class NetworkMenu extends Menu {
++    @Override
++    public void exit() {
++        App.getInstance().changeMenu(new MainMenu());
++    }
++
++    @Override
++    public String getName() {
++        return "network";
++    }
++}
+diff --git a/model/menu/NewsMenu.java b/model/menu/NewsMenu.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..549314b92c90264856b0fbbaa2ede6c1354b7f07
+--- /dev/null
++++ b/model/menu/NewsMenu.java
+@@ -0,0 +1,15 @@
++package model.menu;
++
++import model.App;
++
++public class NewsMenu extends Menu {
++    @Override
++    public void exit() {
++        App.getInstance().changeMenu(new MainMenu());
++    }
++
++    @Override
++    public String getName() {
++        return "news";
++    }
++}
+diff --git a/model/menu/ProfileMenu.java b/model/menu/ProfileMenu.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..443b2df96b524648a17670fecc478a55104b7030
+--- /dev/null
++++ b/model/menu/ProfileMenu.java
+@@ -0,0 +1,15 @@
++package model.menu;
++
++import model.App;
++
++public class ProfileMenu extends Menu {
++    @Override
++    public void exit() {
++        App.getInstance().changeMenu(new MainMenu());
++    }
++
++    @Override
++    public String getName() {
++        return "profile";
++    }
++}
+diff --git a/model/menu/SettingsMenu.java b/model/menu/SettingsMenu.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..3adfec73de5011f54471c9aeb6fd305305786178
+--- /dev/null
++++ b/model/menu/SettingsMenu.java
+@@ -0,0 +1,15 @@
++package model.menu;
++
++import model.App;
++
++public class SettingsMenu extends Menu {
++    @Override
++    public void exit() {
++        App.getInstance().changeMenu(new MainMenu());
++    }
++
++    @Override
++    public String getName() {
++        return "settings";
++    }
++}
+diff --git a/model/menu/SignUpMenu.java b/model/menu/SignUpMenu.java
+index f7f88f2aeacd74194567a47840d558364099b56c..1b9a281f6ae21de8fef1d8a2b0ae32a3fa13fc71 100644
+--- a/model/menu/SignUpMenu.java
++++ b/model/menu/SignUpMenu.java
+@@ -5,11 +5,11 @@ import model.user.User;
+ 
+ public class SignUpMenu extends Menu {
+ 
+-    private User tempUser = null;
++    private User tempUser;
+ 
+     @Override
+     public void exit() {
+-        App.getInstance().changeMenu(new LoginMenu());
++        App.getInstance().stop();
+     }
+ 
+     @Override
+@@ -24,5 +24,4 @@ public class SignUpMenu extends Menu {
+     public void setTempUser(User tempUser) {
+         this.tempUser = tempUser;
+     }
+-
+ }
+diff --git a/model/user/UserDataValidator.java b/model/user/UserDataValidator.java
+index 7e8de8def14c8120a6aabf791f5fbd2f61fc78cd..8df77d784964f49274b9d0935d8de66ce89bc6e9 100644
+--- a/model/user/UserDataValidator.java
++++ b/model/user/UserDataValidator.java
+@@ -53,7 +53,7 @@ public class UserDataValidator {
+ 
+     public static String validateEmail(String email) {
+         int atIndex = email.indexOf('@');
+-        if (atIndex == -1 || email.indexOf('@', atIndex) != -1) {
++        if (atIndex == -1 || email.indexOf('@', atIndex + 1) != -1) {
+             return "email must contain one and only one @";
+         }
+ 
+diff --git a/view/AppView.java b/view/AppView.java
+index d48b18d2948f08ae5f8724a00968d4a257f97d04..86204aaeafbb3aae8d0ad01db93130a628446b0b 100644
+--- a/view/AppView.java
++++ b/view/AppView.java
+@@ -7,10 +7,10 @@ import model.App;
+ import model.CommandResult;
+ 
+ public class AppView {
+-    private static AppView instance = new AppView();
++    private static final AppView instance = new AppView();
+ 
+-    private Scanner scanner = new Scanner(System.in);
+-    private CommandProcessor commandProcessor = new CommandProcessor(new CommandRegistry());
++    private final Scanner scanner = new Scanner(System.in);
++    private final CommandProcessor commandProcessor = new CommandProcessor(new CommandRegistry());
+ 
+     public static AppView getInstance() {
+         return instance;
+@@ -25,14 +25,19 @@ public class AppView {
+     }
+ 
+     public void run() {
+-        while (hasNext()) {
++        App app = App.getInstance();
++        while (app.isRunning() && hasNext()) {
+             parseCommand(getInput());
+         }
+     }
+ 
+     public void parseCommand(String command) {
+-        CommandResult res = commandProcessor.process(App.getInstance().getCurrentMenu().getName(), command);
+-        printOutput(res.getMessage());
++        CommandResult result = commandProcessor.process(
++                App.getInstance().getCurrentMenu().getName(), command);
++        String output = result.getMessage();
++        if (!output.isBlank()) {
++            printOutput(output);
++        }
+     }
+ 
+     public static void printError(String error) {

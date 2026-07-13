@@ -1,5 +1,6 @@
 package model.menu;
 
+import model.App;
 import model.game.Game;
 
 public class GameMenu extends Menu {
@@ -22,8 +23,7 @@ public class GameMenu extends Menu {
 
     @Override
     public void exit() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'exit'");
+        App.getInstance().changeMenu(new MainMenu());
     }
 
     @Override

@@ -4,8 +4,7 @@ public class MainMenu extends Menu {
 
     @Override
     public void exit() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'exit'");
+        // The main menu can only be left with the "menu logout" command.
     }
 
     @Override

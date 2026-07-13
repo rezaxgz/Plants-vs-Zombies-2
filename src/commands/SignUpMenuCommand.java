@@ -5,10 +5,10 @@ import model.CommandResult;
 
 public enum SignUpMenuCommand implements Command<CommandResult> {
     REGISTER(
-            "^register\\s+-u\\s+(?<username>.+)\\s+-p\\s+(<password>.+)\\s+(?<passwordConfirm>.+)\\s+-n\\s+(?<nickname>.+)\\s+-e\\s+(?<email>.+)\\s+g\\s+(?<gender>.+)$",
+            "^register\\s+-u\\s+(?<username>\\S+)\\s+-p\\s+(?<password>\\S+)\\s+(?<passwordConfirm>\\S+)\\s+-n\\s+(?<nickname>.+?)\\s+-e\\s+(?<email>\\S+)\\s+-g\\s+(?<gender>\\S+)$",
             SignupMenuController::handleRegister),
     PICK_QUESTION(
-            "^pick\\s+question\\s+-q\\s+(?<questionNumber>\\d+)\\s+-a\\s+(?<answer>\\.+)\\s+-c\\s+(?<answerConfirm>\\.+)$",
+            "^pick\\s+question\\s+-q\\s+(?<questionNumber>\\d+)\\s+-a\\s+(?<answer>.+?)\\s+-c\\s+(?<answerConfirm>.+)$",
             SignupMenuController::handlePickQuestion);
 
     private final String pattern;
@@ -21,7 +21,7 @@ public enum SignUpMenuCommand implements Command<CommandResult> {
 
     @Override
     public String getPattern() {
-        return this.pattern;
+        return pattern;
     }
 
     @Override

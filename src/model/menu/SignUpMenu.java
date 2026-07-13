@@ -5,11 +5,11 @@ import model.user.User;
 
 public class SignUpMenu extends Menu {
 
-    private User tempUser = null;
+    private User tempUser;
 
     @Override
     public void exit() {
-        App.getInstance().changeMenu(new LoginMenu());
+        App.getInstance().stop();
     }
 
     @Override
@@ -24,5 +24,4 @@ public class SignUpMenu extends Menu {
     public void setTempUser(User tempUser) {
         this.tempUser = tempUser;
     }
-
 }
