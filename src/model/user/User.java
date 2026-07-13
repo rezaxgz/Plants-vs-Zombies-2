@@ -47,6 +47,10 @@ public class User {
         this.gender = gender;
     }
 
+    public String getUsername() {
+        return username;
+    }
+
     public void setSecurityQuestion(int n, String answer) {
         this.securityQuestion = new SecurityQuestion(Question.getByNumber(n).getText(), answer);
     }
