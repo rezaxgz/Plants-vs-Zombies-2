@@ -1,6 +1,5 @@
 package controller;
 
-import java.math.MathContext;
 import java.util.List;
 import java.util.regex.Matcher;
 
@@ -8,6 +7,7 @@ import model.App;
 import model.CommandResult;
 import model.auth.UserManager;
 import model.menu.LoginMenu;
+import model.menu.MainMenu;
 import model.user.User;
 import model.user.UserDataValidator;
 import view.AppView;
@@ -23,14 +23,13 @@ public class LoginMenuController {
         if (!menu.isCorrectPassword(username, password)) {
             return CommandResult.error("Incorrect password!");
         }
-        boolean stayLoggedIn = matcher.group("-stay-logged-in") != null;
+        boolean stayLoggedIn = matcher.group("stayLoggedIn") != null;
         menu.setStayLoggedIn(stayLoggedIn);
 
         menu.login(username);
+        App.getInstance().changeMenu(new MainMenu());
 
-        menu.exit();
-
-        return CommandResult.success("Logged in successfully.");
+        return CommandResult.success("Logged in successfully.\nyou're now in main menu");
     }
 
     public static CommandResult handleForgetPassword(Matcher matcher) {
@@ -81,6 +80,7 @@ public class LoginMenuController {
             }
         }
         user.changePassword(confirmedPassword);
+        UserManager.saveAllUsers();
         return CommandResult.success("password changed successfully.");
     }
 }

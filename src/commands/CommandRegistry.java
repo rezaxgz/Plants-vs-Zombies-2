@@ -1,13 +1,20 @@
 package commands;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import model.CommandResult;
 
 public class CommandRegistry {
     private final Map<String, List<Command<CommandResult>>> menus = new HashMap<>();
+    private final List<Command<CommandResult>> commonCommands;
 
     public CommandRegistry() {
+        commonCommands = commandsFrom(MenuCommand.class);
+
         registerMenu("main", MainMenuCommand.class);
         registerMenu("game", GameMenuCommand.class);
         registerMenu("collection", CollectionMenuCommand.class);
@@ -15,15 +22,24 @@ public class CommandRegistry {
         registerMenu("signup", SignUpMenuCommand.class);
     }
 
-    private <E extends Enum<E> & Command<CommandResult>> void registerMenu(String menuId, Class<E> commandEnum) {
+    private <E extends Enum<E> & Command<CommandResult>> void registerMenu(
+            String menuId, Class<E> commandEnum) {
+        menus.put(menuId, commandsFrom(commandEnum));
+    }
+
+    private static <E extends Enum<E> & Command<CommandResult>> List<Command<CommandResult>> commandsFrom(
+            Class<E> commandEnum) {
         List<Command<CommandResult>> commands = new ArrayList<>();
-        for (E cmd : commandEnum.getEnumConstants()) {
-            commands.add(cmd);
+        for (E command : commandEnum.getEnumConstants()) {
+            commands.add(command);
         }
-        menus.put(menuId, Collections.unmodifiableList(commands));
+        return Collections.unmodifiableList(commands);
     }
 
     public List<Command<CommandResult>> getCommands(String menuId) {
-        return menus.getOrDefault(menuId, List.of());
+        List<Command<CommandResult>> commands = new ArrayList<>(
+                menus.getOrDefault(menuId, List.of()));
+        commands.addAll(commonCommands);
+        return Collections.unmodifiableList(commands);
     }
 }

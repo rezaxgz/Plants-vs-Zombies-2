@@ -7,6 +7,7 @@ import model.App;
 import model.CommandResult;
 import model.auth.UserManager;
 import model.enums.Gender;
+import model.menu.LoginMenu;
 import model.menu.SignUpMenu;
 import model.security.Question;
 import model.user.User;
@@ -67,7 +68,7 @@ public class SignupMenuController {
         }
 
         User user = new User(username, password, nickname, email, gender);
-        UserManager.addUserToDatabase(user);
+        menu.setTempUser(user);
 
         return CommandResult
                 .success("user data saved! pick a security quesion and answer it.\n" + Question.getAllQuestions());
@@ -94,8 +95,7 @@ public class SignupMenuController {
 
         menu.getTempUser().setSecurityQuestion(n, answer);
         UserManager.addUserToDatabase(menu.getTempUser());
-
-        menu.exit();
+        App.getInstance().changeMenu(new LoginMenu());
 
         return CommandResult.success("user registered successfully\nyou're now in login menu");
     }

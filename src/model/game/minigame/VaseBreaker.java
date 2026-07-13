@@ -4,7 +4,8 @@ import model.game.Game;
 
 public class VaseBreaker extends Game {
     @Override
-    public void tick() {
-        // new rules
+    public void update(float deltaSeconds) {
+        super.update(deltaSeconds);
+        // Add VaseBreaker rules here. All timers must use deltaSeconds.
     }
 }

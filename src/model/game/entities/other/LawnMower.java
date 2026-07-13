@@ -7,16 +7,21 @@ public class LawnMower extends Entity {
     private boolean hasActivated;
 
     public int getRow() {
-        return 0;
+        return getEntityPosition() == null ? -1 : getEntityPosition().getRow();
     }
 
     public void execute(Board board) {
-        // kill all zombies
+        // Kill all zombies in this lawn mower's row when zombie behavior exists.
+        hasActivated = true;
     }
 
     @Override
-    public void tick() {
-        // update position
-        super.tick();
+    public void update(float deltaSeconds) {
+        super.update(deltaSeconds);
+        // Position movement will also use deltaSeconds when implemented.
+    }
+
+    public boolean hasActivated() {
+        return hasActivated;
     }
 }

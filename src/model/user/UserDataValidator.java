@@ -53,7 +53,7 @@ public class UserDataValidator {
 
     public static String validateEmail(String email) {
         int atIndex = email.indexOf('@');
-        if (atIndex == -1 || email.indexOf('@', atIndex) != -1) {
+        if (atIndex == -1 || email.indexOf('@', atIndex + 1) != -1) {
             return "email must contain one and only one @";
         }
 

@@ -5,13 +5,12 @@ import model.auth.UserManager;
 import model.user.User;
 
 public class LoginMenu extends Menu {
-    private boolean StayLoggedIn;
-
+    private boolean stayLoggedIn;
     private User tempUser;
 
     @Override
     public void exit() {
-        App.getInstance().changeMenu(new MainMenu());
+        App.getInstance().changeMenu(new SignUpMenu());
     }
 
     @Override
@@ -20,15 +19,16 @@ public class LoginMenu extends Menu {
     }
 
     public boolean isCorrectPassword(String username, String password) {
-        return UserManager.getUserByUsername(username).doesMatchPassword(password);
+        User user = UserManager.getUserByUsername(username);
+        return user != null && user.doesMatchPassword(password);
     }
 
     public boolean isStayLoggedIn() {
-        return StayLoggedIn;
+        return stayLoggedIn;
     }
 
     public void setStayLoggedIn(boolean stayLoggedIn) {
-        StayLoggedIn = stayLoggedIn;
+        this.stayLoggedIn = stayLoggedIn;
     }
 
     public void login(String username) {
@@ -37,7 +37,8 @@ public class LoginMenu extends Menu {
     }
 
     public boolean isCorrectEmail(String username, String email) {
-        return UserManager.getUserByUsername(username).doesMatchEmail(email);
+        User user = UserManager.getUserByUsername(username);
+        return user != null && user.doesMatchEmail(email);
     }
 
     public void setTempUser(User tempUser) {
@@ -49,10 +50,10 @@ public class LoginMenu extends Menu {
     }
 
     public void setTempUserByName(String username) {
-        this.setTempUser(UserManager.getUserByUsername(username));
+        setTempUser(UserManager.getUserByUsername(username));
     }
 
     public boolean isCorrectAnswer(String answer, User user) {
-        return user.isCorrectSecurityAnswer(answer);
+        return user != null && user.isCorrectSecurityAnswer(answer);
     }
 }
