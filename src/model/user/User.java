@@ -40,19 +40,77 @@ public class User {
     private AllQuestsProgress questProgress;
 
     public User(String username, String password, String nickname, String email, Gender gender) {
+        this(username, Sha256.hash(password), nickname, email, gender, null, 0, 0, 0, 0);
+    }
+
+    private User(String username, String passwordHash, String nickname, String email, Gender gender,
+            SecurityQuestion securityQuestion, int coins, int diamonds, int greenhousePotsUnlocked,
+            int plantFoodCount) {
         this.username = username;
-        this.passwordHash = Sha256.hash(password);
+        this.passwordHash = passwordHash;
         this.nickName = nickname;
         this.email = email;
         this.gender = gender;
+        this.securityQuestion = securityQuestion;
+        this.coins = coins;
+        this.diamonds = diamonds;
+        this.greenhousePotsUnlocked = greenhousePotsUnlocked;
+        this.plantFoodCount = plantFoodCount;
+    }
+
+    public static User fromStoredData(String username, String passwordHash, String nickname, String email,
+            Gender gender, SecurityQuestion securityQuestion, int coins, int diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount) {
+        return new User(username, passwordHash, nickname, email, gender, securityQuestion, coins, diamonds,
+                greenhousePotsUnlocked, plantFoodCount);
     }
 
     public String getUsername() {
         return username;
     }
 
+    public String getPasswordHashForStorage() {
+        return passwordHash;
+    }
+
+    public String getNickName() {
+        return nickName;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public Gender getGender() {
+        return gender;
+    }
+
+    public SecurityQuestion getSecurityQuestionData() {
+        return securityQuestion;
+    }
+
+    public int getCoins() {
+        return coins;
+    }
+
+    public int getDiamonds() {
+        return diamonds;
+    }
+
+    public int getGreenhousePotsUnlocked() {
+        return greenhousePotsUnlocked;
+    }
+
+    public int getPlantFoodCount() {
+        return plantFoodCount;
+    }
+
     public void setSecurityQuestion(int n, String answer) {
-        this.securityQuestion = new SecurityQuestion(Question.getByNumber(n).getText(), answer);
+        Question question = Question.getByNumber(n);
+        if (question == null) {
+            throw new IllegalArgumentException("invalid security question number: " + n);
+        }
+        this.securityQuestion = new SecurityQuestion(question.getText(), answer);
     }
 
     public boolean canAfford(ItemPrice price) {

@@ -80,6 +80,7 @@ public class LoginMenuController {
             }
         }
         user.changePassword(confirmedPassword);
+        UserManager.saveAllUsers();
         return CommandResult.success("password changed successfully.");
     }
 }
