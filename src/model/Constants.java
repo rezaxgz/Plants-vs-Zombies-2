@@ -11,6 +11,8 @@ public final class Constants {
     public static final float SKY_SUN_FALL_SECONDS = 1.0f;
     public static final double SPECIAL_SKY_SUN_CHANCE = 0.15;
 
+    public static final float BASIC_ZOMBIE_MOVEMENT_SPEED = 0f;
+
     private Constants() {
     }
 }

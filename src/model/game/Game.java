@@ -59,7 +59,8 @@ public class Game {
         this.gameType = gameType;
         this.sunCount = initialSunCount;
         this.zombieWaves = zombieWaves == null
-                ? new ArrayList<>() : new ArrayList<>(zombieWaves);
+                ? new ArrayList<>()
+                : new ArrayList<>(zombieWaves);
         this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
         this.random = random;
         this.nextSkySunDropAtSeconds = getSkySunDropIntervalSeconds(0.0);
@@ -165,7 +166,7 @@ public class Game {
     private static String buildSpawnMessage(Zombie zombie) {
         return "Zombie " + zombie.getName() + " spawned at wave "
                 + zombie.getWaveNumber() + " in lane " + zombie.getLane()
-                + " which costed " + zombie.getWavePointCost() + ".";
+                + " which costed " + zombie.getType().getWavePointCost() + ".";
     }
 
     private boolean hasZombieReachedHouse() {
@@ -212,7 +213,8 @@ public class Game {
 
     private void dropSkySun() {
         SunType type = random.nextDouble() < Constants.SPECIAL_SKY_SUN_CHANCE
-                ? SunType.SPECIAL : SunType.NORMAL;
+                ? SunType.SPECIAL
+                : SunType.NORMAL;
         EntityPosition position = new EntityPosition(random.nextInt(board.getNumberOfRows()),
                 random.nextInt(board.getNumberOfColumns()));
         board.addEntity(Sun.createSkySun(type, position));
