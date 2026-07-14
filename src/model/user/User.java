@@ -1,9 +1,13 @@
 package model.user;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import model.Settings;
 import model.collections.plants.PlantCollection;
 import model.collections.zombies.ZombieCollection;
 import model.enums.Gender;
+import model.greenHouse.GreenHouse;
 import model.quest.AllQuestsProgress;
 import model.security.Question;
 import model.security.SecurityQuestion;
@@ -32,11 +36,11 @@ public class User {
     // greenhouse variables
     private int greenhousePotsUnlocked;
     private int plantFoodCount;
+    private GreenHouse greenHouse;
+    private Map<String, Integer> plantBoosts;
 
     private Inventory inventory;
-
     private GameProgerss gameProgerss;
-
     private AllQuestsProgress questProgress;
 
     public User(String username, String password, String nickname, String email, Gender gender) {
@@ -56,13 +60,21 @@ public class User {
         this.diamonds = diamonds;
         this.greenhousePotsUnlocked = greenhousePotsUnlocked;
         this.plantFoodCount = plantFoodCount;
+        this.greenHouse = new GreenHouse();
+        this.plantBoosts = new HashMap<>();
+        this.plantCollection = new PlantCollection();
     }
 
     public static User fromStoredData(String username, String passwordHash, String nickname, String email,
             Gender gender, SecurityQuestion securityQuestion, int coins, int diamonds,
-            int greenhousePotsUnlocked, int plantFoodCount) {
-        return new User(username, passwordHash, nickname, email, gender, securityQuestion, coins, diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount, GreenHouse greenHouse, Map<String, Integer> plantBoosts) {
+        User user = new User(username, passwordHash, nickname, email, gender, securityQuestion, coins, diamonds,
                 greenhousePotsUnlocked, plantFoodCount);
+        if (greenHouse != null)
+            user.greenHouse = greenHouse;
+        if (plantBoosts != null)
+            user.plantBoosts = plantBoosts;
+        return user;
     }
 
     public String getUsername() {
@@ -93,8 +105,20 @@ public class User {
         return coins;
     }
 
+    public void addCoins(int amount) {
+        this.coins += amount;
+    }
+
+    public void deductCoins(int amount) {
+        this.coins -= amount;
+    }
+
     public int getDiamonds() {
         return diamonds;
+    }
+
+    public void deductDiamonds(int amount) {
+        this.diamonds -= amount;
     }
 
     public int getGreenhousePotsUnlocked() {
@@ -103,6 +127,22 @@ public class User {
 
     public int getPlantFoodCount() {
         return plantFoodCount;
+    }
+
+    public GreenHouse getGreenHouse() {
+        return greenHouse;
+    }
+
+    public Map<String, Integer> getPlantBoosts() {
+        return plantBoosts;
+    }
+
+    public PlantCollection getPlantCollection() {
+        return plantCollection;
+    }
+
+    public void addPlantBoost(String plantName, int amount) {
+        plantBoosts.put(plantName, Math.min(1, plantBoosts.getOrDefault(plantName, 0) + amount));
     }
 
     public void setSecurityQuestion(int n, String answer) {

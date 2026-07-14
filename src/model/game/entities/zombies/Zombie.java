@@ -1,7 +1,6 @@
 package model.game.entities.zombies;
 
 import model.Constants;
-import model.game.Board;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.BasePlant;

@@ -20,6 +20,7 @@ public class CommandRegistry {
         registerMenu("collection", CollectionMenuCommand.class);
         registerMenu("login", LoginMenuCommand.class);
         registerMenu("signup", SignUpMenuCommand.class);
+        registerMenu("greenhouse", GreenhouseMenuCommand.class);
     }
 
     private <E extends Enum<E> & Command<CommandResult>> void registerMenu(

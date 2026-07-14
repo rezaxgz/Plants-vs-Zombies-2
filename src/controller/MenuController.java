@@ -15,6 +15,7 @@ import model.menu.NewsMenu;
 import model.menu.ProfileMenu;
 import model.menu.SettingsMenu;
 import model.menu.SignUpMenu;
+import model.menu.GreenhouseMenu;
 
 public final class MenuController {
     private MenuController() {
@@ -28,7 +29,8 @@ public final class MenuController {
         if (!isKnownMenu(requestedName)) {
             return CommandResult.error("menu does not exist!");
         }
-        if (currentMenu.getName().equals(requestedName)) {
+        if (currentMenu.getName().equalsIgnoreCase(requestedName) ||
+                (currentMenu.getName().equals("GreenhouseMenu") && requestedName.equals("greenhouse"))) {
             return CommandResult.error("you are already in the " + requestedName + " menu!");
         }
 
@@ -91,33 +93,31 @@ public final class MenuController {
     }
 
     private static Menu createMainChild(String requestedName) {
-        if ("game".equals(requestedName)) {
+        if ("game".equals(requestedName))
             return new GameMenu();
-        }
-        if ("settings".equals(requestedName)) {
+        if ("settings".equals(requestedName))
             return new SettingsMenu();
-        }
-        if ("network".equals(requestedName)) {
+        if ("network".equals(requestedName))
             return new NetworkMenu();
-        }
-        if ("news".equals(requestedName)) {
+        if ("news".equals(requestedName))
             return new NewsMenu();
-        }
-        if ("profile".equals(requestedName)) {
+        if ("profile".equals(requestedName))
             return new ProfileMenu();
-        }
+        if ("greenhouse".equals(requestedName))
+            return new GreenhouseMenu();
         return null;
     }
 
     private static boolean isMainChild(Menu menu) {
         return menu instanceof SettingsMenu || menu instanceof NetworkMenu || menu instanceof NewsMenu
-                || menu instanceof ProfileMenu;
+                || menu instanceof ProfileMenu || menu instanceof GreenhouseMenu;
     }
 
     private static boolean isKnownMenu(String menuName) {
         return "signup".equals(menuName) || "login".equals(menuName) || "main".equals(menuName)
                 || "game".equals(menuName) || "collection".equals(menuName) || "settings".equals(menuName)
-                || "network".equals(menuName) || "news".equals(menuName) || "profile".equals(menuName);
+                || "network".equals(menuName) || "news".equals(menuName) || "profile".equals(menuName)
+                || "greenhouse".equals(menuName);
     }
 
     private static String normalizeMenuName(String menuName) {
