@@ -1,18 +1,37 @@
 package model.shop.item;
 
-public abstract class ShopItem {
-    private final String itemId;
-    private String itemName;
-    private ItemPrice price;
-    private final int itemUnit;
+public class ShopItem {
+    private final String id;
+    private final String name;
+    private final ItemPrice price;
+    private final int unit;
     private final ItemType type;
 
-    public ShopItem(String itemName, ItemPrice price, int itemUnit, String itemId, ItemType type) {
-        this.itemName = itemName;
+    public ShopItem(String id, String name, ItemPrice price, int unit, ItemType type) {
+        this.id = id;
+        this.name = name;
         this.price = price;
-        this.itemUnit = itemUnit;
-        this.itemId = itemId;
+        this.unit = unit;
         this.type = type;
     }
 
+    public String getId() {
+        return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public ItemPrice getPrice() {
+        return price;
+    }
+
+    public int getUnit() {
+        return unit;
+    }
+
+    public ItemType getType() {
+        return type;
+    }
 }

@@ -10,10 +10,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 import model.enums.Gender;
 import model.security.SecurityQuestion;
 import model.user.User;
+import model.greenHouse.GreenHouse;
+import model.greenHouse.PlantedPlant;
+import model.greenHouse.Pot;
 
 final class UserJsonDatabase {
     private static final int CURRENT_VERSION = 1;
@@ -23,15 +27,13 @@ final class UserJsonDatabase {
 
     static List<User> load(Path databasePath) {
         Path absolutePath = databasePath.toAbsolutePath().normalize();
-        if (!Files.exists(absolutePath)) {
+        if (!Files.exists(absolutePath))
             return new ArrayList<>();
-        }
 
         try {
             String json = Files.readString(absolutePath, StandardCharsets.UTF_8);
-            if (json.isBlank()) {
+            if (json.isBlank())
                 return new ArrayList<>();
-            }
 
             Object parsed = new JsonParser(json).parse();
             Map<String, Object> root = requireObject(parsed, "database root");
@@ -41,9 +43,8 @@ final class UserJsonDatabase {
             }
 
             Object usersValue = root.get("users");
-            if (usersValue == null) {
+            if (usersValue == null)
                 return new ArrayList<>();
-            }
 
             List<Object> storedUsers = requireArray(usersValue, "users");
             List<User> users = new ArrayList<>();
@@ -82,7 +83,6 @@ final class UserJsonDatabase {
                 try {
                     Files.deleteIfExists(temporaryFile);
                 } catch (IOException ignored) {
-                    // The original save exception, when present, is more useful to the caller.
                 }
             }
         }
@@ -96,6 +96,7 @@ final class UserJsonDatabase {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private static User readUser(Map<String, Object> storedUser, int index) {
         String prefix = "users[" + index + "]";
         String username = requireString(storedUser, "username", prefix);
@@ -117,52 +118,98 @@ final class UserJsonDatabase {
         int greenhousePotsUnlocked = getInt(storedUser, "greenhousePotsUnlocked", 0);
         int plantFoodCount = getInt(storedUser, "plantFoodCount", 0);
 
-        return User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
-                diamonds, greenhousePotsUnlocked, plantFoodCount);
+        Object ghObj = storedUser.get("greenHouse");
+        GreenHouse greenHouse = ghObj != null ? readGreenHouse((Map<String, Object>) ghObj, prefix + ".greenHouse")
+                : new GreenHouse();
+
+        Map<String, Integer> plantBoosts = new HashMap<>();
+        Object boostsObj = storedUser.get("plantBoosts");
+        if (boostsObj != null) {
+            Map<String, Object> bMap = (Map<String, Object>) boostsObj;
+            for (Map.Entry<String, Object> entry : bMap.entrySet()) {
+                if (entry.getValue() instanceof Number) {
+                    plantBoosts.put(entry.getKey(), ((Number) entry.getValue()).intValue());
+                }
+            }
+        }
+
+        User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
+                diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts);
+
+        // Safely extract and assign daily offer variables
+        String dailyOfferDate = storedUser.containsKey("dailyOfferDate") ? (String) storedUser.get("dailyOfferDate")
+                : "";
+        String dailyOfferPlant = storedUser.containsKey("dailyOfferPlant") ? (String) storedUser.get("dailyOfferPlant")
+                : "";
+        boolean dailyOfferPurchased = storedUser.containsKey("dailyOfferPurchased")
+                && getBoolean(storedUser, "dailyOfferPurchased", false);
+
+        user.setDailyOfferDate(dailyOfferDate);
+        user.setDailyOfferPlant(dailyOfferPlant);
+        user.setDailyOfferPurchased(dailyOfferPurchased);
+
+        return user;
+    }
+
+    private static GreenHouse readGreenHouse(Map<String, Object> map, String prefix) {
+        GreenHouse gh = new GreenHouse();
+        if (!map.containsKey("pots"))
+            return gh;
+
+        List<Object> potsList = requireArray(map.get("pots"), prefix + ".pots");
+        int index = 0;
+        Pot[][] pots = gh.getBoard().getPots();
+
+        for (int y = 0; y < pots.length; y++) {
+            for (int x = 0; x < pots[y].length; x++) {
+                if (index < potsList.size()) {
+                    Map<String, Object> potMap = requireObject(potsList.get(index), prefix + ".pots[" + index + "]");
+                    pots[y][x].setLocked(getBoolean(potMap, "isLocked", y > 0));
+
+                    Object plantObj = potMap.get("plant");
+                    if (plantObj != null) {
+                        Map<String, Object> pMap = requireObject(plantObj, prefix + ".plant");
+                        String name = requireString(pMap, "name", prefix + ".plant");
+                        boolean isMarigold = getBoolean(pMap, "isMarigold", false);
+                        long plantedTime = getLong(pMap, "plantedTimeMillis", System.currentTimeMillis());
+                        long duration = getLong(pMap, "durationMillis", 0);
+                        pots[y][x].setPlant(new PlantedPlant(name, isMarigold, plantedTime, duration));
+                    }
+                    index++;
+                }
+            }
+        }
+        return gh;
     }
 
     private static SecurityQuestion readSecurityQuestion(Object value, String prefix) {
-        if (value == null) {
+        if (value == null)
             return null;
-        }
-
         Map<String, Object> storedQuestion = requireObject(value, prefix + ".securityQuestion");
         String question = requireString(storedQuestion, "question", prefix + ".securityQuestion");
         Object answerHashValue = storedQuestion.get("answerHash");
         if (answerHashValue instanceof String answerHash) {
             return SecurityQuestion.fromStoredHash(question, answerHash);
         }
-
-        // Accept the first JSON format used during development, which stored the answer
-        // directly. It is converted to a hash the next time the database is saved.
         Object plainAnswerValue = storedQuestion.get("answer");
         if (plainAnswerValue instanceof String plainAnswer) {
             return new SecurityQuestion(question, plainAnswer);
         }
-
         throw new IllegalArgumentException(prefix + ".securityQuestion.answerHash must be a string");
     }
 
     private static String writeUsers(List<User> users) {
         StringBuilder json = new StringBuilder();
-        json.append("{\n");
-        json.append("  \"version\": ").append(CURRENT_VERSION).append(",\n");
-        json.append("  \"users\": [");
-
-        if (!users.isEmpty()) {
+        json.append("{\n  \"version\": ").append(CURRENT_VERSION).append(",\n  \"users\": [");
+        if (!users.isEmpty())
             json.append('\n');
-        }
-
         for (int i = 0; i < users.size(); i++) {
             appendUser(json, users.get(i), "    ");
-            if (i + 1 < users.size()) {
+            if (i + 1 < users.size())
                 json.append(',');
-            }
             json.append('\n');
         }
-
-        json.append("  ]\n");
-        json.append("}\n");
+        json.append("  ]\n}\n");
         return json.toString();
     }
 
@@ -188,8 +235,50 @@ final class UserJsonDatabase {
         appendNumberProperty(json, indent, "coins", user.getCoins(), true);
         appendNumberProperty(json, indent, "diamonds", user.getDiamonds(), true);
         appendNumberProperty(json, indent, "greenhousePotsUnlocked", user.getGreenhousePotsUnlocked(), true);
-        appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), false);
+        appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), true);
+
+        // Serialize daily offer properties
+        appendStringProperty(json, indent, "dailyOfferDate", user.getDailyOfferDate(), true);
+        appendStringProperty(json, indent, "dailyOfferPlant", user.getDailyOfferPlant(), true);
+        appendBooleanProperty(json, indent, "dailyOfferPurchased", user.isDailyOfferPurchased(), true);
+
+        json.append(indent).append("  \"plantBoosts\": {\n");
+        int bCount = 0;
+        Map<String, Integer> boosts = user.getPlantBoosts();
+        for (Map.Entry<String, Integer> entry : boosts.entrySet()) {
+            appendNumberProperty(json, indent + "  ", entry.getKey(), entry.getValue(), ++bCount < boosts.size());
+        }
+        json.append(indent).append("  },\n");
+
+        appendGreenHouse(json, user.getGreenHouse(), indent);
         json.append(indent).append('}');
+    }
+
+    private static void appendGreenHouse(StringBuilder json, GreenHouse gh, String indent) {
+        json.append(indent).append("  \"greenHouse\": {\n");
+        json.append(indent).append("    \"pots\": [\n");
+        Pot[][] pots = gh.getBoard().getPots();
+        for (int y = 0; y < pots.length; y++) {
+            for (int x = 0; x < pots[y].length; x++) {
+                Pot pot = pots[y][x];
+                json.append(indent).append("      {\n");
+                appendBooleanProperty(json, indent + "      ", "isLocked", pot.isLocked(), !pot.isEmpty());
+                if (!pot.isEmpty()) {
+                    json.append(indent).append("        \"plant\": {\n");
+                    appendStringProperty(json, indent + "        ", "name", pot.getPlant().getPlantName(), true);
+                    appendBooleanProperty(json, indent + "        ", "isMarigold", pot.getPlant().isMarigold(), true);
+                    appendLongProperty(json, indent + "        ", "plantedTimeMillis",
+                            pot.getPlant().getPlantedTimeMillis(), true);
+                    appendLongProperty(json, indent + "        ", "durationMillis", pot.getPlant().getDurationMillis(),
+                            false);
+                    json.append(indent).append("        }\n");
+                }
+                boolean isLast = (y == pots.length - 1 && x == pots[y].length - 1);
+                json.append(indent).append("      }").append(isLast ? "" : ",").append("\n");
+            }
+        }
+        json.append(indent).append("    ]\n");
+        json.append(indent).append("  }\n");
     }
 
     private static void appendStringProperty(StringBuilder json, String indent, String name, String value,
@@ -198,20 +287,36 @@ final class UserJsonDatabase {
         appendQuoted(json, name);
         json.append(": ");
         appendQuoted(json, value);
-        if (comma) {
+        if (comma)
             json.append(',');
-        }
         json.append('\n');
     }
 
-    private static void appendNumberProperty(StringBuilder json, String indent, String name, int value,
-            boolean comma) {
+    private static void appendNumberProperty(StringBuilder json, String indent, String name, int value, boolean comma) {
         json.append(indent).append("  ");
         appendQuoted(json, name);
         json.append(": ").append(value);
-        if (comma) {
+        if (comma)
             json.append(',');
-        }
+        json.append('\n');
+    }
+
+    private static void appendLongProperty(StringBuilder json, String indent, String name, long value, boolean comma) {
+        json.append(indent).append("  ");
+        appendQuoted(json, name);
+        json.append(": ").append(value);
+        if (comma)
+            json.append(',');
+        json.append('\n');
+    }
+
+    private static void appendBooleanProperty(StringBuilder json, String indent, String name, boolean value,
+            boolean comma) {
+        json.append(indent).append("  ");
+        appendQuoted(json, name);
+        json.append(": ").append(value ? "true" : "false");
+        if (comma)
+            json.append(',');
         json.append('\n');
     }
 
@@ -220,7 +325,6 @@ final class UserJsonDatabase {
             json.append("null");
             return;
         }
-
         json.append('"');
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
@@ -246,40 +350,49 @@ final class UserJsonDatabase {
 
     private static String requireString(Map<String, Object> object, String name, String context) {
         Object value = object.get(name);
-        if (!(value instanceof String stringValue)) {
+        if (!(value instanceof String stringValue))
             throw new IllegalArgumentException(context + "." + name + " must be a string");
-        }
         return stringValue;
     }
 
     private static int getInt(Map<String, Object> object, String name, int defaultValue) {
         Object value = object.get(name);
-        if (value == null) {
+        if (value == null)
             return defaultValue;
-        }
-        if (!(value instanceof Number number)) {
+        if (!(value instanceof Number number))
             throw new IllegalArgumentException(name + " must be a number");
-        }
-        long longValue = number.longValue();
-        if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(name + " is outside the integer range");
-        }
-        return (int) longValue;
+        return number.intValue();
+    }
+
+    private static long getLong(Map<String, Object> object, String name, long defaultValue) {
+        Object value = object.get(name);
+        if (value == null)
+            return defaultValue;
+        if (!(value instanceof Number number))
+            throw new IllegalArgumentException(name + " must be a number");
+        return number.longValue();
+    }
+
+    private static boolean getBoolean(Map<String, Object> object, String name, boolean defaultValue) {
+        Object value = object.get(name);
+        if (value == null)
+            return defaultValue;
+        if (value instanceof Boolean boolValue)
+            return boolValue;
+        throw new IllegalArgumentException(name + " must be a boolean");
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> requireObject(Object value, String context) {
-        if (!(value instanceof Map<?, ?>)) {
+        if (!(value instanceof Map<?, ?>))
             throw new IllegalArgumentException(context + " must be an object");
-        }
         return (Map<String, Object>) value;
     }
 
     @SuppressWarnings("unchecked")
     private static List<Object> requireArray(Object value, String context) {
-        if (!(value instanceof List<?>)) {
+        if (!(value instanceof List<?>))
             throw new IllegalArgumentException(context + " must be an array");
-        }
         return (List<Object>) value;
     }
 
@@ -302,9 +415,8 @@ final class UserJsonDatabase {
         }
 
         private Object parseValue() {
-            if (index >= input.length()) {
+            if (index >= input.length())
                 throw error("unexpected end of input");
-            }
 
             char c = input.charAt(index);
             return switch (c) {

@@ -1,16 +1,27 @@
 package model.greenHouse;
 
-import java.util.List;
-
 public class GreenhouseBoard {
-    private final int ROWS;
-    private final int COLUMN;
+    public static final int COLUMNS = 5;
+    public static final int ROWS = 4;
 
-    private List<Pot> greanhousePots;
+    private Pot[][] pots;
 
-    public GreenhouseBoard(int ROWS, int COLUMN) {
-        this.ROWS = ROWS;
-        this.COLUMN = COLUMN;
+    public GreenhouseBoard() {
+        pots = new Pot[ROWS][COLUMNS];
+        for (int y = 0; y < ROWS; y++) {
+            for (int x = 0; x < COLUMNS; x++) {
+                pots[y][x] = new Pot(y > 0);
+            }
+        }
     }
 
+    public Pot getPotAt(int x, int y) {
+        if (x < 1 || x > COLUMNS || y < 1 || y > ROWS)
+            return null;
+        return pots[y - 1][x - 1];
+    }
+
+    public Pot[][] getPots() {
+        return pots;
+    }
 }
