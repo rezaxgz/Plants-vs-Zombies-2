@@ -65,8 +65,7 @@ public class GreenhouseMenuController {
         if (!isMarigold) {
             List<PlantCollectionItem> unlocked = user.getPlantCollection().getUnlockedPlants();
             if (unlocked != null && !unlocked.isEmpty()) {
-                // Warning: Make sure PlantCollectionItem has a toString or getName method
-                plantName = unlocked.get(RANDOM.nextInt(unlocked.size())).toString();
+                plantName = unlocked.get(RANDOM.nextInt(unlocked.size())).getName();
             } else {
                 plantName = "random_plant_placeholder";
             }
@@ -139,12 +138,18 @@ public class GreenhouseMenuController {
         if (!pot.isLocked())
             return CommandResult.error("pot is already unlocked");
 
-        int cost = 100; // Arbitrary cost since it was unspecified
+        int cost = 100;
         if (user.getCoins() < cost)
             return CommandResult.error("not enough coins to unlock (need " + cost + ")");
 
         user.deductCoins(cost);
         pot.unlock();
         return CommandResult.success("unlocked pot at (" + x + ", " + y + ") for " + cost + " coins");
+    }
+
+    public static CommandResult handleEnterShop(Matcher matcher) {
+        // Safe context change linking straight into the state controller view
+        App.getInstance().changeMenu(new model.menu.ShopMenu());
+        return CommandResult.success("Entered the shop. Type 'shop list' or 'shop daily' to see available goods.");
     }
 }

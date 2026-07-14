@@ -39,6 +39,11 @@ public class User {
     private GreenHouse greenHouse;
     private Map<String, Integer> plantBoosts;
 
+    // Daily offer state tracking variables
+    private String dailyOfferDate = "";
+    private String dailyOfferPlant = "";
+    private boolean dailyOfferPurchased = false;
+
     private Inventory inventory;
     private GameProgerss gameProgerss;
     private AllQuestsProgress questProgress;
@@ -117,6 +122,10 @@ public class User {
         return diamonds;
     }
 
+    public void addDiamonds(int amount) {
+        this.diamonds += amount;
+    }
+
     public void deductDiamonds(int amount) {
         this.diamonds -= amount;
     }
@@ -125,8 +134,16 @@ public class User {
         return greenhousePotsUnlocked;
     }
 
+    public void setGreenhousePotsUnlocked(int greenhousePotsUnlocked) {
+        this.greenhousePotsUnlocked = greenhousePotsUnlocked;
+    }
+
     public int getPlantFoodCount() {
         return plantFoodCount;
+    }
+
+    public void setPlantFoodCount(int plantFoodCount) {
+        this.plantFoodCount = plantFoodCount;
     }
 
     public GreenHouse getGreenHouse() {
@@ -139,6 +156,30 @@ public class User {
 
     public PlantCollection getPlantCollection() {
         return plantCollection;
+    }
+
+    public String getDailyOfferDate() {
+        return dailyOfferDate;
+    }
+
+    public void setDailyOfferDate(String dailyOfferDate) {
+        this.dailyOfferDate = dailyOfferDate;
+    }
+
+    public String getDailyOfferPlant() {
+        return dailyOfferPlant;
+    }
+
+    public void setDailyOfferPlant(String dailyOfferPlant) {
+        this.dailyOfferPlant = dailyOfferPlant;
+    }
+
+    public boolean isDailyOfferPurchased() {
+        return dailyOfferPurchased;
+    }
+
+    public void setDailyOfferPurchased(boolean dailyOfferPurchased) {
+        this.dailyOfferPurchased = dailyOfferPurchased;
     }
 
     public void addPlantBoost(String plantName, int amount) {
@@ -154,10 +195,24 @@ public class User {
     }
 
     public boolean canAfford(ItemPrice price) {
-        return false;
+        if (price == null)
+            return false;
+        if (price.getType() == model.enums.CurrencyType.COIN) {
+            return this.coins >= price.getAmount();
+        } else {
+            return this.diamonds >= price.getAmount();
+        }
     }
 
     public void payForItem(ShopItem item) {
+        if (item == null || item.getPrice() == null)
+            return;
+        ItemPrice price = item.getPrice();
+        if (price.getType() == model.enums.CurrencyType.COIN) {
+            deductCoins(price.getAmount());
+        } else {
+            deductDiamonds(price.getAmount());
+        }
     }
 
     public boolean doesMatchPassword(String password) {

@@ -9,7 +9,8 @@ public enum GreenhouseMenuCommand implements Command<CommandResult> {
     PLANT_POT("^plant pot at \\((?<x>[1-5]), (?<y>[1-4])\\)$", GreenhouseMenuController::handlePlantPot),
     COLLECT_PLANT("^collect \\((?<x>[1-5]), (?<y>[1-4])\\)$", GreenhouseMenuController::handleCollect),
     GROW_PLANT("^grow \\((?<x>[1-5]), (?<y>[1-4])\\)$", GreenhouseMenuController::handleGrow),
-    UNLOCK_POT("^unlock pot at \\((?<x>[1-5]), (?<y>[1-4])\\)$", GreenhouseMenuController::handleUnlock);
+    UNLOCK_POT("^unlock pot at \\((?<x>[1-5]), (?<y>[1-4])\\)$", GreenhouseMenuController::handleUnlock),
+    ENTER_SHOP("^enter shop$", GreenhouseMenuController::handleEnterShop);
 
     private final String pattern;
     private final CommandAction<CommandResult> action;

@@ -133,8 +133,22 @@ final class UserJsonDatabase {
             }
         }
 
-        return User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
+        User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
                 diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts);
+
+        // Safely extract and assign daily offer variables
+        String dailyOfferDate = storedUser.containsKey("dailyOfferDate") ? (String) storedUser.get("dailyOfferDate")
+                : "";
+        String dailyOfferPlant = storedUser.containsKey("dailyOfferPlant") ? (String) storedUser.get("dailyOfferPlant")
+                : "";
+        boolean dailyOfferPurchased = storedUser.containsKey("dailyOfferPurchased")
+                && getBoolean(storedUser, "dailyOfferPurchased", false);
+
+        user.setDailyOfferDate(dailyOfferDate);
+        user.setDailyOfferPlant(dailyOfferPlant);
+        user.setDailyOfferPurchased(dailyOfferPurchased);
+
+        return user;
     }
 
     private static GreenHouse readGreenHouse(Map<String, Object> map, String prefix) {
@@ -222,6 +236,11 @@ final class UserJsonDatabase {
         appendNumberProperty(json, indent, "diamonds", user.getDiamonds(), true);
         appendNumberProperty(json, indent, "greenhousePotsUnlocked", user.getGreenhousePotsUnlocked(), true);
         appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), true);
+
+        // Serialize daily offer properties
+        appendStringProperty(json, indent, "dailyOfferDate", user.getDailyOfferDate(), true);
+        appendStringProperty(json, indent, "dailyOfferPlant", user.getDailyOfferPlant(), true);
+        appendBooleanProperty(json, indent, "dailyOfferPurchased", user.isDailyOfferPurchased(), true);
 
         json.append(indent).append("  \"plantBoosts\": {\n");
         int bCount = 0;

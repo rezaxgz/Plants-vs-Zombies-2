@@ -23,6 +23,18 @@ public class PlantCollectionItem {
 
     private final int PLANT_PRICE_IN_COINS = 2000;
 
+    public String getName() {
+        return name;
+    }
+
+    public boolean isUnlocked() {
+        return isUnlocked;
+    }
+
+    public void addCards(int amount) {
+        this.totalCardsCollected += amount;
+    }
+
     BasePlant createEntity() {
         return null;
     }
