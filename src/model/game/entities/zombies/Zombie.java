@@ -1,5 +1,6 @@
 package model.game.entities.zombies;
 
+import model.game.Board;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
@@ -69,7 +70,7 @@ public class Zombie extends Entity {
         initializeAbilities(type.getAbilitySpecs());
 
         // Default behaviors
-        this.movementBehavior = new BasicZombieMovement(Constants.BASIC_ZOMBIE_MOVEMENT_SPEED);
+        this.movementBehavior = new BasicZombieMovement(type.getSpeed());
         this.attackBehavior = new PlantEatingAttack(type.getEatDPS());
     }
 
