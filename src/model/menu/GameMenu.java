@@ -2,12 +2,13 @@ package model.menu;
 
 import model.App;
 import model.game.Game;
+import model.roadmap.Level;
 
 public class GameMenu extends Menu {
     private final Game game;
 
     public GameMenu() {
-        this(new Game());
+        this(Level.createExampleLevel().createGame());
     }
 
     public GameMenu(Game game) {

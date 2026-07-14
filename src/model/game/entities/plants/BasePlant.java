@@ -15,6 +15,7 @@ public abstract class BasePlant extends Entity {
     private final int cost;
     private final int baseHP;
     private final int damage;
+    private int currentHP;
 
     protected BasePlant(PlantCategory category) {
         this(null, category, Collections.emptySet(), 1, 0, 0, 0, null);
@@ -40,6 +41,7 @@ public abstract class BasePlant extends Entity {
         this.cost = cost;
         this.baseHP = baseHP;
         this.damage = damage;
+        this.currentHP = baseHP;
     }
 
     private static Set<PlantTag> immutableTags(Set<PlantTag> tags) {
@@ -80,5 +82,23 @@ public abstract class BasePlant extends Entity {
 
     public int getDamage() {
         return damage;
+    }
+
+    public void takeDamage(int damageAmount) {
+        if (damageAmount < 0) {
+            throw new IllegalArgumentException("damageAmount cannot be negative");
+        }
+        currentHP = Math.max(0, currentHP - damageAmount);
+        if (currentHP == 0) {
+            markForRemoval();
+        }
+    }
+
+    public boolean isDestroyed() {
+        return currentHP <= 0;
+    }
+
+    public int getCurrentHP() {
+        return currentHP;
     }
 }

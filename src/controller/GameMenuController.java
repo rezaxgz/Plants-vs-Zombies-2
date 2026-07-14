@@ -1,6 +1,7 @@
 package controller;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 
 import model.App;
@@ -10,6 +11,7 @@ import model.game.PlantPlacementResult;
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
+import model.game.entities.zombies.Zombie;
 import model.menu.GameMenu;
 import model.menu.Menu;
 
@@ -194,6 +196,54 @@ public final class GameMenuController {
 
         return CommandResult.success("sun amount: " + game.getSunCount())
                 .addPreCommandResults(game.drainResults())
+                .addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleZombiesInfo(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> preCommandResults = game.drainResults();
+        List<Zombie> zombies = game.getBoard().getZombies();
+        if (zombies.isEmpty()) {
+            return CommandResult.success("no zombies on the board")
+                    .addPreCommandResults(preCommandResults);
+        }
+
+        StringBuilder output = new StringBuilder();
+        for (Zombie zombie : zombies) {
+            if (output.length() > 0) {
+                output.append(System.lineSeparator());
+            }
+            output.append(zombie.getName()).append(':').append(System.lineSeparator());
+            output.append("position: ")
+                    .append(String.format(Locale.ROOT, "%.2f", zombie.getColumnPosition()))
+                    .append(", ").append(zombie.getLane()).append(System.lineSeparator());
+            output.append("health: ").append(zombie.getHitPoints()).append('/')
+                    .append(zombie.getMaximumHitPoints()).append(System.lineSeparator());
+            output.append("wave: ").append(zombie.getWaveNumber());
+        }
+        return CommandResult.success(output.toString()).addPreCommandResults(preCommandResults);
+    }
+
+    public static CommandResult handleReleaseNuke(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> preCommandResults = game.drainResults();
+        if (game.isGameOver()) {
+            return CommandResult.error("the game is already over!")
+                    .addPreCommandResults(preCommandResults);
+        }
+
+        int zombieCount = game.getBoard().getZombies().size();
+        game.releaseNuke();
+        return CommandResult.success("the nuke killed " + zombieCount + " zombies")
+                .addPreCommandResults(preCommandResults)
                 .addPostCommandResults(game.drainResults());
     }
 
