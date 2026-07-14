@@ -280,7 +280,7 @@ public class Game {
         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
             return PlantPlacementResult.INVALID_POSITION;
         }
-        if (board.getPlantAt(plant.getEntityPosition()) != null) {
+        if (!board.canAddPlant(plant)) {
             return PlantPlacementResult.POSITION_OCCUPIED;
         }
         if (sunCount < plant.getCost()) {

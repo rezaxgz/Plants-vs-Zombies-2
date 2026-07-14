@@ -16,7 +16,7 @@ public class Zombie extends Entity {
     private final int maximumHitPoints;
     private final MovementBehavior movementBehavior;
     private final AttackBehavior attackBehavior;
-    private final int lane;
+    private int lane;
 
     private int hitPoints;
     private double columnPosition;
@@ -63,6 +63,14 @@ public class Zombie extends Entity {
 
     public void eat(BasePlant plant, float deltaSeconds) {
         attackBehavior.attack(this, plant, deltaSeconds);
+    }
+
+    public void moveToLane(int newLane) {
+        if (newLane < 0) {
+            throw new IllegalArgumentException("newLane cannot be negative");
+        }
+        lane = newLane;
+        setEntityPosition(createPosition(lane, columnPosition));
     }
 
     public void moveTo(double newColumnPosition) {

@@ -98,6 +98,17 @@ public abstract class BasePlant extends Entity {
         return currentHP <= 0;
     }
 
+    public void heal(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("amount cannot be negative");
+        }
+        currentHP = Math.min(baseHP, currentHP + amount);
+    }
+
+    public void restoreHealth() {
+        currentHP = baseHP;
+    }
+
     public int getCurrentHP() {
         return currentHP;
     }
