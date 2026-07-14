@@ -10,10 +10,13 @@ import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.sunProducer.SunProducer;
+import model.game.entities.zombies.Zombie;
 import model.game.structure.BaseStructure;
 import model.game.tile.Tile;
 
 public class Board {
+    private static final double POSITION_EPSILON = 0.000001;
+
     private final int numberOfRows;
     private final int numberOfColumns;
     private final List<Tile> tiles;
@@ -42,33 +45,119 @@ public class Board {
 
         List<Entity> entitiesToAdd = new ArrayList<>();
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
-
-        for (Entity entity : updateSnapshot) {
-            if (entity.isRemoved()) {
-                continue;
-            }
-
-            boolean sunWasDropping = entity instanceof Sun && ((Sun) entity).isDropping();
-            entity.update(deltaSeconds);
-
-            if (sunWasDropping && entity instanceof Sun && !((Sun) entity).isDropping()) {
-                pendingResults.add("Sun reached the ground at position " + entity.getEntityPosition());
-            }
-
-            if (entity instanceof SunProducer) {
-                SunProducer producer = (SunProducer) entity;
-                List<Sun> producedSuns = producer.drainProducedSuns();
-                entitiesToAdd.addAll(producedSuns);
-                for (int i = 0; i < producedSuns.size(); i++) {
-                    pendingResults.add(buildSunProductionResult(producer));
-                }
-            }
-        }
+        updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
+        updateZombies(updateSnapshot, deltaSeconds);
 
         allEntities.removeIf(Entity::isRemoved);
         for (Entity entity : entitiesToAdd) {
             addEntity(entity);
         }
+    }
+
+    private void updateEntities(List<Entity> updateSnapshot, List<Entity> entitiesToAdd,
+            float deltaSeconds) {
+        for (Entity entity : updateSnapshot) {
+            if (entity.isRemoved()) {
+                continue;
+            }
+            if (entity instanceof Zombie && ((Zombie) entity).isDead()) {
+                reportZombieDeath((Zombie) entity);
+                continue;
+            }
+
+            boolean sunWasDropping = entity instanceof Sun && ((Sun) entity).isDropping();
+            entity.update(deltaSeconds);
+            reportSunLanding(entity, sunWasDropping);
+            collectProducedSuns(entity, entitiesToAdd);
+        }
+    }
+
+    private void reportSunLanding(Entity entity, boolean sunWasDropping) {
+        if (sunWasDropping && entity instanceof Sun && !((Sun) entity).isDropping()) {
+            pendingResults.add("Sun reached the ground at position " + entity.getEntityPosition());
+        }
+    }
+
+    private void collectProducedSuns(Entity entity, List<Entity> entitiesToAdd) {
+        if (!(entity instanceof SunProducer)) {
+            return;
+        }
+        SunProducer producer = (SunProducer) entity;
+        List<Sun> producedSuns = producer.drainProducedSuns();
+        entitiesToAdd.addAll(producedSuns);
+        for (int i = 0; i < producedSuns.size(); i++) {
+            pendingResults.add(buildSunProductionResult(producer));
+        }
+    }
+
+    private void updateZombies(List<Entity> updateSnapshot, float deltaSeconds) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Zombie) || entity.isRemoved()) {
+                continue;
+            }
+            Zombie zombie = (Zombie) entity;
+            if (zombie.isDead()) {
+                reportZombieDeath(zombie);
+                continue;
+            }
+            updateZombie(zombie, deltaSeconds);
+        }
+    }
+
+    private void updateZombie(Zombie zombie, float deltaSeconds) {
+        BasePlant blockingPlant = findNearestPlantAhead(zombie);
+        if (blockingPlant == null) {
+            zombie.move(deltaSeconds, 0.0);
+            if (zombie.getColumnPosition() <= POSITION_EPSILON) {
+                zombie.markReachedHouse();
+            }
+            return;
+        }
+
+        double attackColumn = blockingPlant.getEntityPosition().getColumn() + Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() <= attackColumn + POSITION_EPSILON) {
+            zombie.eat(blockingPlant, deltaSeconds);
+            reportDestroyedPlant(blockingPlant);
+        } else {
+            zombie.move(deltaSeconds, attackColumn);
+        }
+    }
+
+    private BasePlant findNearestPlantAhead(Zombie zombie) {
+        BasePlant nearestPlant = null;
+        int nearestColumn = -1;
+        for (BasePlant plant : getPlants()) {
+            if (plant.isRemoved() || plant.getEntityPosition().getRow() != zombie.getLane()) {
+                continue;
+            }
+            int plantColumn = plant.getEntityPosition().getColumn();
+            if (plantColumn <= zombie.getColumnPosition() + POSITION_EPSILON
+                    && plantColumn > nearestColumn) {
+                nearestPlant = plant;
+                nearestColumn = plantColumn;
+            }
+        }
+        return nearestPlant;
+    }
+
+    private void reportDestroyedPlant(BasePlant plant) {
+        if (plant.isDestroyed()) {
+            pendingResults.add("Plant " + plant.getName() + " at " + plant.getEntityPosition() + " is destroyed.");
+        }
+    }
+
+    private void reportZombieDeath(Zombie zombie) {
+        if (zombie.isDeathReported()) {
+            return;
+        }
+        zombie.markDeathReported();
+        zombie.markForRemoval();
+        pendingResults.add("Zombie of type " + zombie.getName() + " is dead at ("
+                + formatColumn(zombie.getColumnPosition()) + ", " + zombie.getLane() + ")");
+    }
+
+    private static String formatColumn(double column) {
+        return String.format(java.util.Locale.ROOT, "%.2f", column);
     }
 
     public List<String> drainResults() {
@@ -90,6 +179,10 @@ public class Board {
         }
         validatePosition(entity.getEntityPosition());
         allEntities.add(entity);
+    }
+
+    public void addZombie(Zombie zombie) {
+        addEntity(zombie);
     }
 
     public boolean addPlant(BasePlant plant) {
@@ -131,6 +224,16 @@ public class Board {
             }
         }
         return Collections.unmodifiableList(plants);
+    }
+
+    public List<Zombie> getZombies() {
+        List<Zombie> zombies = new ArrayList<>();
+        for (Entity entity : allEntities) {
+            if (entity instanceof Zombie && !entity.isRemoved()) {
+                zombies.add((Zombie) entity);
+            }
+        }
+        return Collections.unmodifiableList(zombies);
     }
 
     public List<Sun> getSuns() {

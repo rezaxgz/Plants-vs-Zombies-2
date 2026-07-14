@@ -10,18 +10,26 @@ import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.other.SunType;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.zombies.Zombie;
+import model.game.entities.zombies.ZombieType;
 import model.game.gameTypes.GameType;
 
 public class Game {
+    private static final double TIME_EPSILON = 0.000001;
+
     private final Board board;
     private final GameType gameType;
-    private int sunCount;
-    private int zombieWaveNumber;
     private final List<ZombieWave> zombieWaves;
+    private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
     private final Random random;
+
+    private int sunCount;
+    private int zombieWaveNumber;
+    private int nextWaveIndex;
     private double elapsedSeconds;
     private double nextSkySunDropAtSeconds;
+    private GameStatus status = GameStatus.ACTIVE;
 
     public Game() {
         this(new Board(), null, 0, Collections.emptyList());
@@ -35,7 +43,8 @@ public class Game {
         this(board, gameType, initialSunCount, zombieWaves, new Random());
     }
 
-    Game(Board board, GameType gameType, int initialSunCount, List<ZombieWave> zombieWaves, Random random) {
+    Game(Board board, GameType gameType, int initialSunCount,
+            List<ZombieWave> zombieWaves, Random random) {
         if (board == null) {
             throw new IllegalArgumentException("board cannot be null");
         }
@@ -49,15 +58,22 @@ public class Game {
         this.board = board;
         this.gameType = gameType;
         this.sunCount = initialSunCount;
-        this.zombieWaves = zombieWaves == null ? new ArrayList<>() : new ArrayList<>(zombieWaves);
+        this.zombieWaves = zombieWaves == null
+                ? new ArrayList<>() : new ArrayList<>(zombieWaves);
+        this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
         this.random = random;
         this.nextSkySunDropAtSeconds = getSkySunDropIntervalSeconds(0.0);
+        startNextWaveIfPossible();
     }
 
-    /**
-     * Terminal/game-loop entry point. A tick is converted to seconds here and every
-     * model update below this point works only with seconds.
-     */
+    private static List<List<Zombie>> createWaveTracking(int waveCount) {
+        List<List<Zombie>> tracking = new ArrayList<>();
+        for (int i = 0; i < waveCount; i++) {
+            tracking.add(new ArrayList<>());
+        }
+        return tracking;
+    }
+
     public final void tick() {
         update(Constants.ONE_TICK_IN_SECONDS);
     }
@@ -66,28 +82,137 @@ public class Game {
         if (tickCount < 0) {
             throw new IllegalArgumentException("tickCount cannot be negative");
         }
-        for (int i = 0; i < tickCount; i++) {
+        for (int i = 0; i < tickCount && status == GameStatus.ACTIVE; i++) {
             tick();
         }
     }
 
     public void update(float deltaSeconds) {
-        if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f) {
-            throw new IllegalArgumentException("deltaSeconds must be finite and non-negative");
+        validateDeltaSeconds(deltaSeconds);
+        if (status != GameStatus.ACTIVE) {
+            return;
         }
 
         board.update(deltaSeconds);
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
 
-        while (elapsedSeconds + 0.000001 >= nextSkySunDropAtSeconds) {
+        if (hasZombieReachedHouse()) {
+            loseGame();
+            return;
+        }
+
+        startNextWaveIfPossible();
+        checkForWin();
+        if (status == GameStatus.ACTIVE) {
+            updateSkySuns();
+        }
+    }
+
+    private void updateSkySuns() {
+        if (gameType != null && !gameType.spawnsSuns()) {
+            return;
+        }
+        while (elapsedSeconds + TIME_EPSILON >= nextSkySunDropAtSeconds) {
             dropSkySun();
             nextSkySunDropAtSeconds += getSkySunDropIntervalSeconds(nextSkySunDropAtSeconds);
         }
     }
 
+    private void startNextWaveIfPossible() {
+        while (status == GameStatus.ACTIVE && nextWaveIndex < zombieWaves.size()
+                && isPreviousWaveDamagedEnough()) {
+            spawnWave(nextWaveIndex);
+            nextWaveIndex++;
+        }
+    }
+
+    private boolean isPreviousWaveDamagedEnough() {
+        if (nextWaveIndex == 0) {
+            return true;
+        }
+        List<Zombie> previousWave = spawnedZombiesByWave.get(nextWaveIndex - 1);
+        long maximumHealth = 0;
+        long remainingHealth = 0;
+        for (Zombie zombie : previousWave) {
+            maximumHealth += zombie.getMaximumHitPoints();
+            remainingHealth += zombie.getHitPoints();
+        }
+        return maximumHealth > 0 && remainingHealth * 4 <= maximumHealth;
+    }
+
+    private void spawnWave(int waveIndex) {
+        int waveNumber = waveIndex + 1;
+        ZombieWave wave = zombieWaves.get(waveIndex);
+        if (waveIndex == zombieWaves.size() - 1) {
+            pendingResults.add("The final wave has come.");
+        } else {
+            pendingResults.add("Wave " + waveNumber + " started.");
+        }
+
+        double spawnColumn = board.getNumberOfColumns() - 0.001;
+        List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
+        for (ZombieType zombieType : wave.getZombieTypes()) {
+            int lane = random.nextInt(board.getNumberOfRows());
+            Zombie zombie = new Zombie(zombieType, waveNumber, lane, spawnColumn);
+            spawnedZombies.add(zombie);
+            board.addZombie(zombie);
+            pendingResults.add(buildSpawnMessage(zombie));
+        }
+        zombieWaveNumber = waveNumber;
+    }
+
+    private static String buildSpawnMessage(Zombie zombie) {
+        return "Zombie " + zombie.getName() + " spawned at wave "
+                + zombie.getWaveNumber() + " in lane " + zombie.getLane()
+                + " which costed " + zombie.getWavePointCost() + ".";
+    }
+
+    private boolean hasZombieReachedHouse() {
+        for (Zombie zombie : board.getZombies()) {
+            if (zombie.hasReachedHouse()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void checkForWin() {
+        if (zombieWaves.isEmpty() || nextWaveIndex < zombieWaves.size()) {
+            return;
+        }
+        for (List<Zombie> waveZombies : spawnedZombiesByWave) {
+            for (Zombie zombie : waveZombies) {
+                if (!zombie.isDead()) {
+                    return;
+                }
+            }
+        }
+        status = GameStatus.WON;
+        pendingResults.add("Dear humanz, zis is not done yet; we will come back to eat your brainz, humanz.");
+    }
+
+    private void loseGame() {
+        status = GameStatus.LOST;
+        pendingResults.add("The zombie ate your brain; LOSER!!!");
+    }
+
+    public void releaseNuke() {
+        if (status != GameStatus.ACTIVE) {
+            return;
+        }
+        for (Zombie zombie : new ArrayList<>(board.getZombies())) {
+            zombie.kill();
+        }
+        board.update(0.0f);
+        pendingResults.addAll(board.drainResults());
+        startNextWaveIfPossible();
+        checkForWin();
+    }
+
     private void dropSkySun() {
-        SunType type = random.nextDouble() < Constants.SPECIAL_SKY_SUN_CHANCE ? SunType.SPECIAL : SunType.NORMAL;
+        SunType type = random.nextDouble() < Constants.SPECIAL_SKY_SUN_CHANCE
+                ? SunType.SPECIAL : SunType.NORMAL;
         EntityPosition position = new EntityPosition(random.nextInt(board.getNumberOfRows()),
                 random.nextInt(board.getNumberOfColumns()));
         board.addEntity(Sun.createSkySun(type, position));
@@ -188,7 +313,14 @@ public class Game {
     }
 
     public boolean isGameOver() {
-        return gameType != null && gameType.checkForSpecialGameEnd();
+        return status != GameStatus.ACTIVE
+                || gameType != null && gameType.checkForSpecialGameEnd();
+    }
+
+    private static void validateDeltaSeconds(float deltaSeconds) {
+        if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f) {
+            throw new IllegalArgumentException("deltaSeconds must be finite and non-negative");
+        }
     }
 
     public Board getBoard() {
@@ -211,14 +343,11 @@ public class Game {
         return zombieWaveNumber;
     }
 
-    public void setZombieWaveNumber(int zombieWaveNumber) {
-        if (zombieWaveNumber < 0) {
-            throw new IllegalArgumentException("zombieWaveNumber cannot be negative");
-        }
-        this.zombieWaveNumber = zombieWaveNumber;
-    }
-
     public List<ZombieWave> getZombieWaves() {
         return Collections.unmodifiableList(zombieWaves);
+    }
+
+    public GameStatus getStatus() {
+        return status;
     }
 }

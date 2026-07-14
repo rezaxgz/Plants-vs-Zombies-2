@@ -4,7 +4,8 @@ import controller.GameMenuController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
-    ADVANCE_TIME("^advance\\s+time\\s+-t\\s+(?<count>\\d+)\\s+ticks$", GameMenuController::handleAdvanceTime),
+    ADVANCE_TIME("^advance\\s+time\\s+-t\\s+(?<count>\\d+)\\s+ticks$",
+            GameMenuController::handleAdvanceTime),
     COLLECT_SUN("^collect\\s+sun\\s+-l\\s+\\(\\s*(?<x>\\d+)\\s*,\\s*(?<y>\\d+)\\s*\\)$",
             GameMenuController::handleCollectSun),
     CHEAT_ADD_SUNS("^cheat\\s+add\\s+-n\\s+(?<count>-?\\d+)\\s+suns$",
@@ -14,7 +15,9 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handlePlant),
     PLUCK_PLANT("^pluck\\s+plant\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
             GameMenuController::handlePluckPlant),
-    SHOW_SUN_AMOUNT("^show\\s+sun\\s+amount$", GameMenuController::handleShowSunAmount);
+    SHOW_SUN_AMOUNT("^show\\s+sun\\s+amount$", GameMenuController::handleShowSunAmount),
+    ZOMBIES_INFO("^zombies\\s+info$", GameMenuController::handleZombiesInfo),
+    RELEASE_NUKE("^release\\s+the\\s+nuke$", GameMenuController::handleReleaseNuke);
 
     private final String pattern;
     private final CommandAction<CommandResult> action;
