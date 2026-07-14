@@ -1,5 +1,7 @@
 package model.game.entities.projectile.effect;
 
-public abstract class ProjectileEffect {
+import model.game.entities.zombies.Zombie;
 
+public abstract class ProjectileEffect {
+    public abstract void apply(Zombie zombie);
 }

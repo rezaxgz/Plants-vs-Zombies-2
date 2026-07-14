@@ -27,5 +27,6 @@ public class TorchAbility extends ZombieAbility {
 
     public boolean isTorchLit() { return torchLit; }
     public void extinguish() { this.torchLit = false; }
+    public void ignite() { this.torchLit = true; }
     public double getTorchReach() { return torchReach; }
 }

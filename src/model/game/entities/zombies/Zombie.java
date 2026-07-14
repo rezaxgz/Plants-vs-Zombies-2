@@ -47,6 +47,10 @@ public class Zombie extends Entity {
     private boolean enraged;
     private boolean flying;
     private boolean submerged;
+    private int poisonDamagePerTick;
+    private double poisonTickIntervalSeconds;
+    private double poisonDurationSeconds;
+    private double poisonTickTimerSeconds;
 
     public Zombie(ZombieType type, int waveNumber, int lane, double columnPosition) {
         super(new EntityPosition(lane, (int) columnPosition));
@@ -169,6 +173,7 @@ public class Zombie extends Entity {
                 chilledDuration = 10; // Chill after freeze wears off
             }
         }
+        updatePoison(deltaSeconds);
 
         // Update abilities
         for (ZombieAbility ability : abilities) {
@@ -180,6 +185,9 @@ public class Zombie extends Entity {
      * Apply damage to this zombie. Armor absorbs damage first.
      */
     public void takeDamage(int damage) {
+        if (damage < 0) {
+            throw new IllegalArgumentException("damage cannot be negative");
+        }
         if (dead)
             return;
 
@@ -207,6 +215,48 @@ public class Zombie extends Entity {
                     enraged = true;
                 }
             }
+        }
+    }
+
+    public void takeDirectDamage(int damage) {
+        if (damage < 0) {
+            throw new IllegalArgumentException("damage cannot be negative");
+        }
+        if (dead || damage == 0) {
+            return;
+        }
+        hitPoints = Math.max(0, hitPoints - damage);
+        if (hitPoints == 0) {
+            kill();
+        }
+    }
+
+    public void applyPoison(int damagePerTick, double tickIntervalSeconds,
+            double durationSeconds) {
+        if (damagePerTick < 0 || !Double.isFinite(tickIntervalSeconds)
+                || tickIntervalSeconds <= 0.0 || !Double.isFinite(durationSeconds)
+                || durationSeconds < 0.0) {
+            throw new IllegalArgumentException("poison values are invalid");
+        }
+        poisonDamagePerTick = Math.max(poisonDamagePerTick, damagePerTick);
+        poisonTickIntervalSeconds = tickIntervalSeconds;
+        poisonDurationSeconds = Math.max(poisonDurationSeconds, durationSeconds);
+    }
+
+    private void updatePoison(float deltaSeconds) {
+        if (dead || poisonDurationSeconds <= 0.0 || poisonDamagePerTick <= 0) {
+            return;
+        }
+        double activeSeconds = Math.min(deltaSeconds, poisonDurationSeconds);
+        poisonDurationSeconds = Math.max(0.0, poisonDurationSeconds - deltaSeconds);
+        poisonTickTimerSeconds += activeSeconds;
+        while (!dead && poisonTickTimerSeconds + 0.000001 >= poisonTickIntervalSeconds) {
+            poisonTickTimerSeconds -= poisonTickIntervalSeconds;
+            takeDirectDamage(poisonDamagePerTick);
+        }
+        if (poisonDurationSeconds <= 0.0) {
+            poisonDamagePerTick = 0;
+            poisonTickTimerSeconds = 0.0;
         }
     }
 
@@ -319,6 +369,44 @@ public class Zombie extends Entity {
         this.chilledDuration = duration;
     }
 
+    public void applyChill(double duration) {
+        if (!Double.isFinite(duration) || duration < 0.0) {
+            throw new IllegalArgumentException("duration must be finite and non-negative");
+        }
+        setChilled(Math.max(chilledDuration, duration));
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof TorchAbility) {
+                ((TorchAbility) ability).extinguish();
+            }
+        }
+    }
+
+    public void applyFireDamage(int damage) {
+        if (damage < 0) {
+            throw new IllegalArgumentException("damage cannot be negative");
+        }
+        clearColdEffects();
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof TorchAbility) {
+                ((TorchAbility) ability).ignite();
+            }
+        }
+        if (!isFireImmune()) {
+            takeDamage(damage);
+        }
+    }
+
+    public void clearColdEffects() {
+        chilled = false;
+        chilledDuration = 0.0;
+        frozen = false;
+        frozenDuration = 0.0;
+    }
+
+    public boolean isFireImmune() {
+        return type == ZombieType.DRAGON_IMP;
+    }
+
     public void setFrozen(double duration) {
         this.frozen = true;
         this.frozenDuration = duration;
@@ -356,15 +444,38 @@ public class Zombie extends Entity {
      * Get effective eat DPS (modified by enrage).
      */
     public int getEffectiveEatDPS() {
+        if (frozen) {
+            return 0;
+        }
         int dps = type.getEatDPS();
+        if (chilled) {
+            dps = (int) Math.floor(dps * 0.5);
+        }
         if (enraged) {
             for (ZombieAbility ability : abilities) {
                 if (ability instanceof EnrageAbility) {
-                    dps *= ((EnrageAbility) ability).getEnragedDamageScale();
+                    double scale = ((EnrageAbility) ability).getEnragedDamageScale();
+                    dps = (int) Math.floor(dps * scale);
                 }
             }
         }
         return dps;
+    }
+
+    public double getChilledDuration() {
+        return Math.max(0.0, chilledDuration);
+    }
+
+    public double getFrozenDuration() {
+        return Math.max(0.0, frozenDuration);
+    }
+
+    public double getPoisonDurationSeconds() {
+        return Math.max(0.0, poisonDurationSeconds);
+    }
+
+    public int getPoisonDamagePerTick() {
+        return poisonDamagePerTick;
     }
 
     public String getName() {

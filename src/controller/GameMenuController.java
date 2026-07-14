@@ -12,6 +12,7 @@ import model.game.entities.EntityPosition;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.zombies.Zombie;
+import model.game.entities.zombies.armor.Armor;
 import model.menu.GameMenu;
 import model.menu.Menu;
 
@@ -38,7 +39,8 @@ public final class GameMenuController {
         }
 
         game.advanceTicks(tickCount);
-        return CommandResult.success("time advanced by " + tickCount + " ticks").addPreCommandResults(preCommandResults)
+        return CommandResult.success("time advanced by " + tickCount + " ticks")
+                .addPreCommandResults(preCommandResults)
                 .addPostCommandResults(game.drainResults());
     }
 
@@ -223,9 +225,40 @@ public final class GameMenuController {
                     .append(", ").append(zombie.getLane()).append(System.lineSeparator());
             output.append("health: ").append(zombie.getHitPoints()).append('/')
                     .append(zombie.getMaximumHitPoints()).append(System.lineSeparator());
+            appendArmorInfo(output, zombie);
+            appendEffectInfo(output, zombie);
             output.append("wave: ").append(zombie.getWaveNumber());
         }
         return CommandResult.success(output.toString()).addPreCommandResults(preCommandResults);
+    }
+
+    private static void appendArmorInfo(StringBuilder output, Zombie zombie) {
+        output.append("armor:").append(System.lineSeparator());
+        Armor armor = zombie.getArmor();
+        if (armor != null && !armor.isDestroyed()) {
+            output.append(armor.getType().getDisplayName()).append(": ")
+                    .append(armor.getCurrentHealth()).append('/')
+                    .append(armor.getMaximumHealth()).append(System.lineSeparator());
+        }
+    }
+
+    private static void appendEffectInfo(StringBuilder output, Zombie zombie) {
+        output.append("effects:").append(System.lineSeparator());
+        if (zombie.isFrozen()) {
+            appendTimedEffect(output, "frozen", zombie.getFrozenDuration());
+        }
+        if (zombie.isChilled()) {
+            appendTimedEffect(output, "chilled", zombie.getChilledDuration());
+        }
+        if (zombie.getPoisonDurationSeconds() > 0.0) {
+            appendTimedEffect(output, "poisoned", zombie.getPoisonDurationSeconds());
+        }
+    }
+
+    private static void appendTimedEffect(StringBuilder output, String name, double duration) {
+        output.append(name).append(": ")
+                .append(String.format(Locale.ROOT, "%.1fs", duration))
+                .append(System.lineSeparator());
     }
 
     public static CommandResult handleReleaseNuke(Matcher matcher) {

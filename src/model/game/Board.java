@@ -9,8 +9,11 @@ import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.shooter.Shooter;
+import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.wallnut.Wallnut;
+import model.game.entities.projectile.Projectile;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
@@ -20,6 +23,8 @@ import model.game.tile.Tile;
 public class Board {
     private static final double POSITION_EPSILON = 0.000001;
     private static final double SWEET_POTATO_ATTRACTION_RANGE = 1.0;
+    private static final double PROJECTILE_COLLISION_RADIUS = 0.35;
+    private static final double PROJECTILE_BOARD_MARGIN = 0.5;
 
     private final int numberOfRows;
     private final int numberOfColumns;
@@ -50,6 +55,10 @@ public class Board {
         List<Entity> entitiesToAdd = new ArrayList<>();
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
         updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
+        resolveProjectileImpacts(updateSnapshot);
+        reportDeadZombies(updateSnapshot);
+        activateReadyShooters(updateSnapshot, entitiesToAdd);
+        applyPendingShooterBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingWallnutBoardEffects(updateSnapshot);
         applyPendingWallnutPassiveEffects(updateSnapshot);
@@ -94,6 +103,104 @@ public class Board {
         entitiesToAdd.addAll(producedSuns);
         for (int i = 0; i < producedSuns.size(); i++) {
             pendingResults.add(buildSunProductionResult(producer));
+        }
+    }
+
+    private void activateReadyShooters(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Shooter) || entity.isRemoved()) {
+                continue;
+            }
+            Shooter shooter = (Shooter) entity;
+            if (shooter.isReadyToShoot() && hasTarget(shooter)) {
+                entitiesToAdd.addAll(shooter.shoot(numberOfRows));
+            }
+        }
+    }
+
+    private boolean hasTarget(Shooter shooter) {
+        for (Zombie zombie : getZombies()) {
+            if (shooter.canTarget(zombie, numberOfRows)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applyPendingShooterBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Shooter) || entity.isRemoved()) {
+                continue;
+            }
+            Shooter mint = (Shooter) entity;
+            if (mint.drainFamilyBoostPending()) {
+                applyShooterFamilyBoost(mint, entitiesToAdd);
+            }
+        }
+    }
+
+    private void applyShooterFamilyBoost(Shooter mint, List<Entity> entitiesToAdd) {
+        for (BasePlant plant : getPlants()) {
+            if (!(plant instanceof Shooter) || plant == mint) {
+                continue;
+            }
+            Shooter shooter = (Shooter) plant;
+            shooter.usePlantFood(numberOfRows);
+            entitiesToAdd.addAll(shooter.drainProjectiles());
+        }
+        mint.markForRemoval();
+        pendingResults.add("Appease-mint applied plant food to every Shooter plant.");
+    }
+
+    private void resolveProjectileImpacts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Projectile) || entity.isRemoved()) {
+                continue;
+            }
+            Projectile projectile = (Projectile) entity;
+            Zombie target = findFirstZombieHit(projectile);
+            if (target != null) {
+                projectile.hit(target);
+                if (target.isDead()) {
+                    reportZombieDeath(target);
+                }
+            } else if (projectile.hasExpired() || isProjectileOutsideBoard(projectile)) {
+                projectile.markForRemoval();
+            }
+        }
+    }
+
+    private Zombie findFirstZombieHit(Projectile projectile) {
+        Zombie firstTarget = null;
+        double firstParameter = Double.POSITIVE_INFINITY;
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isDead() || zombie.isSubmerged()) {
+                continue;
+            }
+            double parameter = projectile.getIntersectionParameter(
+                    zombie.getLane(), zombie.getColumnPosition(), PROJECTILE_COLLISION_RADIUS);
+            if (!Double.isNaN(parameter) && parameter < firstParameter) {
+                firstParameter = parameter;
+                firstTarget = zombie;
+            }
+        }
+        return firstTarget;
+    }
+
+    private boolean isProjectileOutsideBoard(Projectile projectile) {
+        return projectile.getRowPosition() < -PROJECTILE_BOARD_MARGIN
+                || projectile.getRowPosition() > numberOfRows - 1 + PROJECTILE_BOARD_MARGIN
+                || projectile.getColumnPosition() < -PROJECTILE_BOARD_MARGIN
+                || projectile.getColumnPosition() > numberOfColumns - 1 + PROJECTILE_BOARD_MARGIN;
+    }
+
+    private void reportDeadZombies(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (entity instanceof Zombie && ((Zombie) entity).isDead()) {
+                reportZombieDeath((Zombie) entity);
+            }
         }
     }
 
@@ -403,8 +510,16 @@ public class Board {
         if (plantsAtPosition.isEmpty()) {
             return !isCover(plant);
         }
+        if (isPeaPod(plant) && plantsAtPosition.size() < 5) {
+            return plantsAtPosition.stream().allMatch(Board::isPeaPod);
+        }
         return isCover(plant) && plantsAtPosition.size() == 1
                 && !isCover(plantsAtPosition.get(0));
+    }
+
+    private static boolean isPeaPod(BasePlant plant) {
+        return plant instanceof Shooter
+                && ((Shooter) plant).getType() == ShooterPlantType.PEA_POD;
     }
 
     public boolean addPlant(BasePlant plant) {
@@ -455,6 +570,16 @@ public class Board {
             }
         }
         return Collections.unmodifiableList(suns);
+    }
+
+    public List<Projectile> getProjectiles() {
+        List<Projectile> projectiles = new ArrayList<>();
+        for (Entity entity : allEntities) {
+            if (entity instanceof Projectile && !entity.isRemoved()) {
+                projectiles.add((Projectile) entity);
+            }
+        }
+        return Collections.unmodifiableList(projectiles);
     }
 
     public List<BasePlant> getPlantsAt(EntityPosition position) {
