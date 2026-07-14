@@ -1,16 +1,13 @@
 package model.greenHouse;
 
 public class GreenHouse {
-    private final GreenhouseBoard greenhouseBoard;
+    private GreenhouseBoard board;
 
     public GreenHouse() {
-        this.greenhouseBoard = new GreenhouseBoard(4, 5);
+        this.board = new GreenhouseBoard();
     }
 
-    public void plant(Pot pot) {
-
+    public GreenhouseBoard getBoard() {
+        return board;
     }
-
-    
-
 }
