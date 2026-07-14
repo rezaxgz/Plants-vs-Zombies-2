@@ -8,6 +8,7 @@ public class Sun extends Entity {
     private final float lifeSpanSeconds;
     private final int sunAmount;
     private final SunType type;
+    private final boolean persistent;
     private float remainingFallSeconds;
     private double elapsedGroundSeconds;
     private boolean collected;
@@ -17,11 +18,11 @@ public class Sun extends Entity {
     }
 
     public Sun(int sunAmount, EntityPosition entityPosition, float lifeSpanSeconds) {
-        this(sunAmount, entityPosition, lifeSpanSeconds, null, 0.0f);
+        this(sunAmount, entityPosition, lifeSpanSeconds, null, 0.0f, false);
     }
 
     private Sun(int sunAmount, EntityPosition entityPosition, float lifeSpanSeconds,
-            SunType type, float fallSeconds) {
+            SunType type, float fallSeconds, boolean persistent) {
         super(entityPosition);
         if (sunAmount <= 0) {
             throw new IllegalArgumentException("sunAmount must be positive");
@@ -36,6 +37,7 @@ public class Sun extends Entity {
         this.lifeSpanSeconds = lifeSpanSeconds;
         this.type = type;
         this.remainingFallSeconds = fallSeconds;
+        this.persistent = persistent;
     }
 
     public static Sun createSkySun(SunType type, EntityPosition position) {
@@ -43,7 +45,12 @@ public class Sun extends Entity {
             throw new IllegalArgumentException("type cannot be null");
         }
         return new Sun(type.getAmount(), position, Constants.DEFAULT_SUN_LIFESPAN_SECONDS,
-                type, Constants.SKY_SUN_FALL_SECONDS);
+                type, Constants.SKY_SUN_FALL_SECONDS, false);
+    }
+
+    public static Sun createPlantSun(int sunAmount, EntityPosition position) {
+        return new Sun(sunAmount, position, Constants.DEFAULT_SUN_LIFESPAN_SECONDS,
+                null, 0.0f, true);
     }
 
     @Override
@@ -81,12 +88,12 @@ public class Sun extends Entity {
     }
 
     public boolean shouldDespawn() {
-        return !isDropping() && elapsedGroundSeconds >= lifeSpanSeconds;
+        return !persistent && !isDropping() && elapsedGroundSeconds >= lifeSpanSeconds;
     }
 
     public boolean isCloseToDespawning() {
         double remainingSeconds = lifeSpanSeconds - elapsedGroundSeconds;
-        return !isDropping() && !shouldDespawn()
+        return !persistent && !isDropping() && !shouldDespawn()
                 && remainingSeconds <= Constants.SUN_DESPAWN_WARNING_SECONDS;
     }
 
@@ -112,5 +119,9 @@ public class Sun extends Entity {
 
     public SunType getType() {
         return type;
+    }
+
+    public boolean isPersistent() {
+        return persistent;
     }
 }

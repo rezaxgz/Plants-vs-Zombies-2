@@ -16,7 +16,7 @@ public final class PlantFactory {
 
     public static BasePlant createPlant(String typeName, int level, EntityPosition position) {
         BasePlant sunProducer = SunProducerPlantType.findByName(typeName)
-                .map(type -> createSunProducer(type, position))
+                .map(type -> createSunProducer(type, level, position))
                 .orElse(null);
         if (sunProducer != null) {
             return sunProducer;
@@ -27,7 +27,12 @@ public final class PlantFactory {
     }
 
     public static SunProducer createSunProducer(SunProducerPlantType type, EntityPosition position) {
-        return new SunProducer(type, position);
+        return createSunProducer(type, 1, position);
+    }
+
+    public static SunProducer createSunProducer(SunProducerPlantType type, int level,
+            EntityPosition position) {
+        return new SunProducer(type, level, position);
     }
 
     public static Wallnut createWallnut(WallnutPlantType type, EntityPosition position) {

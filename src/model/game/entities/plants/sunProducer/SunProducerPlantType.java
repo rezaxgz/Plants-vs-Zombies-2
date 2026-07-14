@@ -15,7 +15,10 @@ public enum SunProducerPlantType {
             "Immediately produces 150 sun.",
             "Production time -2s", "HP +150", "Double sun chance",
             24.0f, 5.0f, SunProductionBehavior.PERIODIC,
-            new int[] {50}, new float[0]),
+            new int[] {50}, new float[0], 150, 0.0f,
+            upgrade(0, 0, -2.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(150, 0, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(0, 0, 0.0f, 0.0f, 0.0f, 0, true, 0.0f, false)),
 
     TWIN_SUNFLOWER(
             2, "Twin Sunflower", EnumSet.of(PlantTag.DAY), 125, 300, 0,
@@ -23,15 +26,22 @@ public enum SunProducerPlantType {
             "Immediately produces 250 sun.",
             "Production time -2s", "HP +150", "Cost -25",
             24.0f, 15.0f, SunProductionBehavior.PERIODIC,
-            new int[] {100}, new float[0]),
+            new int[] {100}, new float[0], 250, 0.0f,
+            upgrade(0, 0, -2.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(150, 0, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(0, -25, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false)),
 
     SUN_SHROOM(
-            3, "Sun-shroom", EnumSet.of(PlantTag.SHROOM, PlantTag.WRAMP_UP, PlantTag.NIGHT), 25, 300, 0,
+            3, "Sun-shroom", EnumSet.of(PlantTag.SHROOM, PlantTag.WRAMP_UP, PlantTag.NIGHT),
+            25, 300, 0,
             "Grows through three stages and produces 25, 50, then 75 sun.",
             "Immediately reaches its final stage and produces 225 sun.",
             "Grow time -5s", "HP +150", "Double sun chance",
             24.0f, 5.0f, SunProductionBehavior.PERIODIC,
-            new int[] {25, 50, 75}, new float[] {24.0f, 72.0f}),
+            new int[] {25, 50, 75}, new float[] {24.0f, 72.0f}, 225, 0.0f,
+            upgrade(0, 0, 0.0f, 0.0f, -5.0f, 0, false, 0.0f, false),
+            upgrade(150, 0, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(0, 0, 0.0f, 0.0f, 0.0f, 0, true, 0.0f, false)),
 
     PRIMAL_SUNFLOWER(
             4, "Primal Sunflower", Collections.emptySet(), 75, 300, 0,
@@ -39,7 +49,10 @@ public enum SunProducerPlantType {
             "Immediately produces 225 sun.",
             "Production time -2s", "HP +150", "Cost -25",
             24.0f, 5.0f, SunProductionBehavior.PERIODIC,
-            new int[] {75}, new float[0]),
+            new int[] {75}, new float[0], 225, 0.0f,
+            upgrade(0, 0, -2.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(150, 0, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(0, -25, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false)),
 
     GOLD_BLOOM(
             5, "Gold Bloom", Collections.emptySet(), 0, 0, 0,
@@ -47,7 +60,10 @@ public enum SunProducerPlantType {
             "No plant food effect.",
             "Cooldown -5s", "Sun +50", "Cost -25",
             0.0f, 75.0f, SunProductionBehavior.INSTANT,
-            new int[] {375}, new float[0]),
+            new int[] {375}, new float[0], 0, 0.0f,
+            upgrade(0, 0, 0.0f, -5.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(0, 0, 0.0f, 0.0f, 0.0f, 50, false, 0.0f, false),
+            upgrade(0, -25, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, false)),
 
     ENLIGHTEN_MINT(
             61, "Enlighten-mint", Collections.emptySet(), 0, 0, 0,
@@ -55,7 +71,14 @@ public enum SunProducerPlantType {
             "No plant food effect.",
             "Duration +1s", "Cooldown -5s", "Reset family cooldowns",
             0.0f, 85.0f, SunProductionBehavior.FAMILY_BOOST,
-            new int[] {0}, new float[0]);
+            new int[] {0}, new float[0], 0, 5.0f,
+            upgrade(0, 0, 0.0f, 0.0f, 0.0f, 0, false, 1.0f, false),
+            upgrade(0, 0, 0.0f, -5.0f, 0.0f, 0, false, 0.0f, false),
+            upgrade(0, 0, 0.0f, 0.0f, 0.0f, 0, false, 0.0f, true));
+
+    public static final int MIN_LEVEL = 1;
+    public static final int MAX_LEVEL = 4;
+    public static final double DOUBLE_SUN_CHANCE = 0.5;
 
     private final int id;
     private final String displayName;
@@ -73,15 +96,22 @@ public enum SunProducerPlantType {
     private final SunProductionBehavior behavior;
     private final int[] sunAmounts;
     private final float[] stageThresholdSeconds;
+    private final int plantFoodSunAmount;
+    private final float familyBoostDurationSeconds;
+    private final SunProducerUpgrade[] upgrades;
 
     SunProducerPlantType(int id, String displayName, Set<PlantTag> tags,
             int cost, int baseHP, int damage,
             String baseAbility, String plantFoodEffect,
             String levelTwoUpgrade, String levelThreeUpgrade, String levelFourUpgrade,
             float actionIntervalSeconds, float rechargeSeconds,
-            SunProductionBehavior behavior, int[] sunAmounts, float[] stageThresholdSeconds) {
+            SunProductionBehavior behavior, int[] sunAmounts, float[] stageThresholdSeconds,
+            int plantFoodSunAmount, float familyBoostDurationSeconds,
+            SunProducerUpgrade levelTwo, SunProducerUpgrade levelThree,
+            SunProducerUpgrade levelFour) {
         if (sunAmounts.length != stageThresholdSeconds.length + 1) {
-            throw new IllegalArgumentException("Each growth threshold must lead to one additional sun amount");
+            throw new IllegalArgumentException(
+                    "Each growth threshold must lead to one additional sun amount");
         }
         this.id = id;
         this.displayName = displayName;
@@ -99,6 +129,19 @@ public enum SunProducerPlantType {
         this.behavior = behavior;
         this.sunAmounts = sunAmounts.clone();
         this.stageThresholdSeconds = stageThresholdSeconds.clone();
+        this.plantFoodSunAmount = plantFoodSunAmount;
+        this.familyBoostDurationSeconds = familyBoostDurationSeconds;
+        this.upgrades = new SunProducerUpgrade[] {
+            SunProducerUpgrade.NONE, levelTwo, levelThree, levelFour
+        };
+    }
+
+    private static SunProducerUpgrade upgrade(int hp, int cost,
+            float actionInterval, float recharge, float growthTime,
+            int sunAmount, boolean doubleSunChance, float boostDuration,
+            boolean resetCooldowns) {
+        return new SunProducerUpgrade(hp, cost, actionInterval, recharge,
+                growthTime, sunAmount, doubleSunChance, boostDuration, resetCooldowns);
     }
 
     private static Set<PlantTag> immutableTags(Set<PlantTag> tags) {
@@ -107,7 +150,6 @@ public enum SunProducerPlantType {
         }
         return Collections.unmodifiableSet(EnumSet.copyOf(tags));
     }
-
 
     public static Optional<SunProducerPlantType> findByName(String rawName) {
         if (rawName == null || rawName.isBlank()) {
@@ -128,13 +170,129 @@ public enum SunProducerPlantType {
         return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
-    public int getSunAmountAt(double ageSeconds) {
+    public int getCost(int level) {
+        return Math.max(0, cost + sumCostDelta(level));
+    }
+
+    public int getBaseHP(int level) {
+        return Math.max(0, baseHP + sumHitPointDelta(level));
+    }
+
+    public float getActionIntervalSeconds(int level) {
+        return Math.max(0.0f, actionIntervalSeconds + sumActionIntervalDelta(level));
+    }
+
+    public float getRechargeSeconds(int level) {
+        return Math.max(0.0f, rechargeSeconds + sumRechargeDelta(level));
+    }
+
+    public int getSunAmountAt(double ageSeconds, int level) {
+        validateLevel(level);
         int stage = 0;
+        float growthDelta = sumGrowthTimeDelta(level);
         while (stage < stageThresholdSeconds.length
-                && ageSeconds >= stageThresholdSeconds[stage]) {
+                && ageSeconds >= Math.max(0.0f, stageThresholdSeconds[stage] + growthDelta)) {
             stage++;
         }
-        return sunAmounts[stage];
+        return Math.max(0, sunAmounts[stage] + sumSunAmountDelta(level));
+    }
+
+    public int getFinalSunAmount(int level) {
+        validateLevel(level);
+        return Math.max(0, sunAmounts[sunAmounts.length - 1] + sumSunAmountDelta(level));
+    }
+
+    public boolean hasDoubleSunChance(int level) {
+        validateLevel(level);
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            if (upgrades[currentLevel - 1].hasDoubleSunChance()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public float getFamilyBoostDurationSeconds(int level) {
+        return Math.max(0.0f, familyBoostDurationSeconds + sumBoostDurationDelta(level));
+    }
+
+    public boolean resetsFamilyCooldowns(int level) {
+        validateLevel(level);
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            if (upgrades[currentLevel - 1].resetsFamilyCooldowns()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int sumHitPointDelta(int level) {
+        validateLevel(level);
+        int result = 0;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getHitPointDelta();
+        }
+        return result;
+    }
+
+    private int sumCostDelta(int level) {
+        validateLevel(level);
+        int result = 0;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getCostDelta();
+        }
+        return result;
+    }
+
+    private float sumActionIntervalDelta(int level) {
+        validateLevel(level);
+        float result = 0.0f;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getActionIntervalDeltaSeconds();
+        }
+        return result;
+    }
+
+    private float sumRechargeDelta(int level) {
+        validateLevel(level);
+        float result = 0.0f;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getRechargeDeltaSeconds();
+        }
+        return result;
+    }
+
+    private float sumGrowthTimeDelta(int level) {
+        validateLevel(level);
+        float result = 0.0f;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getGrowthTimeDeltaSeconds();
+        }
+        return result;
+    }
+
+    private int sumSunAmountDelta(int level) {
+        validateLevel(level);
+        int result = 0;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getSunAmountDelta();
+        }
+        return result;
+    }
+
+    private float sumBoostDurationDelta(int level) {
+        validateLevel(level);
+        float result = 0.0f;
+        for (int currentLevel = 2; currentLevel <= level; currentLevel++) {
+            result += upgrades[currentLevel - 1].getBoostDurationDeltaSeconds();
+        }
+        return result;
+    }
+
+    public static void validateLevel(int level) {
+        if (level < MIN_LEVEL || level > MAX_LEVEL) {
+            throw new IllegalArgumentException("sun-producer level must be between 1 and 4");
+        }
     }
 
     public int getId() {
@@ -191,5 +349,9 @@ public enum SunProducerPlantType {
 
     public SunProductionBehavior getBehavior() {
         return behavior;
+    }
+
+    public int getPlantFoodSunAmount() {
+        return plantFoodSunAmount;
     }
 }

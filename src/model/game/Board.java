@@ -12,6 +12,8 @@ import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.wallnut.Wallnut;
 import model.game.entities.zombies.Zombie;
+import model.game.entities.zombies.abilities.SmashAbility;
+import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
 import model.game.tile.Tile;
 
@@ -48,6 +50,7 @@ public class Board {
         List<Entity> entitiesToAdd = new ArrayList<>();
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
         updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
+        applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingWallnutBoardEffects(updateSnapshot);
         applyPendingWallnutPassiveEffects(updateSnapshot);
         updateZombies(updateSnapshot, deltaSeconds);
@@ -94,6 +97,34 @@ public class Board {
         }
     }
 
+
+    private void applyPendingSunProducerBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof SunProducer) || entity.isRemoved()) {
+                continue;
+            }
+            SunProducer mint = (SunProducer) entity;
+            if (!mint.drainFamilyBoostPending()) {
+                continue;
+            }
+            applySunProducerFamilyBoost(mint, entitiesToAdd);
+        }
+    }
+
+    private void applySunProducerFamilyBoost(SunProducer mint,
+            List<Entity> entitiesToAdd) {
+        for (BasePlant plant : getPlants()) {
+            if (!(plant instanceof SunProducer) || plant == mint) {
+                continue;
+            }
+            SunProducer producer = (SunProducer) plant;
+            producer.usePlantFood();
+            collectProducedSuns(producer, entitiesToAdd);
+        }
+        mint.markForRemoval();
+        pendingResults.add("Enlighten-mint applied plant food to every Sun Producer plant.");
+    }
 
     private void applyPendingWallnutPassiveEffects(List<Entity> updateSnapshot) {
         for (Entity entity : updateSnapshot) {
@@ -204,12 +235,28 @@ public class Board {
 
         double attackColumn = blockingPlant.getEntityPosition().getColumn() + Zombie.ATTACK_REACH;
         if (zombie.getColumnPosition() <= attackColumn + POSITION_EPSILON) {
-            zombie.eat(blockingPlant, deltaSeconds);
+            attackPlant(zombie, blockingPlant, deltaSeconds);
             handleWallnutAfterAttack(zombie, blockingPlant, deltaSeconds);
             reportDestroyedPlant(blockingPlant);
         } else {
             zombie.move(deltaSeconds, attackColumn);
         }
+    }
+
+    private void attackPlant(Zombie zombie, BasePlant plant, float deltaSeconds) {
+        if (!trySmashPlant(zombie, plant)) {
+            zombie.eat(plant, deltaSeconds);
+        }
+    }
+
+    private boolean trySmashPlant(Zombie zombie, BasePlant plant) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof SmashAbility && ability.tryUse(zombie, this)) {
+                plant.takeDamage(Integer.MAX_VALUE);
+                return true;
+            }
+        }
+        return false;
     }
 
     private void handleWallnutAfterAttack(Zombie zombie, BasePlant plant, float deltaSeconds) {
@@ -247,7 +294,7 @@ public class Board {
         if (sunAmount <= 0) {
             return;
         }
-        addEntity(new Sun(sunAmount, wallnut.getEntityPosition()));
+        addEntity(Sun.createPlantSun(sunAmount, wallnut.getEntityPosition()));
         pendingResults.add("plant Sun Bean produced " + sunAmount + " sun at "
                 + wallnut.getEntityPosition());
     }

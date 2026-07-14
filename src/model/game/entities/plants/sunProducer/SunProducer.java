@@ -3,6 +3,7 @@ package model.game.entities.plants.sunProducer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
@@ -14,23 +15,42 @@ public class SunProducer extends BasePlant {
 
     private final SunProducerPlantType type;
     private final List<Sun> pendingSuns = new ArrayList<>();
+    private final List<Sun> activeProducedSuns = new ArrayList<>();
+    private final Random random;
 
     private double secondsSinceLastProduction;
     private boolean activated;
-    private Sun lastProducedSun;
+    private boolean fullyGrown;
+    private boolean familyBoostPending;
+    private boolean plantFoodUsed;
 
     public SunProducer() {
-        this(SunProducerPlantType.SUNFLOWER, null);
+        this(SunProducerPlantType.SUNFLOWER, 1, null);
     }
 
     public SunProducer(SunProducerPlantType type) {
-        this(type, null);
+        this(type, 1, null);
     }
 
     public SunProducer(SunProducerPlantType type, EntityPosition entityPosition) {
-        super(requireType(type).getDisplayName(), PlantCategory.SUN_PRODUCER, type.getTags(), 1, type.getCost(),
-                type.getBaseHP(), type.getDamage(), entityPosition);
+        this(type, 1, entityPosition);
+    }
+
+    public SunProducer(SunProducerPlantType type, int level, EntityPosition entityPosition) {
+        this(type, level, entityPosition, new Random());
+    }
+
+    public SunProducer(SunProducerPlantType type, int level,
+            EntityPosition entityPosition, Random random) {
+        super(requireType(type).getDisplayName(), PlantCategory.SUN_PRODUCER,
+                type.getTags(), level, type.getCost(level), type.getBaseHP(level),
+                type.getDamage(), entityPosition);
+        SunProducerPlantType.validateLevel(level);
+        if (random == null) {
+            throw new IllegalArgumentException("random cannot be null");
+        }
         this.type = type;
+        this.random = random;
     }
 
     private static SunProducerPlantType requireType(SunProducerPlantType type) {
@@ -56,7 +76,7 @@ public class SunProducer extends BasePlant {
             activateInstantProducer();
             break;
         case FAMILY_BOOST:
-            activateFamilyBoostPlaceholder();
+            activateFamilyBoost();
             break;
         default:
             throw new IllegalStateException("Unknown sun producer behavior: " + type.getBehavior());
@@ -64,11 +84,11 @@ public class SunProducer extends BasePlant {
     }
 
     private void updatePeriodicProduction(float deltaSeconds) {
-        if (isWaitingForLastSun()) {
+        if (isWaitingForProducedSun()) {
             return;
         }
 
-        float intervalSeconds = type.getActionIntervalSeconds();
+        float intervalSeconds = type.getActionIntervalSeconds(getLevel());
         if (intervalSeconds <= 0.0f) {
             return;
         }
@@ -76,19 +96,11 @@ public class SunProducer extends BasePlant {
         secondsSinceLastProduction += deltaSeconds;
         if (secondsSinceLastProduction + TIMER_EPSILON >= intervalSeconds) {
             secondsSinceLastProduction = 0.0;
-            produceSun(type.getSunAmountAt(getElapsedSeconds()));
+            int amount = fullyGrown
+                    ? type.getFinalSunAmount(getLevel())
+                    : type.getSunAmountAt(getElapsedSeconds(), getLevel());
+            produceSun(amount, true);
         }
-    }
-
-    private boolean isWaitingForLastSun() {
-        if (lastProducedSun == null) {
-            return false;
-        }
-        if (lastProducedSun.isRemoved()) {
-            lastProducedSun = null;
-            return false;
-        }
-        return true;
     }
 
     private void activateInstantProducer() {
@@ -96,26 +108,41 @@ public class SunProducer extends BasePlant {
             return;
         }
         activated = true;
-        produceSun(type.getSunAmountAt(getElapsedSeconds()));
+        produceSun(type.getSunAmountAt(getElapsedSeconds(), getLevel()), false);
         markForRemoval();
     }
 
-    private void activateFamilyBoostPlaceholder() {
-        if (activated) {
+    private void activateFamilyBoost() {
+        if (!activated) {
+            activated = true;
+            familyBoostPending = true;
+        }
+    }
+
+    private void produceSun(int amount, boolean allowDoubleSun) {
+        int producedAmount = amount;
+        if (allowDoubleSun && type.hasDoubleSunChance(getLevel())
+                && random.nextDouble() < SunProducerPlantType.DOUBLE_SUN_CHANCE) {
+            producedAmount *= 2;
+        }
+        if (producedAmount <= 0) {
             return;
         }
-        activated = true;
-        // The plant-food/family system does not exist yet. The mint is still
-        // consumed as an instant-use plant so it cannot remain on the board.
-        markForRemoval();
+
+        Sun sun = Sun.createPlantSun(producedAmount, getEntityPosition());
+        activeProducedSuns.add(sun);
+        pendingSuns.add(sun);
     }
 
-    private void produceSun(int amount) {
-        if (amount > 0) {
-            Sun sun = new Sun(amount, getEntityPosition());
-            lastProducedSun = sun;
-            pendingSuns.add(sun);
+    public void usePlantFood() {
+        if (isRemoved() || type.getPlantFoodSunAmount() <= 0) {
+            return;
         }
+        plantFoodUsed = true;
+        if (type == SunProducerPlantType.SUN_SHROOM) {
+            fullyGrown = true;
+        }
+        produceSun(type.getPlantFoodSunAmount(), false);
     }
 
     public List<Sun> drainProducedSuns() {
@@ -127,6 +154,12 @@ public class SunProducer extends BasePlant {
         return produced;
     }
 
+    public boolean drainFamilyBoostPending() {
+        boolean result = familyBoostPending;
+        familyBoostPending = false;
+        return result;
+    }
+
     public SunProducerPlantType getType() {
         return type;
     }
@@ -136,6 +169,27 @@ public class SunProducer extends BasePlant {
     }
 
     public boolean isWaitingForProducedSun() {
-        return lastProducedSun != null && !lastProducedSun.isRemoved();
+        activeProducedSuns.removeIf(Sun::isRemoved);
+        return !activeProducedSuns.isEmpty();
+    }
+
+    public float getRechargeSeconds() {
+        return type.getRechargeSeconds(getLevel());
+    }
+
+    public float getFamilyBoostDurationSeconds() {
+        return type.getFamilyBoostDurationSeconds(getLevel());
+    }
+
+    public boolean resetsFamilyCooldowns() {
+        return type.resetsFamilyCooldowns(getLevel());
+    }
+
+    public boolean wasPlantFoodUsed() {
+        return plantFoodUsed;
+    }
+
+    public boolean isFullyGrown() {
+        return fullyGrown;
     }
 }
