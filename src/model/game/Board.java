@@ -2,6 +2,7 @@ package model.game;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 import model.Constants;
@@ -13,6 +14,8 @@ import model.game.entities.plants.PlantTag;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosiveBehavior;
 import model.game.entities.plants.explosive.ExplosivePlantType;
+import model.game.entities.plants.homing.Homing;
+import model.game.entities.plants.homing.HomingBehavior;
 import model.game.entities.plants.lobber.Lobber;
 import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
@@ -24,6 +27,7 @@ import model.game.entities.plants.strikeThrough.StrikeThrough;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.wallnut.Wallnut;
 import model.game.entities.projectile.BouncingGrape;
+import model.game.entities.projectile.HomingProjectile;
 import model.game.entities.projectile.LobbedProjectile;
 import model.game.entities.projectile.PiercingProjectile;
 import model.game.entities.projectile.Projectile;
@@ -85,15 +89,18 @@ public class Board {
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
         updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
         resolveProjectileImpacts(updateSnapshot);
+        resolveHomingProjectileImpacts(updateSnapshot);
         resolveLobbedProjectileImpacts(updateSnapshot);
         resolveGrapeImpacts(updateSnapshot);
         reportDeadZombies(updateSnapshot);
         activateReadyShooters(updateSnapshot, entitiesToAdd);
         activateReadyLobbers(updateSnapshot, entitiesToAdd);
         activateReadyStrikeThroughs(updateSnapshot, entitiesToAdd);
+        activateReadyHomings(updateSnapshot, entitiesToAdd);
         applyPendingShooterBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingLobberBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingStrikeThroughBoardEffects(updateSnapshot, entitiesToAdd);
+        applyPendingHomingBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingExplosiveBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingMeleeBoardEffects(updateSnapshot);
@@ -171,7 +178,7 @@ public class Board {
 
     private boolean hasTarget(Shooter shooter) {
         for (Zombie zombie : getZombies()) {
-            if (shooter.canTarget(zombie, numberOfRows)) {
+            if (!zombie.isHypnotized() && shooter.canTarget(zombie, numberOfRows)) {
                 return true;
             }
         }
@@ -207,7 +214,8 @@ public class Board {
         Zombie nearest = null;
         double nearestDistance = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.getLane() != position.getRow()) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.getLane() != position.getRow()) {
                 continue;
             }
             double distance = zombie.getColumnPosition() - position.getColumn();
@@ -238,12 +246,148 @@ public class Board {
 
     private boolean hasStrikeThroughTarget(StrikeThrough plant) {
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isDead() && !zombie.isSubmerged()
+            if (!zombie.isDead() && !zombie.isHypnotized()
+                    && !zombie.isSubmerged()
                     && plant.canTarget(zombie.getColumnPosition(), zombie.getLane())) {
                 return true;
             }
         }
         return false;
+    }
+
+    private void activateReadyHomings(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Homing) || entity.isRemoved()) {
+                continue;
+            }
+            Homing plant = (Homing) entity;
+            if (!plant.isReadyToAttack()) {
+                continue;
+            }
+            Zombie target = findHomingTarget(plant);
+            if (target != null) {
+                performHomingAttack(plant, target, entitiesToAdd);
+            }
+        }
+    }
+
+    private Zombie findHomingTarget(Homing plant) {
+        switch (plant.getType().getBehavior()) {
+        case HYPNOTIZE:
+            return randomHomingTarget(plant, false);
+        case LIGHTNING:
+            return plant.hasTargetPriorityUp()
+                    ? strongestHomingTarget(plant) : randomHomingTarget(plant, true);
+        case MAGNET:
+            return nearestMagnetTarget(plant);
+        case GUIDED_PROJECTILE:
+            return nearestHomingTarget(plant);
+        case FAMILY_BOOST:
+            return null;
+        default:
+            throw new IllegalStateException("Unknown homing behavior: "
+                    + plant.getType().getBehavior());
+        }
+    }
+
+    private void performHomingAttack(Homing plant, Zombie target,
+            List<Entity> entitiesToAdd) {
+        HomingBehavior behavior = plant.getType().getBehavior();
+        if (behavior == HomingBehavior.HYPNOTIZE
+                || behavior == HomingBehavior.GUIDED_PROJECTILE) {
+            HomingProjectile projectile = plant.shoot(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+            return;
+        }
+        if (!plant.consumeDirectAttackReadiness(target)) {
+            return;
+        }
+        if (behavior == HomingBehavior.LIGHTNING) {
+            target.takeDamage(plant.getDamage());
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        } else if (behavior == HomingBehavior.MAGNET
+                && target.removeMagnetizableArmor()) {
+            pendingResults.add(plant.getName() + " removed " + target.getName()
+                    + "'s metal armor.");
+        }
+    }
+
+    private Zombie randomHomingTarget(Homing plant, boolean allowBoss) {
+        List<Zombie> candidates = homingCandidates(plant, allowBoss, false);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        Collections.shuffle(candidates);
+        return candidates.get(0);
+    }
+
+    private Zombie nearestHomingTarget(Homing plant) {
+        List<Zombie> candidates = homingCandidates(plant, true, false);
+        return candidates.stream()
+                .min(Comparator.comparingDouble(zombie -> distanceSquared(plant, zombie)))
+                .orElse(null);
+    }
+
+    private Zombie strongestHomingTarget(Homing plant) {
+        List<Zombie> candidates = homingCandidates(plant, true, false);
+        return candidates.stream()
+                .max(Comparator.comparingInt(Zombie::getCurrentDurability)
+                        .thenComparingDouble(zombie -> -distanceSquared(plant, zombie)))
+                .orElse(null);
+    }
+
+    private Zombie nearestMagnetTarget(Homing plant) {
+        List<Zombie> candidates = homingCandidates(plant, true, true);
+        return candidates.stream()
+                .min(Comparator.comparingDouble(zombie -> distanceSquared(plant, zombie)))
+                .orElse(null);
+    }
+
+    private List<Zombie> homingCandidates(Homing plant, boolean allowBoss,
+            boolean requireMagnetizableArmor) {
+        List<Zombie> candidates = new ArrayList<>();
+        for (Zombie zombie : getZombies()) {
+            if (!isHomingTargetable(zombie) || (!allowBoss && isZomboss(zombie))) {
+                continue;
+            }
+            if (requireMagnetizableArmor && !zombie.hasMagnetizableArmor()) {
+                continue;
+            }
+            if (isInsideHomingRange(plant, zombie)) {
+                candidates.add(zombie);
+            }
+        }
+        return candidates;
+    }
+
+    private static boolean isHomingTargetable(Zombie zombie) {
+        return zombie != null && !zombie.isDead() && !zombie.isRemoved()
+                && !zombie.isHypnotized() && !zombie.isSubmerged();
+    }
+
+    private static boolean isZomboss(Zombie zombie) {
+        return zombie.getType().name().startsWith("ZOMBOSS_");
+    }
+
+    private static boolean isInsideHomingRange(Homing plant, Zombie zombie) {
+        double range = plant.getRangeTiles();
+        return Double.isInfinite(range)
+                || distanceSquared(plant, zombie) <= range * range + POSITION_EPSILON;
+    }
+
+    private static double distanceSquared(Homing plant, Zombie zombie) {
+        EntityPosition position = plant.getEntityPosition();
+        if (position == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double rowDelta = zombie.getLane() - position.getRow();
+        double columnDelta = zombie.getColumnPosition() - position.getColumn();
+        return rowDelta * rowDelta + columnDelta * columnDelta;
     }
 
     private void applyPendingStrikeThroughBoardEffects(
@@ -357,7 +501,7 @@ public class Board {
     private List<Zombie> getLobberPlantFoodTargets(Lobber lobber) {
         List<Zombie> candidates = new ArrayList<>();
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isDead()) {
+            if (!zombie.isDead() && !zombie.isHypnotized()) {
                 candidates.add(zombie);
             }
         }
@@ -395,7 +539,7 @@ public class Board {
     private void resolveProjectileImpacts(List<Entity> updateSnapshot) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Projectile) || entity instanceof LobbedProjectile
-                    || entity.isRemoved()) {
+                    || entity instanceof HomingProjectile || entity.isRemoved()) {
                 continue;
             }
             Projectile projectile = (Projectile) entity;
@@ -425,7 +569,7 @@ public class Board {
         Zombie firstTarget = null;
         double firstParameter = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.isSubmerged()
+            if (zombie.isDead() || zombie.isHypnotized() || zombie.isSubmerged()
                     || !canProjectileHit(projectile, zombie)) {
                 continue;
             }
@@ -449,6 +593,32 @@ public class Board {
                 || projectile.getRowPosition() > numberOfRows - 1 + PROJECTILE_BOARD_MARGIN
                 || projectile.getColumnPosition() < -PROJECTILE_BOARD_MARGIN
                 || projectile.getColumnPosition() > numberOfColumns - 1 + PROJECTILE_BOARD_MARGIN;
+    }
+
+    private void resolveHomingProjectileImpacts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof HomingProjectile) || entity.isRemoved()) {
+                continue;
+            }
+            HomingProjectile projectile = (HomingProjectile) entity;
+            if (!projectile.isTargetAvailable()) {
+                projectile.markForRemoval();
+                continue;
+            }
+            if (projectile.hasReachedTarget()) {
+                Zombie target = projectile.getLockedTarget();
+                projectile.hit(target);
+                if (target.isDead()) {
+                    reportZombieDeath(target);
+                } else if (target.isHypnotized()) {
+                    pendingResults.add("Zombie " + target.getName() + " was hypnotized.");
+                }
+                continue;
+            }
+            if (projectile.hasExpired() || isProjectileOutsideBoard(projectile)) {
+                projectile.markForRemoval();
+            }
+        }
     }
 
     private void resolveLobbedProjectileImpacts(List<Entity> updateSnapshot) {
@@ -479,7 +649,7 @@ public class Board {
         Zombie nearest = null;
         double nearestDistanceSquared = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead()) {
+            if (zombie.isDead() || zombie.isHypnotized()) {
                 continue;
             }
             double rowDelta = zombie.getLane() - projectile.getLandingRow();
@@ -496,7 +666,8 @@ public class Board {
 
     private static boolean isAtLobbedLandingPoint(Zombie zombie,
             LobbedProjectile projectile) {
-        if (zombie == null || zombie.isDead() || zombie.isRemoved()) {
+        if (zombie == null || zombie.isDead() || zombie.isRemoved()
+                || zombie.isHypnotized()) {
             return false;
         }
         double rowDelta = zombie.getLane() - projectile.getLandingRow();
@@ -511,7 +682,7 @@ public class Board {
             return;
         }
         for (Zombie zombie : getZombies()) {
-            if (zombie == directTarget || zombie.isDead()
+            if (zombie == directTarget || zombie.isDead() || zombie.isHypnotized()
                     || isProtectedFromLobbers(zombie)
                     || !isInsideLobbedSplash(zombie, projectile)) {
                 continue;
@@ -565,7 +736,8 @@ public class Board {
         Zombie firstTarget = null;
         double firstParameter = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (!grape.canHit(zombie) || zombie.isSubmerged()) {
+            if (!grape.canHit(zombie) || zombie.isHypnotized()
+                    || zombie.isSubmerged()) {
                 continue;
             }
             double parameter = grape.getIntersectionParameter(
@@ -586,6 +758,138 @@ public class Board {
         }
     }
 
+
+    private void applyPendingHomingBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        applyHomingFamilyBoosts(updateSnapshot);
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Homing) || entity.isRemoved()) {
+                continue;
+            }
+            Homing plant = (Homing) entity;
+            if (plant.drainPlantFoodPending()) {
+                applyHomingPlantFood(plant, entitiesToAdd);
+            }
+        }
+    }
+
+    private void applyHomingFamilyBoosts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Homing) || entity.isRemoved()) {
+                continue;
+            }
+            Homing mint = (Homing) entity;
+            if (mint.drainFamilyBoostPending()) {
+                boostHomingFamily(mint);
+            }
+        }
+    }
+
+    private void boostHomingFamily(Homing mint) {
+        for (BasePlant plant : getPlants()) {
+            if (!(plant instanceof Homing) || plant == mint) {
+                continue;
+            }
+            Homing homing = (Homing) plant;
+            homing.usePlantFood();
+            if (mint.resetsFamilyCooldowns()) {
+                homing.resetActionTimer();
+            }
+        }
+        mint.markForRemoval();
+        pendingResults.add("catTail-mint applied plant food to every Homing plant.");
+    }
+
+    private void applyHomingPlantFood(Homing plant,
+            List<Entity> entitiesToAdd) {
+        switch (plant.getType().getBehavior()) {
+        case HYPNOTIZE:
+            addHomingPlantFoodProjectiles(plant, entitiesToAdd, false);
+            break;
+        case LIGHTNING:
+            strikeRandomHomingTargets(plant);
+            break;
+        case MAGNET:
+            removeAllMetalArmorInRange(plant);
+            break;
+        case GUIDED_PROJECTILE:
+            addCatTailBarrage(plant, entitiesToAdd);
+            break;
+        case FAMILY_BOOST:
+            break;
+        default:
+            throw new IllegalStateException("Unknown homing behavior: "
+                    + plant.getType().getBehavior());
+        }
+    }
+
+    private void addHomingPlantFoodProjectiles(Homing plant,
+            List<Entity> entitiesToAdd, boolean allowBoss) {
+        List<Zombie> targets = randomHomingTargets(plant,
+                plant.getPlantFoodTargetCount(), allowBoss);
+        for (Zombie target : targets) {
+            HomingProjectile projectile = plant.createPlantFoodProjectile(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+        reportHomingPlantFood(plant, targets.size());
+    }
+
+    private void strikeRandomHomingTargets(Homing plant) {
+        List<Zombie> targets = randomHomingTargets(plant,
+                plant.getPlantFoodTargetCount(), true);
+        for (Zombie target : targets) {
+            target.takeDamage(plant.getDamage());
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        }
+        reportHomingPlantFood(plant, targets.size());
+    }
+
+    private void removeAllMetalArmorInRange(Homing plant) {
+        int removedArmorCount = 0;
+        for (Zombie zombie : homingCandidates(plant, true, true)) {
+            if (zombie.removeMagnetizableArmor()) {
+                removedArmorCount++;
+            }
+        }
+        reportHomingPlantFood(plant, removedArmorCount);
+    }
+
+    private void addCatTailBarrage(Homing plant,
+            List<Entity> entitiesToAdd) {
+        List<Zombie> targets = homingCandidates(plant, true, false);
+        targets.sort(Comparator.comparingDouble(zombie -> distanceSquared(plant, zombie)));
+        if (targets.isEmpty()) {
+            return;
+        }
+        int projectileCount = plant.getPlantFoodTargetCount();
+        for (int i = 0; i < projectileCount; i++) {
+            Zombie target = targets.get(i % targets.size());
+            HomingProjectile projectile = plant.createPlantFoodProjectile(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+        reportHomingPlantFood(plant, projectileCount);
+    }
+
+    private List<Zombie> randomHomingTargets(Homing plant, int maximumTargets,
+            boolean allowBoss) {
+        List<Zombie> targets = homingCandidates(plant, allowBoss, false);
+        Collections.shuffle(targets);
+        int count = Math.min(maximumTargets, targets.size());
+        return new ArrayList<>(targets.subList(0, count));
+    }
+
+    private void reportHomingPlantFood(Homing plant, int affectedCount) {
+        if (affectedCount > 0) {
+            pendingResults.add(plant.getName() + " used its plant food effect on "
+                    + affectedCount + " target(s).");
+        }
+    }
 
     private void applyPendingSunProducerBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
@@ -672,7 +976,8 @@ public class Board {
         int lane = explosive.getEntityPosition().getRow();
         double column = explosive.getEntityPosition().getColumn();
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.getLane() != lane) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.getLane() != lane) {
                 continue;
             }
             if (explosive.getType().getBehavior() == ExplosiveBehavior.WATER_TRAP
@@ -743,6 +1048,9 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
+            if (zombie.isHypnotized()) {
+                continue;
+            }
             zombie.takeDamage(explosive.getDamage());
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
@@ -760,7 +1068,7 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
-            if (!isWaterZombie(zombie)) {
+            if (zombie.isHypnotized() || !isWaterZombie(zombie)) {
                 continue;
             }
             zombie.kill();
@@ -850,7 +1158,8 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
-            if (zombie != firstTarget && isWaterZombie(zombie)) {
+            if (zombie != firstTarget && !zombie.isHypnotized()
+                    && isWaterZombie(zombie)) {
                 zombie.kill();
                 reportZombieDeath(zombie);
                 targetCount--;
@@ -868,7 +1177,8 @@ public class Board {
     private void damageArea(EntityPosition center, int rowRadius,
             double columnRadius, int damage, boolean fireDamage) {
         for (Zombie zombie : getZombies()) {
-            if (Math.abs(zombie.getLane() - center.getRow()) > rowRadius
+            if (zombie.isHypnotized()
+                    || Math.abs(zombie.getLane() - center.getRow()) > rowRadius
                     || Math.abs(zombie.getColumnPosition() - center.getColumn()) > columnRadius) {
                 continue;
             }
@@ -885,7 +1195,7 @@ public class Board {
 
     private void damageLaneWithFire(int lane, int damage) {
         for (Zombie zombie : getZombies()) {
-            if (zombie.getLane() == lane) {
+            if (!zombie.isHypnotized() && zombie.getLane() == lane) {
                 zombie.applyFireDamage(damage);
                 if (zombie.isDead()) {
                     reportZombieDeath(zombie);
@@ -899,6 +1209,9 @@ public class Board {
             return;
         }
         for (Zombie zombie : getZombies()) {
+            if (zombie.isHypnotized()) {
+                continue;
+            }
             zombie.takeDamage(damage);
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
@@ -908,7 +1221,9 @@ public class Board {
 
     private void freezeAllZombies(double durationSeconds) {
         for (Zombie zombie : getZombies()) {
-            zombie.applyFreeze(durationSeconds);
+            if (!zombie.isHypnotized()) {
+                zombie.applyFreeze(durationSeconds);
+            }
         }
     }
 
@@ -1088,7 +1403,7 @@ public class Board {
     }
 
     private static boolean isMeleeTargetable(Zombie zombie) {
-        return zombie != null && !zombie.isDead()
+        return zombie != null && !zombie.isDead() && !zombie.isHypnotized()
                 && !zombie.isSubmerged() && !zombie.isFlying();
     }
 
@@ -1261,7 +1576,7 @@ public class Board {
         }
         int sourceLane = garlic.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
-            if (zombie.getLane() == sourceLane) {
+            if (!zombie.isHypnotized() && zombie.getLane() == sourceLane) {
                 int targetLane = garlic.chooseAdjacentLane(sourceLane, numberOfRows);
                 zombie.moveToLane(targetLane);
             }
@@ -1275,7 +1590,8 @@ public class Board {
         }
         int targetLane = sweetPotato.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
-            if (Math.abs(zombie.getLane() - targetLane) == 1) {
+            if (!zombie.isHypnotized()
+                    && Math.abs(zombie.getLane() - targetLane) == 1) {
                 zombie.moveToLane(targetLane);
             }
         }
@@ -1292,8 +1608,12 @@ public class Board {
                 reportZombieDeath(zombie);
                 continue;
             }
-            attractZombieToSweetPotato(zombie);
-            updateZombie(zombie, deltaSeconds);
+            if (zombie.isHypnotized()) {
+                updateHypnotizedZombie(zombie, deltaSeconds);
+            } else {
+                attractZombieToSweetPotato(zombie);
+                updateZombie(zombie, deltaSeconds);
+            }
         }
     }
 
@@ -1317,8 +1637,89 @@ public class Board {
         }
     }
 
+    private void updateHypnotizedZombie(Zombie zombie, float deltaSeconds) {
+        Zombie target = findNearestHostileZombieToRight(zombie);
+        if (target == null) {
+            zombie.moveRight(deltaSeconds, numberOfColumns + PROJECTILE_BOARD_MARGIN);
+            if (zombie.getColumnPosition() >= numberOfColumns - POSITION_EPSILON) {
+                zombie.markForRemoval();
+            }
+            return;
+        }
+        double attackColumn = target.getColumnPosition() - Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() + POSITION_EPSILON >= attackColumn) {
+            zombie.attackZombie(target, deltaSeconds);
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        } else {
+            zombie.moveRight(deltaSeconds, attackColumn);
+        }
+    }
+
+    private Zombie findNearestHostileZombieToRight(Zombie hypnotizedZombie) {
+        Zombie nearest = null;
+        double nearestColumn = Double.POSITIVE_INFINITY;
+        for (Zombie zombie : getZombies()) {
+            if (zombie == hypnotizedZombie || zombie.isDead()
+                    || zombie.isHypnotized()
+                    || zombie.getLane() != hypnotizedZombie.getLane()) {
+                continue;
+            }
+            double column = zombie.getColumnPosition();
+            if (column + Zombie.ATTACK_REACH
+                    >= hypnotizedZombie.getColumnPosition() - POSITION_EPSILON
+                    && column < nearestColumn) {
+                nearest = zombie;
+                nearestColumn = column;
+            }
+        }
+        return nearest;
+    }
+
+    private Zombie findNearestHypnotizedZombieAhead(Zombie zombie) {
+        Zombie nearest = null;
+        double nearestColumn = Double.NEGATIVE_INFINITY;
+        for (Zombie candidate : getZombies()) {
+            if (candidate == zombie || candidate.isDead()
+                    || !candidate.isHypnotized()
+                    || candidate.getLane() != zombie.getLane()) {
+                continue;
+            }
+            double column = candidate.getColumnPosition();
+            if (column <= zombie.getColumnPosition() + POSITION_EPSILON
+                    && column > nearestColumn) {
+                nearest = candidate;
+                nearestColumn = column;
+            }
+        }
+        return nearest;
+    }
+
+    private void updateZombieAgainstHypnotizedTarget(Zombie zombie,
+            Zombie target, float deltaSeconds) {
+        double attackColumn = target.getColumnPosition() + Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() <= attackColumn + POSITION_EPSILON) {
+            zombie.attackZombie(target, deltaSeconds);
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        } else {
+            zombie.move(deltaSeconds, attackColumn);
+        }
+    }
+
     private void updateZombie(Zombie zombie, float deltaSeconds) {
         BasePlant blockingPlant = findNearestPlantAhead(zombie);
+        Zombie blockingHypnotizedZombie = findNearestHypnotizedZombieAhead(zombie);
+        if (blockingHypnotizedZombie != null
+                && (blockingPlant == null
+                || blockingHypnotizedZombie.getColumnPosition()
+                > blockingPlant.getEntityPosition().getColumn())) {
+            updateZombieAgainstHypnotizedTarget(zombie,
+                    blockingHypnotizedZombie, deltaSeconds);
+            return;
+        }
         if (blockingPlant == null) {
             zombie.move(deltaSeconds, 0.0);
             if (zombie.getColumnPosition() <= POSITION_EPSILON) {
@@ -1400,7 +1801,7 @@ public class Board {
         }
         EntityPosition center = wallnut.getEntityPosition();
         for (Zombie target : getZombies()) {
-            if (isInsideThreeByThree(target, center)) {
+            if (!target.isHypnotized() && isInsideThreeByThree(target, center)) {
                 target.takeDamage(explosionDamage);
             }
         }

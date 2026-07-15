@@ -50,6 +50,16 @@ public class Armor {
         }
     }
 
+    public boolean removeByMagnet() {
+        if (destroyed || !type.isMagnetizable()) {
+            return false;
+        }
+        currentHealth = 0;
+        destroyed = true;
+        dropped = true;
+        return true;
+    }
+
     public ArmorType getType() { return type; }
     public int getCurrentHealth() { return currentHealth; }
     public int getMaximumHealth() { return maximumHealth; }

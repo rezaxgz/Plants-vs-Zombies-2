@@ -49,6 +49,8 @@ public class Zombie extends Entity {
     private double stunnedDuration;
     private boolean flying;
     private boolean submerged;
+    private boolean hypnotized;
+    private double pendingZombieAttackDamage;
     private int poisonDamagePerTick;
     private double poisonTickIntervalSeconds;
     private double poisonDurationSeconds;
@@ -517,6 +519,62 @@ public class Zombie extends Entity {
 
     public int getPoisonDamagePerTick() {
         return poisonDamagePerTick;
+    }
+
+    public boolean isHypnotized() {
+        return hypnotized;
+    }
+
+    public void hypnotize() {
+        if (isDead()) {
+            return;
+        }
+        hypnotized = true;
+        reachedHouse = false;
+    }
+
+    public boolean hasMagnetizableArmor() {
+        return armor != null && !armor.isDestroyed()
+                && armor.getType().isMagnetizable();
+    }
+
+    public boolean removeMagnetizableArmor() {
+        return armor != null && armor.removeByMagnet();
+    }
+
+    public int getCurrentDurability() {
+        int durability = hitPoints;
+        if (armor != null && !armor.isDestroyed()) {
+            durability += armor.getCurrentHealth();
+        }
+        return durability;
+    }
+
+    public void moveRight(float deltaSeconds, double maximumColumn) {
+        if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f
+                || !Double.isFinite(maximumColumn)) {
+            throw new IllegalArgumentException("movement values are invalid");
+        }
+        double distance = getEffectiveSpeed() * deltaSeconds;
+        moveTo(Math.min(maximumColumn, columnPosition + distance));
+    }
+
+    public void attackZombie(Zombie target, float deltaSeconds) {
+        if (target == null) {
+            throw new IllegalArgumentException("target cannot be null");
+        }
+        if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f) {
+            throw new IllegalArgumentException("deltaSeconds must be finite and non-negative");
+        }
+        if (isDead() || target.isDead() || target == this) {
+            return;
+        }
+        pendingZombieAttackDamage += getEffectiveEatDPS() * deltaSeconds;
+        int damage = (int) pendingZombieAttackDamage;
+        if (damage > 0) {
+            target.takeDamage(damage);
+            pendingZombieAttackDamage -= damage;
+        }
     }
 
     public String getName() {

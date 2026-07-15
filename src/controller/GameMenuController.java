@@ -253,6 +253,9 @@ public final class GameMenuController {
         if (zombie.isStunned()) {
             appendTimedEffect(output, "stunned", zombie.getStunnedDuration());
         }
+        if (zombie.isHypnotized()) {
+            output.append("hypnotized").append(System.lineSeparator());
+        }
         if (zombie.getPoisonDurationSeconds() > 0.0) {
             appendTimedEffect(output, "poisoned", zombie.getPoisonDurationSeconds());
         }

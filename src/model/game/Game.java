@@ -137,7 +137,9 @@ public class Game {
         long remainingHealth = 0;
         for (Zombie zombie : previousWave) {
             maximumHealth += zombie.getMaximumHitPoints();
-            remainingHealth += zombie.getHitPoints();
+            if (!zombie.isHypnotized()) {
+                remainingHealth += zombie.getHitPoints();
+            }
         }
         return maximumHealth > 0 && remainingHealth * 4 <= maximumHealth;
     }
@@ -171,7 +173,7 @@ public class Game {
 
     private boolean hasZombieReachedHouse() {
         for (Zombie zombie : board.getZombies()) {
-            if (zombie.hasReachedHouse()) {
+            if (!zombie.isHypnotized() && zombie.hasReachedHouse()) {
                 return true;
             }
         }
@@ -184,7 +186,7 @@ public class Game {
         }
         for (List<Zombie> waveZombies : spawnedZombiesByWave) {
             for (Zombie zombie : waveZombies) {
-                if (!zombie.isDead()) {
+                if (!zombie.isDead() && !zombie.isHypnotized()) {
                     return;
                 }
             }
