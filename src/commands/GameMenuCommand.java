@@ -10,6 +10,12 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handleCollectSun),
     CHEAT_ADD_SUNS("^cheat\\s+add\\s+-n\\s+(?<count>-?\\d+)\\s+suns$",
             GameMenuController::handleCheatAddSuns),
+    CHEAT_ADD_PLANT_FOOD("^cheat\\s+add-plant-food$",
+            GameMenuController::handleCheatAddPlantFood),
+    CHEAT_REMOVE_COOLDOWN("^cheat\\s+remove-cooldown$",
+            GameMenuController::handleCheatRemoveCooldown),
+    FEED_PLANT("^feed\\s+plant\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameMenuController::handleFeedPlant),
     PLANT_PLANT(
             "^plant\\s+plant\\s+-t\\s+(?<type>.+?)\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
             GameMenuController::handlePlant),

@@ -84,6 +84,7 @@ public class SunProducer extends BasePlant {
     }
 
     private void updatePeriodicProduction(float deltaSeconds) {
+        updateNaturalGrowthState();
         if (isWaitingForProducedSun()) {
             return;
         }
@@ -100,6 +101,14 @@ public class SunProducer extends BasePlant {
                     ? type.getFinalSunAmount(getLevel())
                     : type.getSunAmountAt(getElapsedSeconds(), getLevel());
             produceSun(amount, true);
+        }
+    }
+
+    private void updateNaturalGrowthState() {
+        if (type == SunProducerPlantType.SUN_SHROOM
+                && type.getSunAmountAt(getElapsedSeconds(), getLevel())
+                == type.getFinalSunAmount(getLevel())) {
+            fullyGrown = true;
         }
     }
 
@@ -152,6 +161,10 @@ public class SunProducer extends BasePlant {
         List<Sun> produced = new ArrayList<>(pendingSuns);
         pendingSuns.clear();
         return produced;
+    }
+
+    public void resetActionTimer() {
+        secondsSinceLastProduction = type.getActionIntervalSeconds(getLevel());
     }
 
     public boolean drainFamilyBoostPending() {

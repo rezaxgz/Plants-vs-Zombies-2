@@ -3,16 +3,19 @@ package model.game.entities.plants.shooter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantCategory;
+import model.game.entities.projectile.PiercingProjectile;
 import model.game.entities.projectile.Projectile;
 import model.game.entities.projectile.effect.ChillEffect;
 import model.game.entities.projectile.effect.DamageEffect;
 import model.game.entities.projectile.effect.FireEffect;
 import model.game.entities.projectile.effect.PoisonEffect;
 import model.game.entities.projectile.effect.ProjectileEffect;
+import model.game.entities.projectile.movement.BouncingProjectileMovement;
 import model.game.entities.projectile.movement.LinearProjectileMovement;
 import model.game.entities.projectile.movement.ProjectileDirection;
 import model.game.entities.zombies.Zombie;
@@ -25,10 +28,13 @@ public class Shooter extends BasePlant {
 
     private final ShooterPlantType type;
     private final List<Projectile> pendingProjectiles = new ArrayList<>();
+    private final Random random;
 
     private double secondsSinceLastShot;
     private double lifeSeconds;
     private int bowlingShotIndex;
+    private int projectileBoardRows = 5;
+    private boolean bowlingUpwardNext = true;
     private boolean familyBoostPending;
     private boolean familyBoostActivated;
     private boolean plantFoodUsed;
@@ -42,11 +48,20 @@ public class Shooter extends BasePlant {
     }
 
     public Shooter(ShooterPlantType type, int level, EntityPosition entityPosition) {
+        this(type, level, entityPosition, new Random());
+    }
+
+    public Shooter(ShooterPlantType type, int level, EntityPosition entityPosition,
+            Random random) {
         super(requireType(type).getDisplayName(), PlantCategory.SHOOTER,
                 type.getTags(), level, type.getCost(level), type.getBaseHP(level),
                 type.getDamage(level), entityPosition);
         ShooterPlantType.validateLevel(level);
+        if (random == null) {
+            throw new IllegalArgumentException("random cannot be null");
+        }
         this.type = type;
+        this.random = random;
     }
 
     private static ShooterPlantType requireType(ShooterPlantType type) {
@@ -159,9 +174,19 @@ public class Shooter extends BasePlant {
             return Collections.emptyList();
         }
         secondsSinceLastShot = 0.0;
+        projectileBoardRows = boardRows;
         int damage = getNextShotDamage();
         addPatternProjectiles(boardRows, type.getShotsPerDirection(), damage);
+        addRandomMegaGatlingPlantFood(boardRows);
         return drainProjectiles();
+    }
+
+    private void addRandomMegaGatlingPlantFood(int boardRows) {
+        if (type == ShooterPlantType.MEGA_GATLING_PEA
+                && random.nextDouble() < getPlantFoodChance()) {
+            plantFoodUsed = true;
+            addPlantFoodProjectiles(boardRows);
+        }
     }
 
     private int getNextShotDamage() {
@@ -178,6 +203,7 @@ public class Shooter extends BasePlant {
             return;
         }
         plantFoodUsed = true;
+        projectileBoardRows = boardRows;
         if (type == ShooterPlantType.SEA_SHROOM || type == ShooterPlantType.PUFF_SHROOM) {
             resetLifespan();
         }
@@ -186,9 +212,17 @@ public class Shooter extends BasePlant {
 
     private void addPlantFoodProjectiles(int boardRows) {
         int regularDamage = type.getDamage(getLevel());
-        if (type == ShooterPlantType.PEA_POD || type == ShooterPlantType.CITRON) {
+        if (type == ShooterPlantType.PEA_POD) {
             addPatternProjectiles(boardRows, 1,
                     regularDamage * type.getPlantFoodDamageMultiplier());
+            return;
+        }
+        if (type == ShooterPlantType.CITRON) {
+            addCitronPlantFoodProjectile(regularDamage);
+            return;
+        }
+        if (type == ShooterPlantType.THREEPEATER) {
+            addAllLaneProjectiles(boardRows, type.getPlantFoodShotCount(), regularDamage);
             return;
         }
         if (type == ShooterPlantType.BOWLING_BULB) {
@@ -197,6 +231,25 @@ public class Shooter extends BasePlant {
         }
         addPatternProjectiles(boardRows, type.getPlantFoodShotCount(), regularDamage);
         addPlantFoodGiantProjectiles(boardRows, regularDamage);
+    }
+
+    private void addCitronPlantFoodProjectile(int regularDamage) {
+        if (getEntityPosition() == null) {
+            return;
+        }
+        pendingProjectiles.add(new PiercingProjectile(getName(),
+                getEntityPosition().getRow(), getEntityPosition().getColumn() + 0.2,
+                Collections.singletonList(new DamageEffect(
+                        regularDamage * type.getPlantFoodDamageMultiplier())),
+                new LinearProjectileMovement(ProjectileDirection.RIGHT,
+                        PROJECTILE_SPEED_TILES_PER_SECOND),
+                Double.POSITIVE_INFINITY, Integer.MAX_VALUE));
+    }
+
+    private void addAllLaneProjectiles(int boardRows, int count, int damage) {
+        for (int row = 0; row < boardRows; row++) {
+            addDirectionalProjectiles(row, count, damage, ProjectileDirection.RIGHT);
+        }
     }
 
     private void addPlantFoodGiantProjectiles(int boardRows, int regularDamage) {
@@ -267,6 +320,15 @@ public class Shooter extends BasePlant {
         double column = getEntityPosition().getColumn();
         double startColumn = column + direction.getColumnComponent() * 0.2;
         double startRow = row + direction.getRowComponent() * 0.2;
+        if (type == ShooterPlantType.BOWLING_BULB) {
+            boolean upward = bowlingUpwardNext;
+            bowlingUpwardNext = !bowlingUpwardNext;
+            return new PiercingProjectile(type.getDisplayName(), startRow, startColumn,
+                    createEffects(damage),
+                    new BouncingProjectileMovement(PROJECTILE_SPEED_TILES_PER_SECOND,
+                            projectileBoardRows, upward),
+                    type.getRangeTiles(getLevel()), 3);
+        }
         return new Projectile(type.getDisplayName(), startRow, startColumn,
                 createEffects(damage),
                 new LinearProjectileMovement(direction, PROJECTILE_SPEED_TILES_PER_SECOND),
@@ -309,6 +371,10 @@ public class Shooter extends BasePlant {
 
     public void resetLifespan() {
         lifeSeconds = 0.0;
+    }
+
+    public void resetActionTimer() {
+        secondsSinceLastShot = type.getActionIntervalSeconds(getLevel());
     }
 
     public boolean drainFamilyBoostPending() {

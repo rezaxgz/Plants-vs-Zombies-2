@@ -45,7 +45,7 @@ public enum ModifierPlantType {
 
     ENCHANT_MINT(
             67, "Enchant-mint", Collections.emptySet(), 0, 0, 0,
-            "Applies plant food to all Magic-tagged plants on the lawn.",
+            "Applies plant food to all Modifier-family plants on the lawn.",
             "Instant consumable family effect.",
             "Duration +1s", "Cooldown -5s", "reset family cooldowns", 85.0f,
             ModifierBehavior.FAMILY_BOOST,

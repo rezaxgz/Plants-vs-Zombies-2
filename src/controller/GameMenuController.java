@@ -7,6 +7,7 @@ import java.util.regex.Matcher;
 import model.App;
 import model.CommandResult;
 import model.game.Game;
+import model.game.PlantFoodResult;
 import model.game.PlantPlacementResult;
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.BasePlant;
@@ -106,6 +107,79 @@ public final class GameMenuController {
                 .addPreCommandResults(preCommandResults).addPostCommandResults(game.drainResults());
     }
 
+    public static CommandResult handleCheatAddPlantFood(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> preCommandResults = game.drainResults();
+        if (!game.addPlantFood()) {
+            return CommandResult.error("plant food storage is full!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        return CommandResult.success("added one plant food; you have "
+                + game.getPlantFoodCount() + " plant foods now")
+                .addPreCommandResults(preCommandResults)
+                .addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleCheatRemoveCooldown(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+        List<String> preCommandResults = game.drainResults();
+        game.removePlantCooldowns();
+        return CommandResult.success("all plant cooldowns were removed")
+                .addPreCommandResults(preCommandResults)
+                .addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleFeedPlant(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> preCommandResults = game.drainResults();
+        int x;
+        int y;
+        try {
+            x = Integer.parseInt(matcher.group("x"));
+            y = Integer.parseInt(matcher.group("y"));
+        } catch (NumberFormatException exception) {
+            return CommandResult.error("plant location is invalid!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        if (!isInsideBoard(game, x, y)) {
+            return CommandResult.error("plant location is outside the board!")
+                    .addPreCommandResults(preCommandResults);
+        }
+
+        EntityPosition position = new EntityPosition(x, y);
+        PlantFoodResult result = game.feedPlantAt(position);
+        switch (result) {
+        case NO_PLANT_FOOD:
+            return CommandResult.error("you do not have any plant food!")
+                    .addPreCommandResults(preCommandResults);
+        case NO_PLANT:
+            return CommandResult.error("there is no plant at " + position + "!")
+                    .addPreCommandResults(preCommandResults);
+        case NO_EFFECT:
+            return CommandResult.error("the plant at " + position
+                    + " has no plant food effect!")
+                    .addPreCommandResults(preCommandResults);
+        case SUCCESS:
+            return CommandResult.success("fed the plant at " + position
+                    + "; " + game.getPlantFoodCount() + " plant foods remaining")
+                    .addPreCommandResults(preCommandResults)
+                    .addPostCommandResults(game.drainResults());
+        default:
+            throw new IllegalStateException("unknown plant food result: " + result);
+        }
+    }
+
     public static CommandResult handlePlant(Matcher matcher) {
         Game game = getCurrentGame();
         if (game == null) {
@@ -141,6 +215,12 @@ public final class GameMenuController {
             case NOT_ENOUGH_SUN:
                 return CommandResult.error("not enough suns to plant " + plant.getName() + "! required: "
                         + plant.getCost() + ", available: " + game.getSunCount())
+                        .addPreCommandResults(preCommandResults);
+            case COOLDOWN_ACTIVE:
+                return CommandResult.error(plant.getName() + " is recharging for "
+                        + String.format(Locale.ROOT, "%.1f",
+                                game.getPlantCooldownRemainingSeconds(plant))
+                        + " more seconds!")
                         .addPreCommandResults(preCommandResults);
             case POSITION_OCCUPIED:
                 return CommandResult.error("there is already a plant at " + position + "!")

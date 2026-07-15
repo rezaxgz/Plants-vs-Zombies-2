@@ -3,19 +3,23 @@ package model.game;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.PlantFamily;
 import model.game.entities.plants.PlantTag;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosiveBehavior;
 import model.game.entities.plants.explosive.ExplosivePlantType;
 import model.game.entities.plants.homing.Homing;
 import model.game.entities.plants.homing.HomingBehavior;
+import model.game.entities.plants.homing.HomingPlantType;
 import model.game.entities.plants.lobber.Lobber;
 import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
@@ -26,8 +30,11 @@ import model.game.entities.plants.modifier.ModifierPlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.strikeThrough.StrikeThrough;
+import model.game.entities.plants.strikeThrough.StrikeThroughPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
+import model.game.entities.plants.sunProducer.SunProducerPlantType;
 import model.game.entities.plants.wallnut.Wallnut;
+import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.projectile.BouncingGrape;
 import model.game.entities.projectile.HomingProjectile;
 import model.game.entities.projectile.LobbedProjectile;
@@ -52,12 +59,33 @@ public class Board {
     private static final int GRAPESHOT_PROJECTILE_COUNT = 8;
     private static final int FINISH_EXPLOSION_DAMAGE = 1800;
 
+    private static final class ActiveFamilyBoost {
+        private final PlantFamily family;
+        private final boolean resetCooldowns;
+        private final Set<BasePlant> affectedPlants;
+        private double remainingSeconds;
+
+        private ActiveFamilyBoost(PlantFamily family, double remainingSeconds,
+                boolean resetCooldowns) {
+            this.family = family;
+            this.remainingSeconds = remainingSeconds;
+            this.resetCooldowns = resetCooldowns;
+            this.affectedPlants = Collections.newSetFromMap(new IdentityHashMap<>());
+        }
+
+        private boolean isActive() {
+            return remainingSeconds > POSITION_EPSILON;
+        }
+    }
+
     private final int numberOfRows;
     private final int numberOfColumns;
     private final List<Tile> tiles;
     private final List<Entity> allEntities;
     private final List<BaseStructure> structures;
     private final List<String> pendingResults;
+    private final List<ActiveFamilyBoost> activeFamilyBoosts;
+    private final List<PlantFamily> pendingPlantCooldownResets;
 
     public Board() {
         this(Constants.DEFAULT_BOARD_ROWS, Constants.DEFAULT_BOARD_COLUMNS);
@@ -73,6 +101,8 @@ public class Board {
         this.allEntities = new ArrayList<>();
         this.structures = new ArrayList<>();
         this.pendingResults = new ArrayList<>();
+        this.activeFamilyBoosts = new ArrayList<>();
+        this.pendingPlantCooldownResets = new ArrayList<>();
         initializeTiles();
     }
 
@@ -86,6 +116,7 @@ public class Board {
 
     public void update(float deltaSeconds) {
         validateDeltaSeconds(deltaSeconds);
+        updateActiveFamilyBoosts(deltaSeconds);
 
         List<Entity> entitiesToAdd = new ArrayList<>();
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
@@ -107,10 +138,10 @@ public class Board {
         applyPendingHomingBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingExplosiveBoardEffects(updateSnapshot, entitiesToAdd);
-        applyPendingMeleeBoardEffects(updateSnapshot);
+        applyPendingMeleeBoardEffects(updateSnapshot, entitiesToAdd);
         activateReadyMelee(updateSnapshot);
         applyPendingModifierBoardEffects(updateSnapshot, entitiesToAdd);
-        applyPendingWallnutBoardEffects(updateSnapshot);
+        applyPendingWallnutBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingWallnutPassiveEffects(updateSnapshot);
         updateZombies(updateSnapshot, deltaSeconds);
         applyPendingModifierDeathEffects(updateSnapshot);
@@ -118,10 +149,67 @@ public class Board {
         cleanupRemovedEntities();
         for (Entity entity : entitiesToAdd) {
             if (entity instanceof BasePlant) {
-                addPlant((BasePlant) entity);
+                addPlantInternal((BasePlant) entity, false);
             } else {
                 addEntity(entity);
             }
+        }
+    }
+
+    private void updateActiveFamilyBoosts(float deltaSeconds) {
+        for (ActiveFamilyBoost boost : activeFamilyBoosts) {
+            boost.remainingSeconds -= deltaSeconds;
+        }
+        activeFamilyBoosts.removeIf(boost -> !boost.isActive());
+    }
+
+    private void activateFamilyBoost(PlantFamily family, double durationSeconds,
+            boolean resetCooldowns, BasePlant mint, List<Entity> entitiesToAdd,
+            String resultMessage) {
+        ActiveFamilyBoost boost = new ActiveFamilyBoost(family,
+                Math.max(durationSeconds, POSITION_EPSILON), resetCooldowns);
+        activeFamilyBoosts.add(boost);
+        if (resetCooldowns && !pendingPlantCooldownResets.contains(family)) {
+            pendingPlantCooldownResets.add(family);
+        }
+        for (BasePlant plant : getPlants()) {
+            if (plant != mint) {
+                applyFamilyBoostToPlant(boost, plant, entitiesToAdd);
+            }
+        }
+        mint.markForRemoval();
+        pendingResults.add(resultMessage + " The effect remains active for "
+                + formatDuration(durationSeconds) + " seconds.");
+    }
+
+    private static String formatDuration(double seconds) {
+        return String.format(java.util.Locale.ROOT, "%.1f", seconds);
+    }
+
+    private void applyFamilyBoostToPlant(ActiveFamilyBoost boost, BasePlant plant,
+            List<Entity> entitiesToAdd) {
+        if (!boost.family.contains(plant) || boost.affectedPlants.contains(plant)) {
+            return;
+        }
+        if (!applyPlantFoodToPlant(plant, entitiesToAdd)) {
+            return;
+        }
+        boost.affectedPlants.add(plant);
+        if (boost.resetCooldowns) {
+            resetPlantActionTimer(plant);
+        }
+    }
+
+    private void applyActiveFamilyBoostsToPlant(BasePlant plant) {
+        if (activeFamilyBoosts.isEmpty() || plant == null || PlantFamily.isMint(plant)) {
+            return;
+        }
+        List<Entity> spawnedEntities = new ArrayList<>();
+        for (ActiveFamilyBoost boost : activeFamilyBoosts) {
+            applyFamilyBoostToPlant(boost, plant, spawnedEntities);
+        }
+        for (Entity entity : spawnedEntities) {
+            addEntity(entity);
         }
     }
 
@@ -473,7 +561,7 @@ public class Board {
 
     private void applyPendingStrikeThroughBoardEffects(
             List<Entity> updateSnapshot, List<Entity> entitiesToAdd) {
-        applyStrikeThroughFamilyBoosts(updateSnapshot);
+        applyStrikeThroughFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
                 continue;
@@ -487,37 +575,25 @@ public class Board {
         }
     }
 
-    private void applyStrikeThroughFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyStrikeThroughFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
                 continue;
             }
             StrikeThrough mint = (StrikeThrough) entity;
             if (mint.drainFamilyBoostPending()) {
-                boostStrikeThroughFamily(mint);
+                activateFamilyBoost(PlantFamily.STRIKE_THROUGH,
+                        mint.getFamilyBoostDurationSeconds(),
+                        mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                        "Pierce-mint applied plant food to every Strike-through plant.");
             }
         }
-    }
-
-    private void boostStrikeThroughFamily(StrikeThrough mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof StrikeThrough) || plant == mint) {
-                continue;
-            }
-            StrikeThrough strikeThrough = (StrikeThrough) plant;
-            strikeThrough.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                strikeThrough.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add(
-                "Pierce-mint applied plant food to every Strike-through plant.");
     }
 
     private void applyPendingLobberBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
-        applyLobberFamilyBoosts(updateSnapshot);
+        applyLobberFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Lobber) || entity.isRemoved()) {
                 continue;
@@ -530,7 +606,8 @@ public class Board {
         }
     }
 
-    private void applyLobberFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyLobberFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Lobber) || entity.isRemoved()) {
                 continue;
@@ -539,23 +616,11 @@ public class Board {
             if (!mint.drainFamilyBoostPending()) {
                 continue;
             }
-            boostLobberFamily(mint);
+            activateFamilyBoost(PlantFamily.LOBBER,
+                    mint.getFamilyBoostDurationSeconds(),
+                    mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                    "Arma-mint applied plant food to every Lobber plant.");
         }
-    }
-
-    private void boostLobberFamily(Lobber mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Lobber) || plant == mint) {
-                continue;
-            }
-            Lobber lobber = (Lobber) plant;
-            lobber.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                lobber.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("Arma-mint applied plant food to every Lobber plant.");
     }
 
     private void warmTilesAroundPepperPult(Lobber lobber) {
@@ -605,16 +670,10 @@ public class Board {
     }
 
     private void applyShooterFamilyBoost(Shooter mint, List<Entity> entitiesToAdd) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Shooter) || plant == mint) {
-                continue;
-            }
-            Shooter shooter = (Shooter) plant;
-            shooter.usePlantFood(numberOfRows);
-            entitiesToAdd.addAll(shooter.drainProjectiles());
-        }
-        mint.markForRemoval();
-        pendingResults.add("Appease-mint applied plant food to every Shooter plant.");
+        activateFamilyBoost(PlantFamily.SHOOTER,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Appease-mint applied plant food to every Shooter plant.");
     }
 
     private void resolveProjectileImpacts(List<Entity> updateSnapshot) {
@@ -842,7 +901,7 @@ public class Board {
 
     private void applyPendingHomingBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
-        applyHomingFamilyBoosts(updateSnapshot);
+        applyHomingFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Homing) || entity.isRemoved()) {
                 continue;
@@ -854,31 +913,20 @@ public class Board {
         }
     }
 
-    private void applyHomingFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyHomingFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Homing) || entity.isRemoved()) {
                 continue;
             }
             Homing mint = (Homing) entity;
             if (mint.drainFamilyBoostPending()) {
-                boostHomingFamily(mint);
+                activateFamilyBoost(PlantFamily.HOMING,
+                        mint.getFamilyBoostDurationSeconds(),
+                        mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                        "catTail-mint applied plant food to every Homing plant.");
             }
         }
-    }
-
-    private void boostHomingFamily(Homing mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Homing) || plant == mint) {
-                continue;
-            }
-            Homing homing = (Homing) plant;
-            homing.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                homing.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("catTail-mint applied plant food to every Homing plant.");
     }
 
     private void applyHomingPlantFood(Homing plant,
@@ -988,21 +1036,15 @@ public class Board {
 
     private void applySunProducerFamilyBoost(SunProducer mint,
             List<Entity> entitiesToAdd) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof SunProducer) || plant == mint) {
-                continue;
-            }
-            SunProducer producer = (SunProducer) plant;
-            producer.usePlantFood();
-            collectProducedSuns(producer, entitiesToAdd);
-        }
-        mint.markForRemoval();
-        pendingResults.add("Enlighten-mint applied plant food to every Sun Producer plant.");
+        activateFamilyBoost(PlantFamily.SUN_PRODUCER,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Enlighten-mint applied plant food to every Sun Producer plant.");
     }
 
     private void applyPendingExplosiveBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
-        applyExplosiveFamilyBoosts(updateSnapshot);
+        applyExplosiveFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Explosive) || entity.isRemoved()) {
                 continue;
@@ -1016,7 +1058,8 @@ public class Board {
         }
     }
 
-    private void applyExplosiveFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyExplosiveFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Explosive) || entity.isRemoved()) {
                 continue;
@@ -1025,17 +1068,10 @@ public class Board {
             if (!mint.drainFamilyBoostPending()) {
                 continue;
             }
-            for (BasePlant plant : getPlants()) {
-                if (plant instanceof Explosive && plant != mint) {
-                    Explosive explosive = (Explosive) plant;
-                    explosive.usePlantFood();
-                    if (mint.resetsFamilyCooldowns()) {
-                        explosive.resetActionTimer();
-                    }
-                }
-            }
-            mint.markForRemoval();
-            pendingResults.add("Bombard-mint applied plant food to every Explosive plant.");
+            activateFamilyBoost(PlantFamily.EXPLOSIVE,
+                    mint.getFamilyBoostDurationSeconds(),
+                    mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                    "Bombard-mint applied plant food to every Explosive plant.");
         }
     }
 
@@ -1330,8 +1366,9 @@ public class Board {
         }
     }
 
-    private void applyPendingMeleeBoardEffects(List<Entity> updateSnapshot) {
-        applyMeleeFamilyBoosts(updateSnapshot);
+    private void applyPendingMeleeBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        applyMeleeFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Melee) || entity.isRemoved()) {
                 continue;
@@ -1344,7 +1381,8 @@ public class Board {
         }
     }
 
-    private void applyMeleeFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyMeleeFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Melee) || entity.isRemoved()) {
                 continue;
@@ -1353,23 +1391,11 @@ public class Board {
             if (!mint.drainFamilyBoostPending()) {
                 continue;
             }
-            boostMeleeFamily(mint);
+            activateFamilyBoost(PlantFamily.MELEE,
+                    mint.getFamilyBoostDurationSeconds(),
+                    mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                    "Enforce-mint applied plant food to every Melee plant.");
         }
-    }
-
-    private void boostMeleeFamily(Melee mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Melee) || plant == mint) {
-                continue;
-            }
-            Melee melee = (Melee) plant;
-            melee.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                melee.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("Enforce-mint applied plant food to every Melee plant.");
     }
 
     private void warmTilesAroundWasabiWhip(Melee melee) {
@@ -1634,28 +1660,19 @@ public class Board {
     }
 
     private void applyEnchantMint(Modifier mint, List<Entity> entitiesToAdd) {
-        int affectedPlants = 0;
-        for (BasePlant plant : getPlants()) {
-            if (plant == mint || !plant.getTags().contains(PlantTag.MAGIC)) {
-                continue;
-            }
-            applyPlantFoodToPlant(plant, entitiesToAdd);
-            if (mint.resetsFamilyCooldowns()) {
-                resetPlantActionTimer(plant);
-            }
-            affectedPlants++;
-        }
-        mint.markForRemoval();
-        pendingResults.add("Enchant-mint applied plant food to "
-                + affectedPlants + " Magic plant(s).");
+        activateFamilyBoost(PlantFamily.MODIFIER,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Enchant-mint applied plant food to every Modifier plant.");
     }
 
-    private void applyPlantFoodToPlant(BasePlant plant,
+    private boolean applyPlantFoodToPlant(BasePlant plant,
             List<Entity> entitiesToAdd) {
+        if (!supportsPlantFood(plant)) {
+            return false;
+        }
         if (plant instanceof Shooter) {
-            Shooter shooter = (Shooter) plant;
-            shooter.usePlantFood(numberOfRows);
-            entitiesToAdd.addAll(shooter.drainProjectiles());
+            applyShooterPlantFood((Shooter) plant, entitiesToAdd);
         } else if (plant instanceof SunProducer) {
             SunProducer producer = (SunProducer) plant;
             producer.usePlantFood();
@@ -1675,10 +1692,92 @@ public class Board {
         } else if (plant instanceof Modifier) {
             ((Modifier) plant).usePlantFood();
         }
+        return true;
+    }
+
+    private void applyShooterPlantFood(Shooter shooter,
+            List<Entity> entitiesToAdd) {
+        shooter.usePlantFood(numberOfRows);
+        entitiesToAdd.addAll(shooter.drainProjectiles());
+        resetTemporaryShooterFamily(shooter);
+        freezeSnowPeaLane(shooter);
+    }
+
+    private void resetTemporaryShooterFamily(Shooter source) {
+        ShooterPlantType type = source.getType();
+        if (type != ShooterPlantType.SEA_SHROOM
+                && type != ShooterPlantType.PUFF_SHROOM) {
+            return;
+        }
+        for (BasePlant plant : getPlants()) {
+            if (plant instanceof Shooter && ((Shooter) plant).getType() == type) {
+                ((Shooter) plant).resetLifespan();
+            }
+        }
+    }
+
+    private void freezeSnowPeaLane(Shooter shooter) {
+        if (shooter.getType() != ShooterPlantType.SNOW_PEA
+                || shooter.getEntityPosition() == null) {
+            return;
+        }
+        int lane = shooter.getEntityPosition().getRow();
+        for (Zombie zombie : getZombies()) {
+            if (!zombie.isDead() && !zombie.isHypnotized()
+                    && zombie.getLane() == lane) {
+                zombie.applyFreeze(shooter.getChillDurationSeconds());
+            }
+        }
+    }
+
+    private static boolean supportsPlantFood(BasePlant plant) {
+        if (plant == null || plant.isRemoved() || PlantFamily.isMint(plant)) {
+            return false;
+        }
+        if (plant instanceof SunProducer) {
+            SunProducerPlantType type = ((SunProducer) plant).getType();
+            return type != SunProducerPlantType.GOLD_BLOOM;
+        }
+        if (plant instanceof Explosive) {
+            ExplosivePlantType type = ((Explosive) plant).getType();
+            return type == ExplosivePlantType.POTATO_MINE
+                    || type == ExplosivePlantType.PRIMAL_POTATO_MINE
+                    || type == ExplosivePlantType.SQUASH
+                    || type == ExplosivePlantType.TANGLE_KELP
+                    || type == ExplosivePlantType.ICEBERG_LETTUCE;
+        }
+        if (plant instanceof Modifier) {
+            ModifierPlantType type = ((Modifier) plant).getType();
+            return type == ModifierPlantType.TORCHWOOD
+                    || type == ModifierPlantType.HYPNO_SHROOM
+                    || type == ModifierPlantType.LILY_PAD;
+        }
+        if (plant instanceof Shooter) {
+            return ((Shooter) plant).getType() != ShooterPlantType.APPEASE_MINT;
+        }
+        if (plant instanceof Lobber) {
+            return ((Lobber) plant).getType() != LobberPlantType.ARMA_MINT;
+        }
+        if (plant instanceof StrikeThrough) {
+            return ((StrikeThrough) plant).getType()
+                    != StrikeThroughPlantType.PIERCE_MINT;
+        }
+        if (plant instanceof Homing) {
+            return ((Homing) plant).getType() != HomingPlantType.CAT_TAIL_MINT;
+        }
+        if (plant instanceof Melee) {
+            return ((Melee) plant).getType() != MeleePlantType.ENFORCE_MINT;
+        }
+        return plant instanceof Wallnut
+                && ((Wallnut) plant).getType() != WallnutPlantType.REINFORCE_MINT;
     }
 
     private static void resetPlantActionTimer(BasePlant plant) {
-        if (plant instanceof Explosive) {
+        if (plant instanceof Shooter) {
+            ((Shooter) plant).resetActionTimer();
+        } else if (plant instanceof SunProducer) {
+            ((SunProducer) plant).resetActionTimer();
+        } else if (plant instanceof Explosive) {
             ((Explosive) plant).resetActionTimer();
         } else if (plant instanceof Melee) {
             ((Melee) plant).resetActionTimer();
@@ -1767,29 +1866,27 @@ public class Board {
         }
     }
 
-    private void applyPendingWallnutBoardEffects(List<Entity> updateSnapshot) {
+    private void applyPendingWallnutBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Wallnut) || entity.isRemoved()) {
                 continue;
             }
             Wallnut wallnut = (Wallnut) entity;
-            applyFamilyBoost(wallnut);
+            applyFamilyBoost(wallnut, entitiesToAdd);
             applyGarlicPlantFood(wallnut);
             applySweetPotatoPlantFood(wallnut);
         }
     }
 
-    private void applyFamilyBoost(Wallnut mint) {
+    private void applyFamilyBoost(Wallnut mint, List<Entity> entitiesToAdd) {
         if (!mint.drainFamilyBoostPending()) {
             return;
         }
-        for (BasePlant plant : getPlants()) {
-            if (plant instanceof Wallnut && plant != mint) {
-                ((Wallnut) plant).usePlantFood();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("Reinforce-mint applied plant food to every Wall-nut family plant.");
+        activateFamilyBoost(PlantFamily.WALL_NUT,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Reinforce-mint applied plant food to every Wall-nut family plant.");
     }
 
     private void applyGarlicPlantFood(Wallnut garlic) {
@@ -2207,6 +2304,11 @@ public class Board {
     }
 
     public boolean addPlant(BasePlant requestedPlant) {
+        return addPlantInternal(requestedPlant, true);
+    }
+
+    private boolean addPlantInternal(BasePlant requestedPlant,
+            boolean applyActiveFamilyBoosts) {
         if (!canAddPlant(requestedPlant)) {
             return false;
         }
@@ -2217,6 +2319,9 @@ public class Board {
             tile.setPlant(plant);
         }
         applyImitaterEntranceEffect(requestedPlant, plant);
+        if (applyActiveFamilyBoosts) {
+            applyActiveFamilyBoostsToPlant(plant);
+        }
         return true;
     }
 
@@ -2234,6 +2339,39 @@ public class Board {
         for (Entity entity : spawnedEntities) {
             addEntity(entity);
         }
+    }
+
+    public PlantFoodResult usePlantFoodAt(EntityPosition position) {
+        BasePlant plant = getPlantAt(position);
+        if (plant == null) {
+            return PlantFoodResult.NO_PLANT;
+        }
+        List<Entity> spawnedEntities = new ArrayList<>();
+        boolean applied = applyPlantFoodAtPosition(plant, position, spawnedEntities);
+        if (!applied) {
+            return PlantFoodResult.NO_EFFECT;
+        }
+        for (Entity entity : spawnedEntities) {
+            addEntity(entity);
+        }
+        pendingResults.add(plant.getName() + " received plant food.");
+        return PlantFoodResult.SUCCESS;
+    }
+
+    private boolean applyPlantFoodAtPosition(BasePlant plant, EntityPosition position,
+            List<Entity> spawnedEntities) {
+        if (!(plant instanceof Shooter)
+                || ((Shooter) plant).getType() != ShooterPlantType.PEA_POD) {
+            return applyPlantFoodToPlant(plant, spawnedEntities);
+        }
+        boolean applied = false;
+        for (BasePlant stackedPlant : getPlantsAt(position)) {
+            if (stackedPlant instanceof Shooter
+                    && ((Shooter) stackedPlant).getType() == ShooterPlantType.PEA_POD) {
+                applied |= applyPlantFoodToPlant(stackedPlant, spawnedEntities);
+            }
+        }
+        return applied;
     }
 
     public boolean removeEntity(Entity entity) {
@@ -2338,6 +2476,8 @@ public class Board {
 
     public boolean isPositionInsideBoard(EntityPosition position) {
         return position != null
+                && position.getRow() >= 0
+                && position.getColumn() >= 0
                 && position.getRow() < numberOfRows
                 && position.getColumn() < numberOfColumns;
     }
@@ -2443,6 +2583,15 @@ public class Board {
         if (removed instanceof Grave) {
             pendingResults.add("Grave at " + position + " was destroyed.");
         }
+    }
+
+    public List<PlantFamily> drainPlantCooldownResetRequests() {
+        if (pendingPlantCooldownResets.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<PlantFamily> result = new ArrayList<>(pendingPlantCooldownResets);
+        pendingPlantCooldownResets.clear();
+        return Collections.unmodifiableList(result);
     }
 
     public List<Entity> getAllEntities() {

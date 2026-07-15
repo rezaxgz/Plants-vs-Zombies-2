@@ -84,6 +84,10 @@ public abstract class BasePlant extends Entity {
         return damage;
     }
 
+    public float getRechargeSeconds() {
+        return 0.0f;
+    }
+
     public void takeDamage(int damageAmount) {
         if (damageAmount < 0) {
             throw new IllegalArgumentException("damageAmount cannot be negative");
