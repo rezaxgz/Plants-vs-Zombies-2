@@ -13,6 +13,8 @@ import model.game.entities.plants.PlantTag;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosiveBehavior;
 import model.game.entities.plants.explosive.ExplosivePlantType;
+import model.game.entities.plants.lobber.Lobber;
+import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
 import model.game.entities.plants.melee.MeleeBehavior;
 import model.game.entities.plants.melee.MeleePlantType;
@@ -21,8 +23,11 @@ import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.wallnut.Wallnut;
 import model.game.entities.projectile.BouncingGrape;
+import model.game.entities.projectile.LobbedProjectile;
 import model.game.entities.projectile.Projectile;
+import model.game.entities.projectile.effect.ProjectileEffect;
 import model.game.entities.zombies.Zombie;
+import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
@@ -78,10 +83,13 @@ public class Board {
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
         updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
         resolveProjectileImpacts(updateSnapshot);
+        resolveLobbedProjectileImpacts(updateSnapshot);
         resolveGrapeImpacts(updateSnapshot);
         reportDeadZombies(updateSnapshot);
         activateReadyShooters(updateSnapshot, entitiesToAdd);
+        activateReadyLobbers(updateSnapshot, entitiesToAdd);
         applyPendingShooterBoardEffects(updateSnapshot, entitiesToAdd);
+        applyPendingLobberBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingExplosiveBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingMeleeBoardEffects(updateSnapshot);
@@ -166,6 +174,123 @@ public class Board {
         return false;
     }
 
+    private void activateReadyLobbers(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Lobber) || entity.isRemoved()) {
+                continue;
+            }
+            Lobber lobber = (Lobber) entity;
+            if (!lobber.isReadyToAttack()) {
+                continue;
+            }
+            Zombie target = findFirstLobberTarget(lobber);
+            if (target == null) {
+                continue;
+            }
+            LobbedProjectile projectile = lobber.shoot(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+    }
+
+    private Zombie findFirstLobberTarget(Lobber lobber) {
+        EntityPosition position = lobber.getEntityPosition();
+        if (position == null) {
+            return null;
+        }
+        Zombie nearest = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isDead() || zombie.getLane() != position.getRow()) {
+                continue;
+            }
+            double distance = zombie.getColumnPosition() - position.getColumn();
+            if (distance > POSITION_EPSILON && distance < nearestDistance) {
+                nearest = zombie;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    private void applyPendingLobberBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        applyLobberFamilyBoosts(updateSnapshot);
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Lobber) || entity.isRemoved()) {
+                continue;
+            }
+            Lobber lobber = (Lobber) entity;
+            warmTilesAroundPepperPult(lobber);
+            if (lobber.drainPlantFoodPending()) {
+                addLobberPlantFoodProjectiles(lobber, entitiesToAdd);
+            }
+        }
+    }
+
+    private void applyLobberFamilyBoosts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Lobber) || entity.isRemoved()) {
+                continue;
+            }
+            Lobber mint = (Lobber) entity;
+            if (!mint.drainFamilyBoostPending()) {
+                continue;
+            }
+            boostLobberFamily(mint);
+        }
+    }
+
+    private void boostLobberFamily(Lobber mint) {
+        for (BasePlant plant : getPlants()) {
+            if (!(plant instanceof Lobber) || plant == mint) {
+                continue;
+            }
+            Lobber lobber = (Lobber) plant;
+            lobber.usePlantFood();
+            if (mint.resetsFamilyCooldowns()) {
+                lobber.resetActionTimer();
+            }
+        }
+        mint.markForRemoval();
+        pendingResults.add("Arma-mint applied plant food to every Lobber plant.");
+    }
+
+    private void warmTilesAroundPepperPult(Lobber lobber) {
+        if (lobber.getType() == LobberPlantType.PEPPER_PULT
+                && lobber.getEntityPosition() != null) {
+            meltFrozenTiles(lobber.getEntityPosition(), lobber.getWarmthRadius());
+        }
+    }
+
+    private void addLobberPlantFoodProjectiles(Lobber lobber,
+            List<Entity> entitiesToAdd) {
+        List<Zombie> targets = getLobberPlantFoodTargets(lobber);
+        for (Zombie target : targets) {
+            LobbedProjectile projectile = lobber.createPlantFoodProjectile(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+        if (!targets.isEmpty()) {
+            pendingResults.add(lobber.getName() + " used its plant food effect.");
+        }
+    }
+
+    private List<Zombie> getLobberPlantFoodTargets(Lobber lobber) {
+        List<Zombie> candidates = new ArrayList<>();
+        for (Zombie zombie : getZombies()) {
+            if (!zombie.isDead()) {
+                candidates.add(zombie);
+            }
+        }
+        Collections.shuffle(candidates);
+        int targetCount = Math.min(lobber.getPlantFoodTargetCount(), candidates.size());
+        return new ArrayList<>(candidates.subList(0, targetCount));
+    }
+
     private void applyPendingShooterBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
@@ -194,7 +319,8 @@ public class Board {
 
     private void resolveProjectileImpacts(List<Entity> updateSnapshot) {
         for (Entity entity : updateSnapshot) {
-            if (!(entity instanceof Projectile) || entity.isRemoved()) {
+            if (!(entity instanceof Projectile) || entity instanceof LobbedProjectile
+                    || entity.isRemoved()) {
                 continue;
             }
             Projectile projectile = (Projectile) entity;
@@ -232,6 +358,99 @@ public class Board {
                 || projectile.getRowPosition() > numberOfRows - 1 + PROJECTILE_BOARD_MARGIN
                 || projectile.getColumnPosition() < -PROJECTILE_BOARD_MARGIN
                 || projectile.getColumnPosition() > numberOfColumns - 1 + PROJECTILE_BOARD_MARGIN;
+    }
+
+    private void resolveLobbedProjectileImpacts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof LobbedProjectile) || entity.isRemoved()) {
+                continue;
+            }
+            LobbedProjectile projectile = (LobbedProjectile) entity;
+            if (!projectile.hasLanded()) {
+                continue;
+            }
+            Zombie target = findLobbedLandingTarget(projectile);
+            if (target == null || isProtectedFromLobbers(target)) {
+                projectile.markForRemoval();
+                continue;
+            }
+            projectile.hit(target);
+            applyLobbedSplash(projectile, target);
+            reportDeadLobberTargets();
+        }
+    }
+
+    private Zombie findLobbedLandingTarget(LobbedProjectile projectile) {
+        Zombie lockedTarget = projectile.getLockedTarget();
+        if (isAtLobbedLandingPoint(lockedTarget, projectile)) {
+            return lockedTarget;
+        }
+        Zombie nearest = null;
+        double nearestDistanceSquared = Double.POSITIVE_INFINITY;
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isDead()) {
+                continue;
+            }
+            double rowDelta = zombie.getLane() - projectile.getLandingRow();
+            double columnDelta = zombie.getColumnPosition() - projectile.getLandingColumn();
+            double distanceSquared = rowDelta * rowDelta + columnDelta * columnDelta;
+            if (distanceSquared <= PROJECTILE_COLLISION_RADIUS * PROJECTILE_COLLISION_RADIUS
+                    && distanceSquared < nearestDistanceSquared) {
+                nearest = zombie;
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+        return nearest;
+    }
+
+    private static boolean isAtLobbedLandingPoint(Zombie zombie,
+            LobbedProjectile projectile) {
+        if (zombie == null || zombie.isDead() || zombie.isRemoved()) {
+            return false;
+        }
+        double rowDelta = zombie.getLane() - projectile.getLandingRow();
+        double columnDelta = zombie.getColumnPosition() - projectile.getLandingColumn();
+        return rowDelta * rowDelta + columnDelta * columnDelta
+                <= PROJECTILE_COLLISION_RADIUS * PROJECTILE_COLLISION_RADIUS;
+    }
+
+    private void applyLobbedSplash(LobbedProjectile projectile, Zombie directTarget) {
+        if (projectile.getSplashEffects().isEmpty()
+                || projectile.getSplashRadiusTiles() <= 0.0) {
+            return;
+        }
+        for (Zombie zombie : getZombies()) {
+            if (zombie == directTarget || zombie.isDead()
+                    || isProtectedFromLobbers(zombie)
+                    || !isInsideLobbedSplash(zombie, projectile)) {
+                continue;
+            }
+            for (ProjectileEffect effect : projectile.getSplashEffects()) {
+                if (zombie.isDead()) {
+                    break;
+                }
+                effect.apply(zombie);
+            }
+        }
+    }
+
+    private static boolean isProtectedFromLobbers(Zombie zombie) {
+        return zombie != null && zombie.getType() == ZombieType.LOST_CITY_JANE;
+    }
+
+    private static boolean isInsideLobbedSplash(Zombie zombie,
+            LobbedProjectile projectile) {
+        double radius = projectile.getSplashRadiusTiles();
+        return Math.abs(zombie.getLane() - projectile.getLandingRow()) <= radius
+                && Math.abs(zombie.getColumnPosition() - projectile.getLandingColumn()) <= radius;
+    }
+
+    private void reportDeadLobberTargets() {
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isDead()) {
+                reportZombieDeath(zombie);
+            }
+        }
     }
 
     private void resolveGrapeImpacts(List<Entity> updateSnapshot) {

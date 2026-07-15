@@ -3,6 +3,8 @@ package model.game.entities.plants;
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosivePlantType;
+import model.game.entities.plants.lobber.Lobber;
+import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
 import model.game.entities.plants.melee.MeleePlantType;
 import model.game.entities.plants.shooter.Shooter;
@@ -33,6 +35,12 @@ public final class PlantFactory {
         if (shooter != null) {
             return shooter;
         }
+        BasePlant lobber = LobberPlantType.findByName(typeName)
+                .map(type -> createLobber(type, level, position))
+                .orElse(null);
+        if (lobber != null) {
+            return lobber;
+        }
         BasePlant explosive = ExplosivePlantType.findByName(typeName)
                 .map(type -> createExplosive(type, level, position))
                 .orElse(null);
@@ -59,6 +67,14 @@ public final class PlantFactory {
         return new SunProducer(type, level, position);
     }
 
+    public static Lobber createLobber(LobberPlantType type, EntityPosition position) {
+        return createLobber(type, 1, position);
+    }
+
+    public static Lobber createLobber(LobberPlantType type, int level,
+            EntityPosition position) {
+        return new Lobber(type, level, position);
+    }
 
     public static Explosive createExplosive(ExplosivePlantType type,
             EntityPosition position) {
