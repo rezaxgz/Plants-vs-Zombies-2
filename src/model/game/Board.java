@@ -9,22 +9,32 @@ import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.PlantTag;
+import model.game.entities.plants.explosive.Explosive;
+import model.game.entities.plants.explosive.ExplosiveBehavior;
+import model.game.entities.plants.explosive.ExplosivePlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.wallnut.Wallnut;
+import model.game.entities.projectile.BouncingGrape;
 import model.game.entities.projectile.Projectile;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
+import model.game.structure.Grave;
 import model.game.tile.Tile;
+import model.game.tile.TileType;
 
 public class Board {
     private static final double POSITION_EPSILON = 0.000001;
     private static final double SWEET_POTATO_ATTRACTION_RANGE = 1.0;
     private static final double PROJECTILE_COLLISION_RADIUS = 0.35;
     private static final double PROJECTILE_BOARD_MARGIN = 0.5;
+    private static final double GRAPE_COLLISION_RADIUS = 0.35;
+    private static final int GRAPESHOT_PROJECTILE_COUNT = 8;
+    private static final int FINISH_EXPLOSION_DAMAGE = 1800;
 
     private final int numberOfRows;
     private final int numberOfColumns;
@@ -47,6 +57,15 @@ public class Board {
         this.allEntities = new ArrayList<>();
         this.structures = new ArrayList<>();
         this.pendingResults = new ArrayList<>();
+        initializeTiles();
+    }
+
+    private void initializeTiles() {
+        for (int row = 0; row < numberOfRows; row++) {
+            for (int column = 0; column < numberOfColumns; column++) {
+                tiles.add(new Tile(new EntityPosition(row, column), TileType.NORMAL));
+            }
+        }
     }
 
     public void update(float deltaSeconds) {
@@ -56,18 +75,32 @@ public class Board {
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
         updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
         resolveProjectileImpacts(updateSnapshot);
+        resolveGrapeImpacts(updateSnapshot);
         reportDeadZombies(updateSnapshot);
         activateReadyShooters(updateSnapshot, entitiesToAdd);
         applyPendingShooterBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
+        applyPendingExplosiveBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingWallnutBoardEffects(updateSnapshot);
         applyPendingWallnutPassiveEffects(updateSnapshot);
         updateZombies(updateSnapshot, deltaSeconds);
 
-        allEntities.removeIf(Entity::isRemoved);
+        cleanupRemovedEntities();
         for (Entity entity : entitiesToAdd) {
             addEntity(entity);
         }
+    }
+
+    private void cleanupRemovedEntities() {
+        for (Entity entity : allEntities) {
+            if (entity.isRemoved() && entity instanceof BasePlant) {
+                Tile tile = getTileAt(entity.getEntityPosition());
+                if (tile != null && tile.getPlant() == entity) {
+                    tile.clearPlant();
+                }
+            }
+        }
+        allEntities.removeIf(Entity::isRemoved);
     }
 
     private void updateEntities(List<Entity> updateSnapshot, List<Entity> entitiesToAdd,
@@ -196,6 +229,40 @@ public class Board {
                 || projectile.getColumnPosition() > numberOfColumns - 1 + PROJECTILE_BOARD_MARGIN;
     }
 
+    private void resolveGrapeImpacts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof BouncingGrape) || entity.isRemoved()) {
+                continue;
+            }
+            BouncingGrape grape = (BouncingGrape) entity;
+            grape.bounceInside(numberOfRows, numberOfColumns);
+            Zombie target = findFirstZombieHit(grape);
+            if (target != null) {
+                grape.hit(target);
+                if (target.isDead()) {
+                    reportZombieDeath(target);
+                }
+            }
+        }
+    }
+
+    private Zombie findFirstZombieHit(BouncingGrape grape) {
+        Zombie firstTarget = null;
+        double firstParameter = Double.POSITIVE_INFINITY;
+        for (Zombie zombie : getZombies()) {
+            if (!grape.canHit(zombie) || zombie.isSubmerged()) {
+                continue;
+            }
+            double parameter = grape.getIntersectionParameter(
+                    zombie.getLane(), zombie.getColumnPosition(), GRAPE_COLLISION_RADIUS);
+            if (!Double.isNaN(parameter) && parameter < firstParameter) {
+                firstParameter = parameter;
+                firstTarget = zombie;
+            }
+        }
+        return firstTarget;
+    }
+
     private void reportDeadZombies(List<Entity> updateSnapshot) {
         for (Entity entity : updateSnapshot) {
             if (entity instanceof Zombie && ((Zombie) entity).isDead()) {
@@ -231,6 +298,346 @@ public class Board {
         }
         mint.markForRemoval();
         pendingResults.add("Enlighten-mint applied plant food to every Sun Producer plant.");
+    }
+
+    private void applyPendingExplosiveBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        applyExplosiveFamilyBoosts(updateSnapshot);
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Explosive) || entity.isRemoved()) {
+                continue;
+            }
+            Explosive explosive = (Explosive) entity;
+            triggerContactExplosive(explosive);
+            applyExplosivePlantFoodEffects(explosive, entitiesToAdd);
+            if (explosive.drainActivationPending()) {
+                executeExplosiveActivation(explosive, entitiesToAdd);
+            }
+        }
+    }
+
+    private void applyExplosiveFamilyBoosts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Explosive) || entity.isRemoved()) {
+                continue;
+            }
+            Explosive mint = (Explosive) entity;
+            if (!mint.drainFamilyBoostPending()) {
+                continue;
+            }
+            for (BasePlant plant : getPlants()) {
+                if (plant instanceof Explosive && plant != mint) {
+                    Explosive explosive = (Explosive) plant;
+                    explosive.usePlantFood();
+                    if (mint.resetsFamilyCooldowns()) {
+                        explosive.resetActionTimer();
+                    }
+                }
+            }
+            mint.markForRemoval();
+            pendingResults.add("Bombard-mint applied plant food to every Explosive plant.");
+        }
+    }
+
+    private void triggerContactExplosive(Explosive explosive) {
+        if (!explosive.canTriggerOnContact()) {
+            return;
+        }
+        if (findExplosiveTriggerTarget(explosive) != null) {
+            explosive.trigger();
+        }
+    }
+
+    private Zombie findExplosiveTriggerTarget(Explosive explosive) {
+        if (explosive.getEntityPosition() == null) {
+            return null;
+        }
+        Zombie closest = null;
+        double closestDistance = Double.POSITIVE_INFINITY;
+        int lane = explosive.getEntityPosition().getRow();
+        double column = explosive.getEntityPosition().getColumn();
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isDead() || zombie.getLane() != lane) {
+                continue;
+            }
+            if (explosive.getType().getBehavior() == ExplosiveBehavior.WATER_TRAP
+                    && !isWaterZombie(zombie)) {
+                continue;
+            }
+            double distance = Math.abs(zombie.getColumnPosition() - column);
+            if (distance <= explosive.getType().getTriggerRangeTiles()
+                    && distance < closestDistance) {
+                closest = zombie;
+                closestDistance = distance;
+            }
+        }
+        return closest;
+    }
+
+    private boolean isWaterZombie(Zombie zombie) {
+        if (zombie.isSubmerged()) {
+            return true;
+        }
+        int column = Math.max(0, Math.min(numberOfColumns - 1,
+                (int) Math.floor(zombie.getColumnPosition())));
+        Tile tile = getTileAt(new EntityPosition(zombie.getLane(), column));
+        return tile != null && tile.getTileType() == TileType.WATER;
+    }
+
+    private void applyExplosivePlantFoodEffects(Explosive explosive,
+            List<Entity> entitiesToAdd) {
+        spawnArmedMineClones(explosive, explosive.drainCloneMineCount(), entitiesToAdd);
+        if (explosive.drainGlobalFreezePending()) {
+            freezeAllZombies(explosive.getFreezeDurationSeconds());
+            pendingResults.add(explosive.getName() + " froze every zombie with plant food.");
+        }
+        crushMultipleZombies(explosive, explosive.drainPlantFoodSquashTargetCount());
+        drownMultipleZombies(explosive, explosive.drainPlantFoodKelpTargetCount());
+    }
+
+    private void spawnArmedMineClones(Explosive source, int count,
+            List<Entity> entitiesToAdd) {
+        if (count <= 0 || source.getEntityPosition() == null) {
+            return;
+        }
+        List<EntityPosition> reserved = new ArrayList<>();
+        for (int offset = 1; offset <= numberOfRows * numberOfColumns && count > 0; offset++) {
+            int flatIndex = source.getEntityPosition().getRow() * numberOfColumns
+                    + source.getEntityPosition().getColumn() + offset;
+            int row = Math.floorMod(flatIndex / numberOfColumns, numberOfRows);
+            int column = Math.floorMod(flatIndex, numberOfColumns);
+            EntityPosition position = new EntityPosition(row, column);
+            if (reserved.contains(position)) {
+                continue;
+            }
+            Explosive clone = Explosive.createArmedClone(
+                    source.getType(), source.getLevel(), position);
+            if (canAddPlant(clone)) {
+                reserved.add(position);
+                entitiesToAdd.add(clone);
+                count--;
+            }
+        }
+    }
+
+    private void crushMultipleZombies(Explosive explosive, int targetCount) {
+        if (targetCount <= 0) {
+            return;
+        }
+        for (Zombie zombie : getZombies()) {
+            if (targetCount <= 0) {
+                break;
+            }
+            zombie.takeDamage(explosive.getDamage());
+            if (zombie.isDead()) {
+                reportZombieDeath(zombie);
+            }
+            targetCount--;
+        }
+        pendingResults.add(explosive.getName() + " crushed zombies with plant food.");
+    }
+
+    private void drownMultipleZombies(Explosive explosive, int targetCount) {
+        if (targetCount <= 0) {
+            return;
+        }
+        for (Zombie zombie : getZombies()) {
+            if (targetCount <= 0) {
+                break;
+            }
+            if (!isWaterZombie(zombie)) {
+                continue;
+            }
+            zombie.kill();
+            reportZombieDeath(zombie);
+            targetCount--;
+        }
+        pendingResults.add(explosive.getName() + " pulled water zombies underwater.");
+    }
+
+    private void executeExplosiveActivation(Explosive explosive,
+            List<Entity> entitiesToAdd) {
+        EntityPosition center = explosive.getEntityPosition();
+        if (center == null) {
+            explosive.finishActivation();
+            return;
+        }
+        switch (explosive.getType().getBehavior()) {
+        case CONTACT_MINE:
+            damageArea(center, 0, 0.75, explosive.getDamage(), false);
+            break;
+        case AREA_CONTACT_MINE:
+        case INSTANT_AREA:
+            damageArea(center, 1, 1.0, explosive.getDamage(), false);
+            break;
+        case SQUASH:
+            damageExplosiveTriggerTarget(explosive);
+            break;
+        case GRAPESHOT:
+            damageArea(center, 1, 1.0, explosive.getDamage(), false);
+            addGrapeshotProjectiles(explosive, entitiesToAdd);
+            break;
+        case LANE_FIRE:
+            damageLaneWithFire(center.getRow(), explosive.getDamage());
+            meltLane(center.getRow());
+            break;
+        case WHOLE_BOARD:
+            damageAllZombies(explosive.getDamage());
+            setTileType(center, TileType.CRATER);
+            break;
+        case WATER_TRAP:
+            killWaterTargets(explosive, explosive.getTargetCount());
+            break;
+        case FREEZE_TRAP:
+            freezeExplosiveTriggerTarget(explosive);
+            break;
+        case WHOLE_BOARD_FREEZE:
+            damageAllZombies(explosive.getDamage());
+            freezeAllZombies(explosive.getFreezeDurationSeconds());
+            break;
+        case MELT_ICE:
+            meltFrozenTiles(center, explosive.getMeltRadius());
+            applyFinishExplosion(explosive);
+            break;
+        case CONSUME_GRAVE:
+            removeGraveAt(center);
+            applyFinishExplosion(explosive);
+            break;
+        case FAMILY_BOOST:
+            break;
+        default:
+            throw new IllegalStateException("Unknown explosive behavior: "
+                    + explosive.getType().getBehavior());
+        }
+        pendingResults.add(explosive.getName() + " activated at " + center + ".");
+        explosive.finishActivation();
+    }
+
+    private void damageExplosiveTriggerTarget(Explosive explosive) {
+        Zombie target = findExplosiveTriggerTarget(explosive);
+        if (target != null) {
+            target.takeDamage(explosive.getDamage());
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        }
+    }
+
+    private void killWaterTargets(Explosive explosive, int targetCount) {
+        Zombie firstTarget = findExplosiveTriggerTarget(explosive);
+        if (firstTarget == null || targetCount <= 0) {
+            return;
+        }
+        firstTarget.kill();
+        reportZombieDeath(firstTarget);
+        targetCount--;
+        for (Zombie zombie : getZombies()) {
+            if (targetCount <= 0) {
+                break;
+            }
+            if (zombie != firstTarget && isWaterZombie(zombie)) {
+                zombie.kill();
+                reportZombieDeath(zombie);
+                targetCount--;
+            }
+        }
+    }
+
+    private void freezeExplosiveTriggerTarget(Explosive explosive) {
+        Zombie target = findExplosiveTriggerTarget(explosive);
+        if (target != null) {
+            target.applyFreeze(explosive.getFreezeDurationSeconds());
+        }
+    }
+
+    private void damageArea(EntityPosition center, int rowRadius,
+            double columnRadius, int damage, boolean fireDamage) {
+        for (Zombie zombie : getZombies()) {
+            if (Math.abs(zombie.getLane() - center.getRow()) > rowRadius
+                    || Math.abs(zombie.getColumnPosition() - center.getColumn()) > columnRadius) {
+                continue;
+            }
+            if (fireDamage) {
+                zombie.applyFireDamage(damage);
+            } else {
+                zombie.takeDamage(damage);
+            }
+            if (zombie.isDead()) {
+                reportZombieDeath(zombie);
+            }
+        }
+    }
+
+    private void damageLaneWithFire(int lane, int damage) {
+        for (Zombie zombie : getZombies()) {
+            if (zombie.getLane() == lane) {
+                zombie.applyFireDamage(damage);
+                if (zombie.isDead()) {
+                    reportZombieDeath(zombie);
+                }
+            }
+        }
+    }
+
+    private void damageAllZombies(int damage) {
+        if (damage <= 0) {
+            return;
+        }
+        for (Zombie zombie : getZombies()) {
+            zombie.takeDamage(damage);
+            if (zombie.isDead()) {
+                reportZombieDeath(zombie);
+            }
+        }
+    }
+
+    private void freezeAllZombies(double durationSeconds) {
+        for (Zombie zombie : getZombies()) {
+            zombie.applyFreeze(durationSeconds);
+        }
+    }
+
+    private void addGrapeshotProjectiles(Explosive explosive,
+            List<Entity> entitiesToAdd) {
+        EntityPosition center = explosive.getEntityPosition();
+        int grapeDamage = Math.max(1, explosive.getDamage() / 9);
+        int maximumHits = 1 + explosive.getGrapeBounceCount();
+        int[][] directions = {
+            {-1, -1}, {-1, 0}, {-1, 1}, {0, -1},
+            {0, 1}, {1, -1}, {1, 0}, {1, 1}
+        };
+        for (int index = 0; index < GRAPESHOT_PROJECTILE_COUNT; index++) {
+            entitiesToAdd.add(new BouncingGrape(center.getRow(), center.getColumn(),
+                    directions[index][0], directions[index][1], grapeDamage, maximumHits));
+        }
+    }
+
+    private void applyFinishExplosion(Explosive explosive) {
+        if (explosive.explodesOnFinish()) {
+            damageArea(explosive.getEntityPosition(), 1, 1.0,
+                    FINISH_EXPLOSION_DAMAGE, false);
+        }
+    }
+
+    private void meltLane(int lane) {
+        for (int column = 0; column < numberOfColumns; column++) {
+            EntityPosition position = new EntityPosition(lane, column);
+            Tile tile = getTileAt(position);
+            if (tile != null && tile.getTileType() == TileType.FROZEN) {
+                tile.setTileType(TileType.NORMAL);
+            }
+        }
+    }
+
+    private void meltFrozenTiles(EntityPosition center, int radius) {
+        for (Tile tile : tiles) {
+            EntityPosition position = tile.getPosition();
+            if (tile.getTileType() == TileType.FROZEN
+                    && Math.abs(position.getRow() - center.getRow()) <= radius
+                    && Math.abs(position.getColumn() - center.getColumn()) <= radius) {
+                tile.setTileType(TileType.NORMAL);
+            }
+        }
     }
 
     private void applyPendingWallnutPassiveEffects(List<Entity> updateSnapshot) {
@@ -503,7 +910,8 @@ public class Board {
     }
 
     public boolean canAddPlant(BasePlant plant) {
-        if (plant == null || !isPositionInsideBoard(plant.getEntityPosition())) {
+        if (plant == null || !isPositionInsideBoard(plant.getEntityPosition())
+                || !canPlantOnTerrain(plant)) {
             return false;
         }
         List<BasePlant> plantsAtPosition = getPlantsAt(plant.getEntityPosition());
@@ -517,6 +925,29 @@ public class Board {
                 && !isCover(plantsAtPosition.get(0));
     }
 
+    private boolean canPlantOnTerrain(BasePlant plant) {
+        Tile tile = getTileAt(plant.getEntityPosition());
+        if (tile == null) {
+            return false;
+        }
+        if (plant instanceof Explosive) {
+            ExplosivePlantType type = ((Explosive) plant).getType();
+            if (type == ExplosivePlantType.HOT_POTATO) {
+                return tile.getTileType() == TileType.FROZEN;
+            }
+            if (type == ExplosivePlantType.GRAVE_BUSTER) {
+                return hasGraveAt(plant.getEntityPosition());
+            }
+            if (type == ExplosivePlantType.TANGLE_KELP) {
+                return tile.getTileType() == TileType.WATER;
+            }
+        }
+        if (tile.getTileType() == TileType.WATER) {
+            return plant.getTags().contains(PlantTag.WATER);
+        }
+        return tile.isPlantableTerrain();
+    }
+
     private static boolean isPeaPod(BasePlant plant) {
         return plant instanceof Shooter
                 && ((Shooter) plant).getType() == ShooterPlantType.PEA_POD;
@@ -527,6 +958,10 @@ public class Board {
             return false;
         }
         addEntity(plant);
+        Tile tile = getTileAt(plant.getEntityPosition());
+        if (tile != null) {
+            tile.setPlant(plant);
+        }
         return true;
     }
 
@@ -535,6 +970,12 @@ public class Board {
             return false;
         }
         entity.markForRemoval();
+        if (entity instanceof BasePlant) {
+            Tile tile = getTileAt(entity.getEntityPosition());
+            if (tile != null && tile.getPlant() == entity) {
+                tile.clearPlant();
+            }
+        }
         return allEntities.remove(entity);
     }
 
@@ -580,6 +1021,16 @@ public class Board {
             }
         }
         return Collections.unmodifiableList(projectiles);
+    }
+
+    public List<BouncingGrape> getBouncingGrapes() {
+        List<BouncingGrape> grapes = new ArrayList<>();
+        for (Entity entity : allEntities) {
+            if (entity instanceof BouncingGrape && !entity.isRemoved()) {
+                grapes.add((BouncingGrape) entity);
+            }
+        }
+        return Collections.unmodifiableList(grapes);
     }
 
     public List<BasePlant> getPlantsAt(EntityPosition position) {
@@ -660,11 +1111,80 @@ public class Board {
         return Collections.unmodifiableList(tiles);
     }
 
+    public Tile getTileAt(EntityPosition position) {
+        if (!isPositionInsideBoard(position)) {
+            return null;
+        }
+        return tiles.get(position.getRow() * numberOfColumns + position.getColumn());
+    }
+
+    public void setTileType(EntityPosition position, TileType tileType) {
+        Tile tile = getTileAt(position);
+        if (tile == null) {
+            throw new IllegalArgumentException("tile position is outside the board");
+        }
+        tile.setTileType(tileType);
+    }
+
+    public boolean addStructure(BaseStructure structure) {
+        if (structure == null || !isPositionInsideBoard(structure.getPosition())) {
+            return false;
+        }
+        if (getStructureAt(structure.getPosition()) != null) {
+            return false;
+        }
+        structures.add(structure);
+        if (structure instanceof Grave) {
+            setTileType(structure.getPosition(), TileType.GRAVESTONE);
+        }
+        return true;
+    }
+
+    public BaseStructure getStructureAt(EntityPosition position) {
+        for (BaseStructure structure : structures) {
+            if (!structure.isRemoved() && position != null
+                    && position.equals(structure.getPosition())) {
+                return structure;
+            }
+        }
+        return null;
+    }
+
+    public boolean hasGraveAt(EntityPosition position) {
+        return getStructureAt(position) instanceof Grave;
+    }
+
+    public BaseStructure removeStructureAt(EntityPosition position) {
+        BaseStructure structure = getStructureAt(position);
+        if (structure == null) {
+            return null;
+        }
+        structure.markForRemoval();
+        structures.remove(structure);
+        if (structure instanceof Grave) {
+            setTileType(position, TileType.NORMAL);
+        }
+        return structure;
+    }
+
+    private void removeGraveAt(EntityPosition position) {
+        BaseStructure removed = removeStructureAt(position);
+        if (removed instanceof Grave) {
+            pendingResults.add("Grave at " + position + " was destroyed.");
+        }
+    }
+
     public List<Entity> getAllEntities() {
         return Collections.unmodifiableList(new ArrayList<>(allEntities));
     }
 
     public List<BaseStructure> getStructures() {
-        return Collections.unmodifiableList(structures);
+        List<BaseStructure> activeStructures = new ArrayList<>();
+        for (BaseStructure structure : structures) {
+            if (!structure.isRemoved()) {
+                activeStructures.add(structure);
+            }
+        }
+        return Collections.unmodifiableList(activeStructures);
     }
 }

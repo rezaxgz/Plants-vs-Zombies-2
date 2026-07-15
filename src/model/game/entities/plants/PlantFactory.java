@@ -1,6 +1,8 @@
 package model.game.entities.plants;
 
 import model.game.entities.EntityPosition;
+import model.game.entities.plants.explosive.Explosive;
+import model.game.entities.plants.explosive.ExplosivePlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
@@ -29,6 +31,12 @@ public final class PlantFactory {
         if (shooter != null) {
             return shooter;
         }
+        BasePlant explosive = ExplosivePlantType.findByName(typeName)
+                .map(type -> createExplosive(type, level, position))
+                .orElse(null);
+        if (explosive != null) {
+            return explosive;
+        }
         return WallnutPlantType.findByName(typeName)
                 .map(type -> createWallnut(type, level, position))
                 .orElse(null);
@@ -41,6 +49,17 @@ public final class PlantFactory {
     public static SunProducer createSunProducer(SunProducerPlantType type, int level,
             EntityPosition position) {
         return new SunProducer(type, level, position);
+    }
+
+
+    public static Explosive createExplosive(ExplosivePlantType type,
+            EntityPosition position) {
+        return createExplosive(type, 1, position);
+    }
+
+    public static Explosive createExplosive(ExplosivePlantType type, int level,
+            EntityPosition position) {
+        return new Explosive(type, level, position);
     }
 
     public static Wallnut createWallnut(WallnutPlantType type, EntityPosition position) {
