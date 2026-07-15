@@ -1,12 +1,18 @@
 package model.game.entities.plants;
 
+import java.util.Locale;
+
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosivePlantType;
+import model.game.entities.plants.homing.Homing;
+import model.game.entities.plants.homing.HomingPlantType;
 import model.game.entities.plants.lobber.Lobber;
 import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
 import model.game.entities.plants.melee.MeleePlantType;
+import model.game.entities.plants.modifier.Modifier;
+import model.game.entities.plants.modifier.ModifierPlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.strikeThrough.StrikeThrough;
@@ -24,49 +30,110 @@ public final class PlantFactory {
         return createPlant(typeName, 1, position);
     }
 
-    public static BasePlant createPlant(String typeName, int level, EntityPosition position) {
-        BasePlant sunProducer = SunProducerPlantType.findByName(typeName)
+    public static BasePlant createPlant(String typeName, int level,
+            EntityPosition position) {
+        String imitatedType = parseImitatedType(typeName);
+        if (imitatedType != null) {
+            return createImitater(imitatedType, level, 1, position);
+        }
+        return createPlantInternal(typeName, level, position, true);
+    }
+
+    private static BasePlant createPlantInternal(String typeName, int level,
+            EntityPosition position, boolean allowPlainImitater) {
+        BasePlant plant = SunProducerPlantType.findByName(typeName)
                 .map(type -> createSunProducer(type, level, position))
                 .orElse(null);
-        if (sunProducer != null) {
-            return sunProducer;
+        if (plant != null) {
+            return plant;
         }
-        BasePlant shooter = ShooterPlantType.findByName(typeName)
+        plant = ShooterPlantType.findByName(typeName)
                 .map(type -> createShooter(type, level, position))
                 .orElse(null);
-        if (shooter != null) {
-            return shooter;
+        if (plant != null) {
+            return plant;
         }
-        BasePlant lobber = LobberPlantType.findByName(typeName)
+        plant = HomingPlantType.findByName(typeName)
+                .map(type -> createHoming(type, level, position))
+                .orElse(null);
+        if (plant != null) {
+            return plant;
+        }
+        plant = LobberPlantType.findByName(typeName)
                 .map(type -> createLobber(type, level, position))
                 .orElse(null);
-        if (lobber != null) {
-            return lobber;
+        if (plant != null) {
+            return plant;
         }
-        BasePlant strikeThrough = StrikeThroughPlantType.findByName(typeName)
+        plant = StrikeThroughPlantType.findByName(typeName)
                 .map(type -> createStrikeThrough(type, level, position))
                 .orElse(null);
-        if (strikeThrough != null) {
-            return strikeThrough;
+        if (plant != null) {
+            return plant;
         }
-        BasePlant explosive = ExplosivePlantType.findByName(typeName)
+        plant = ExplosivePlantType.findByName(typeName)
                 .map(type -> createExplosive(type, level, position))
                 .orElse(null);
-        if (explosive != null) {
-            return explosive;
+        if (plant != null) {
+            return plant;
         }
-        BasePlant melee = MeleePlantType.findByName(typeName)
+        plant = MeleePlantType.findByName(typeName)
                 .map(type -> createMelee(type, level, position))
                 .orElse(null);
-        if (melee != null) {
-            return melee;
+        if (plant != null) {
+            return plant;
+        }
+        plant = ModifierPlantType.findByName(typeName)
+                .filter(type -> allowPlainImitater
+                        || type != ModifierPlantType.IMITATER)
+                .map(type -> createModifier(type, level, position))
+                .orElse(null);
+        if (plant != null) {
+            return plant;
         }
         return WallnutPlantType.findByName(typeName)
                 .map(type -> createWallnut(type, level, position))
                 .orElse(null);
     }
 
-    public static SunProducer createSunProducer(SunProducerPlantType type, EntityPosition position) {
+    private static String parseImitatedType(String typeName) {
+        if (typeName == null) {
+            return null;
+        }
+        String trimmed = typeName.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("imitater:")) {
+            return nonBlankSuffix(trimmed.substring("imitater:".length()));
+        }
+        if (lower.startsWith("imitater(") && trimmed.endsWith(")")) {
+            return nonBlankSuffix(trimmed.substring("imitater(".length(),
+                    trimmed.length() - 1));
+        }
+        if (lower.startsWith("imitater ")) {
+            return nonBlankSuffix(trimmed.substring("imitater ".length()));
+        }
+        return null;
+    }
+
+    private static String nonBlankSuffix(String value) {
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    public static Modifier createImitater(String copiedTypeName, int imitaterLevel,
+            int copiedPlantLevel, EntityPosition position) {
+        BasePlant copiedPlant = createPlantInternal(copiedTypeName, copiedPlantLevel,
+                position, false);
+        if (copiedPlant == null || copiedPlant instanceof Modifier
+                && ((Modifier) copiedPlant).isImitater()) {
+            return null;
+        }
+        return new Modifier(ModifierPlantType.IMITATER, imitaterLevel,
+                position, copiedPlant);
+    }
+
+    public static SunProducer createSunProducer(SunProducerPlantType type,
+            EntityPosition position) {
         return createSunProducer(type, 1, position);
     }
 
@@ -75,7 +142,18 @@ public final class PlantFactory {
         return new SunProducer(type, level, position);
     }
 
-    public static Lobber createLobber(LobberPlantType type, EntityPosition position) {
+    public static Homing createHoming(HomingPlantType type,
+            EntityPosition position) {
+        return createHoming(type, 1, position);
+    }
+
+    public static Homing createHoming(HomingPlantType type, int level,
+            EntityPosition position) {
+        return new Homing(type, level, position);
+    }
+
+    public static Lobber createLobber(LobberPlantType type,
+            EntityPosition position) {
         return createLobber(type, 1, position);
     }
 
@@ -104,7 +182,8 @@ public final class PlantFactory {
         return new Explosive(type, level, position);
     }
 
-    public static Melee createMelee(MeleePlantType type, EntityPosition position) {
+    public static Melee createMelee(MeleePlantType type,
+            EntityPosition position) {
         return createMelee(type, 1, position);
     }
 
@@ -113,11 +192,23 @@ public final class PlantFactory {
         return new Melee(type, level, position);
     }
 
-    public static Wallnut createWallnut(WallnutPlantType type, EntityPosition position) {
+    public static Modifier createModifier(ModifierPlantType type,
+            EntityPosition position) {
+        return createModifier(type, 1, position);
+    }
+
+    public static Modifier createModifier(ModifierPlantType type, int level,
+            EntityPosition position) {
+        return new Modifier(type, level, position);
+    }
+
+    public static Wallnut createWallnut(WallnutPlantType type,
+            EntityPosition position) {
         return createWallnut(type, 1, position);
     }
 
-    public static Shooter createShooter(ShooterPlantType type, EntityPosition position) {
+    public static Shooter createShooter(ShooterPlantType type,
+            EntityPosition position) {
         return createShooter(type, 1, position);
     }
 
@@ -126,7 +217,8 @@ public final class PlantFactory {
         return new Shooter(type, level, position);
     }
 
-    public static Wallnut createWallnut(WallnutPlantType type, int level, EntityPosition position) {
+    public static Wallnut createWallnut(WallnutPlantType type, int level,
+            EntityPosition position) {
         return new Wallnut(type, level, position);
     }
 }

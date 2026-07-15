@@ -12,6 +12,10 @@ public final class FireEffect extends ProjectileEffect {
         this.damage = damage;
     }
 
+    public int getDamage() {
+        return damage;
+    }
+
     @Override
     public void apply(Zombie zombie) {
         if (zombie == null) {

@@ -40,6 +40,10 @@ public enum ArmorType {
     public boolean isMetallic() { return metallic; }
     public boolean isHelm() { return helm; }
 
+    public boolean isMagnetizable() {
+        return metallic || this == SHOULDER_ARMOR;
+    }
+
     /**
      * Gets the health threshold for each damage layer.
      * Returns array of health percentages where layers change.

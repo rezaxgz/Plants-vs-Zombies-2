@@ -2,7 +2,10 @@ package model.game;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 
 import model.Constants;
@@ -10,21 +13,27 @@ import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.other.SunType;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.PlantFamily;
+import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.gameTypes.GameType;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
+    private static final int MAX_PLANT_FOOD = 3;
 
     private final Board board;
     private final GameType gameType;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
+    private final Map<String, Double> plantCooldowns = new HashMap<>();
+    private final Map<String, PlantFamily> plantCooldownFamilies = new HashMap<>();
     private final Random random;
 
     private int sunCount;
+    private int plantFoodCount;
     private int zombieWaveNumber;
     private int nextWaveIndex;
     private double elapsedSeconds;
@@ -94,7 +103,9 @@ public class Game {
             return;
         }
 
+        updatePlantCooldowns(deltaSeconds);
         board.update(deltaSeconds);
+        applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
 
@@ -107,6 +118,61 @@ public class Game {
         checkForWin();
         if (status == GameStatus.ACTIVE) {
             updateSkySuns();
+        }
+    }
+
+    private void updatePlantCooldowns(float deltaSeconds) {
+        plantCooldowns.replaceAll((name, remaining) ->
+                Math.max(0.0, remaining - deltaSeconds));
+        List<String> expiredKeys = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : plantCooldowns.entrySet()) {
+            if (entry.getValue() <= TIME_EPSILON) {
+                expiredKeys.add(entry.getKey());
+            }
+        }
+        for (String key : expiredKeys) {
+            plantCooldowns.remove(key);
+            plantCooldownFamilies.remove(key);
+        }
+    }
+
+    private void applyPlantCooldownResetRequests() {
+        for (PlantFamily family : board.drainPlantCooldownResetRequests()) {
+            List<String> resetKeys = new ArrayList<>();
+            for (Map.Entry<String, PlantFamily> entry : plantCooldownFamilies.entrySet()) {
+                if (entry.getValue() == family) {
+                    resetKeys.add(entry.getKey());
+                }
+            }
+            for (String key : resetKeys) {
+                plantCooldowns.remove(key);
+                plantCooldownFamilies.remove(key);
+            }
+        }
+    }
+
+    private static String getCooldownKey(BasePlant plant) {
+        if (plant instanceof Modifier && ((Modifier) plant).isImitater()) {
+            return "imitater";
+        }
+        return plant.getName().trim().toLowerCase(Locale.ROOT);
+    }
+
+    private double getPlantCooldownRemaining(BasePlant plant) {
+        return plantCooldowns.getOrDefault(getCooldownKey(plant), 0.0);
+    }
+
+    private void startPlantCooldown(BasePlant plant) {
+        double rechargeSeconds = Math.max(0.0, plant.getRechargeSeconds());
+        if (rechargeSeconds > TIME_EPSILON) {
+            String key = getCooldownKey(plant);
+            plantCooldowns.put(key, rechargeSeconds);
+            PlantFamily family = PlantFamily.findForPlant(plant);
+            if (family == null) {
+                plantCooldownFamilies.remove(key);
+            } else {
+                plantCooldownFamilies.put(key, family);
+            }
         }
     }
 
@@ -137,7 +203,9 @@ public class Game {
         long remainingHealth = 0;
         for (Zombie zombie : previousWave) {
             maximumHealth += zombie.getMaximumHitPoints();
-            remainingHealth += zombie.getHitPoints();
+            if (!zombie.isHypnotized()) {
+                remainingHealth += zombie.getHitPoints();
+            }
         }
         return maximumHealth > 0 && remainingHealth * 4 <= maximumHealth;
     }
@@ -171,7 +239,7 @@ public class Game {
 
     private boolean hasZombieReachedHouse() {
         for (Zombie zombie : board.getZombies()) {
-            if (zombie.hasReachedHouse()) {
+            if (!zombie.isHypnotized() && zombie.hasReachedHouse()) {
                 return true;
             }
         }
@@ -184,7 +252,7 @@ public class Game {
         }
         for (List<Zombie> waveZombies : spawnedZombiesByWave) {
             for (Zombie zombie : waveZombies) {
-                if (!zombie.isDead()) {
+                if (!zombie.isDead() && !zombie.isHypnotized()) {
                     return;
                 }
             }
@@ -268,6 +336,25 @@ public class Game {
         return collectedAmount;
     }
 
+    public boolean addPlantFood() {
+        if (plantFoodCount >= MAX_PLANT_FOOD) {
+            return false;
+        }
+        plantFoodCount++;
+        return true;
+    }
+
+    public PlantFoodResult feedPlantAt(EntityPosition position) {
+        if (plantFoodCount <= 0) {
+            return PlantFoodResult.NO_PLANT_FOOD;
+        }
+        PlantFoodResult result = board.usePlantFoodAt(position);
+        if (result == PlantFoodResult.SUCCESS) {
+            plantFoodCount--;
+        }
+        return result;
+    }
+
     public void addSun(int amount) {
         if (amount <= 0) {
             throw new IllegalArgumentException("amount must be positive");
@@ -288,11 +375,15 @@ public class Game {
         if (sunCount < plant.getCost()) {
             return PlantPlacementResult.NOT_ENOUGH_SUN;
         }
+        if (getPlantCooldownRemaining(plant) > TIME_EPSILON) {
+            return PlantPlacementResult.COOLDOWN_ACTIVE;
+        }
         if (!board.addPlant(plant)) {
             return PlantPlacementResult.POSITION_OCCUPIED;
         }
 
         sunCount -= plant.getCost();
+        startPlantCooldown(plant);
         return PlantPlacementResult.SUCCESS;
     }
 
@@ -301,6 +392,18 @@ public class Game {
             return null;
         }
         return board.removePlantAt(position);
+    }
+
+    public double getPlantCooldownRemainingSeconds(BasePlant plant) {
+        if (plant == null) {
+            return 0.0;
+        }
+        return getPlantCooldownRemaining(plant);
+    }
+
+    public void removePlantCooldowns() {
+        plantCooldowns.clear();
+        plantCooldownFamilies.clear();
     }
 
     public boolean spendSun(int amount) {
@@ -335,6 +438,14 @@ public class Game {
 
     public int getSunCount() {
         return sunCount;
+    }
+
+    public int getPlantFoodCount() {
+        return plantFoodCount;
+    }
+
+    public int getMaximumPlantFoodCount() {
+        return MAX_PLANT_FOOD;
     }
 
     public double getElapsedSeconds() {

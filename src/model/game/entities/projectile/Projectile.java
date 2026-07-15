@@ -6,6 +6,8 @@ import java.util.List;
 
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.projectile.effect.DamageEffect;
+import model.game.entities.projectile.effect.FireEffect;
 import model.game.entities.projectile.effect.ProjectileEffect;
 import model.game.entities.projectile.movement.ProjectileMovement;
 import model.game.entities.zombies.Zombie;
@@ -18,23 +20,34 @@ public class Projectile extends Entity {
     private final ProjectileMovement movement;
     private final double maxTravelDistance;
     private final double maxLifetimeSeconds;
+    private final boolean torchwoodEligible;
+    private final int originalImpactDamage;
 
     private double rowPosition;
     private double columnPosition;
     private double previousRowPosition;
     private double previousColumnPosition;
     private double traveledDistance;
+    private int torchwoodDamageMultiplier = 1;
 
     public Projectile(String sourcePlantName, double rowPosition, double columnPosition,
             List<ProjectileEffect> effects, ProjectileMovement movement,
             double maxTravelDistance) {
         this(sourcePlantName, rowPosition, columnPosition, effects, movement,
-                maxTravelDistance, DEFAULT_MAX_LIFETIME_SECONDS);
+                maxTravelDistance, DEFAULT_MAX_LIFETIME_SECONDS, false);
     }
 
     public Projectile(String sourcePlantName, double rowPosition, double columnPosition,
             List<ProjectileEffect> effects, ProjectileMovement movement,
             double maxTravelDistance, double maxLifetimeSeconds) {
+        this(sourcePlantName, rowPosition, columnPosition, effects, movement,
+                maxTravelDistance, maxLifetimeSeconds, false);
+    }
+
+    public Projectile(String sourcePlantName, double rowPosition, double columnPosition,
+            List<ProjectileEffect> effects, ProjectileMovement movement,
+            double maxTravelDistance, double maxLifetimeSeconds,
+            boolean torchwoodEligible) {
         super(toEntityPosition(rowPosition, columnPosition));
         if (sourcePlantName == null || sourcePlantName.isBlank()) {
             throw new IllegalArgumentException("sourcePlantName cannot be blank");
@@ -46,7 +59,8 @@ public class Projectile extends Entity {
             throw new IllegalArgumentException("projectile effects and movement are required");
         }
         if (Double.isNaN(maxTravelDistance) || maxTravelDistance <= 0.0
-                || !Double.isFinite(maxLifetimeSeconds) || maxLifetimeSeconds <= 0.0) {
+                || !Double.isFinite(maxLifetimeSeconds)
+                || maxLifetimeSeconds <= 0.0) {
             throw new IllegalArgumentException("projectile range and lifetime are invalid");
         }
         this.sourcePlantName = sourcePlantName;
@@ -54,10 +68,24 @@ public class Projectile extends Entity {
         this.columnPosition = columnPosition;
         this.previousRowPosition = rowPosition;
         this.previousColumnPosition = columnPosition;
-        this.effects = Collections.unmodifiableList(new ArrayList<>(effects));
+        this.effects = new ArrayList<>(effects);
         this.movement = movement;
         this.maxTravelDistance = maxTravelDistance;
         this.maxLifetimeSeconds = maxLifetimeSeconds;
+        this.torchwoodEligible = torchwoodEligible;
+        this.originalImpactDamage = findImpactDamage(effects);
+    }
+
+    private static int findImpactDamage(List<ProjectileEffect> effects) {
+        for (ProjectileEffect effect : effects) {
+            if (effect instanceof DamageEffect) {
+                return ((DamageEffect) effect).getDamage();
+            }
+            if (effect instanceof FireEffect) {
+                return ((FireEffect) effect).getDamage();
+            }
+        }
+        return 0;
     }
 
     private static EntityPosition toEntityPosition(double row, double column) {
@@ -82,8 +110,10 @@ public class Projectile extends Entity {
         if (!Double.isFinite(rowDelta) || !Double.isFinite(columnDelta)) {
             throw new IllegalArgumentException("projectile movement delta must be finite");
         }
-        double requestedDistance = Math.sqrt(rowDelta * rowDelta + columnDelta * columnDelta);
-        double remainingDistance = Math.max(0.0, maxTravelDistance - traveledDistance);
+        double requestedDistance = Math.sqrt(rowDelta * rowDelta
+                + columnDelta * columnDelta);
+        double remainingDistance = Math.max(0.0,
+                maxTravelDistance - traveledDistance);
         if (remainingDistance <= 0.0) {
             return;
         }
@@ -118,18 +148,39 @@ public class Projectile extends Entity {
         }
     }
 
+    public boolean igniteByTorchwood(int damageMultiplier) {
+        if (!torchwoodEligible || originalImpactDamage <= 0
+                || damageMultiplier <= torchwoodDamageMultiplier) {
+            return false;
+        }
+        torchwoodDamageMultiplier = damageMultiplier;
+        effects.clear();
+        effects.add(new FireEffect(originalImpactDamage * damageMultiplier));
+        return true;
+    }
+
+    public boolean hasFireEffect() {
+        for (ProjectileEffect effect : effects) {
+            if (effect instanceof FireEffect) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public double getIntersectionParameter(double targetRow, double targetColumn,
             double collisionRadius) {
         double rowDelta = rowPosition - previousRowPosition;
         double columnDelta = columnPosition - previousColumnPosition;
-        double segmentLengthSquared = rowDelta * rowDelta + columnDelta * columnDelta;
+        double segmentLengthSquared = rowDelta * rowDelta
+                + columnDelta * columnDelta;
         if (segmentLengthSquared <= 0.0) {
             return Double.NaN;
         }
         double targetRowDelta = targetRow - previousRowPosition;
         double targetColumnDelta = targetColumn - previousColumnPosition;
-        double parameter = (targetRowDelta * rowDelta + targetColumnDelta * columnDelta)
-                / segmentLengthSquared;
+        double parameter = (targetRowDelta * rowDelta
+                + targetColumnDelta * columnDelta) / segmentLengthSquared;
         if (parameter < 0.0 || parameter > 1.0) {
             return Double.NaN;
         }
@@ -137,7 +188,8 @@ public class Projectile extends Entity {
         double nearestColumn = previousColumnPosition + parameter * columnDelta;
         double distanceSquared = square(targetRow - nearestRow)
                 + square(targetColumn - nearestColumn);
-        return distanceSquared <= collisionRadius * collisionRadius ? parameter : Double.NaN;
+        return distanceSquared <= collisionRadius * collisionRadius
+                ? parameter : Double.NaN;
     }
 
     private static double square(double value) {
@@ -154,7 +206,15 @@ public class Projectile extends Entity {
     }
 
     public List<ProjectileEffect> getEffects() {
-        return effects;
+        return Collections.unmodifiableList(new ArrayList<>(effects));
+    }
+
+    public boolean isTorchwoodEligible() {
+        return torchwoodEligible;
+    }
+
+    public int getTorchwoodDamageMultiplier() {
+        return torchwoodDamageMultiplier;
     }
 
     public double getRowPosition() {

@@ -2,28 +2,41 @@ package model.game;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.PlantFamily;
 import model.game.entities.plants.PlantTag;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosiveBehavior;
 import model.game.entities.plants.explosive.ExplosivePlantType;
+import model.game.entities.plants.homing.Homing;
+import model.game.entities.plants.homing.HomingBehavior;
+import model.game.entities.plants.homing.HomingPlantType;
 import model.game.entities.plants.lobber.Lobber;
 import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
 import model.game.entities.plants.melee.MeleeBehavior;
 import model.game.entities.plants.melee.MeleePlantType;
+import model.game.entities.plants.modifier.Modifier;
+import model.game.entities.plants.modifier.ModifierPlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
 import model.game.entities.plants.strikeThrough.StrikeThrough;
+import model.game.entities.plants.strikeThrough.StrikeThroughPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
+import model.game.entities.plants.sunProducer.SunProducerPlantType;
 import model.game.entities.plants.wallnut.Wallnut;
+import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.projectile.BouncingGrape;
+import model.game.entities.projectile.HomingProjectile;
 import model.game.entities.projectile.LobbedProjectile;
 import model.game.entities.projectile.PiercingProjectile;
 import model.game.entities.projectile.Projectile;
@@ -46,12 +59,33 @@ public class Board {
     private static final int GRAPESHOT_PROJECTILE_COUNT = 8;
     private static final int FINISH_EXPLOSION_DAMAGE = 1800;
 
+    private static final class ActiveFamilyBoost {
+        private final PlantFamily family;
+        private final boolean resetCooldowns;
+        private final Set<BasePlant> affectedPlants;
+        private double remainingSeconds;
+
+        private ActiveFamilyBoost(PlantFamily family, double remainingSeconds,
+                boolean resetCooldowns) {
+            this.family = family;
+            this.remainingSeconds = remainingSeconds;
+            this.resetCooldowns = resetCooldowns;
+            this.affectedPlants = Collections.newSetFromMap(new IdentityHashMap<>());
+        }
+
+        private boolean isActive() {
+            return remainingSeconds > POSITION_EPSILON;
+        }
+    }
+
     private final int numberOfRows;
     private final int numberOfColumns;
     private final List<Tile> tiles;
     private final List<Entity> allEntities;
     private final List<BaseStructure> structures;
     private final List<String> pendingResults;
+    private final List<ActiveFamilyBoost> activeFamilyBoosts;
+    private final List<PlantFamily> pendingPlantCooldownResets;
 
     public Board() {
         this(Constants.DEFAULT_BOARD_ROWS, Constants.DEFAULT_BOARD_COLUMNS);
@@ -67,6 +101,8 @@ public class Board {
         this.allEntities = new ArrayList<>();
         this.structures = new ArrayList<>();
         this.pendingResults = new ArrayList<>();
+        this.activeFamilyBoosts = new ArrayList<>();
+        this.pendingPlantCooldownResets = new ArrayList<>();
         initializeTiles();
     }
 
@@ -80,44 +116,128 @@ public class Board {
 
     public void update(float deltaSeconds) {
         validateDeltaSeconds(deltaSeconds);
+        updateActiveFamilyBoosts(deltaSeconds);
 
         List<Entity> entitiesToAdd = new ArrayList<>();
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);
         updateEntities(updateSnapshot, entitiesToAdd, deltaSeconds);
+        applyTorchwoodProjectileEffects(updateSnapshot);
+        meltFrozenTilesHitByFireProjectiles(updateSnapshot);
         resolveProjectileImpacts(updateSnapshot);
+        resolveHomingProjectileImpacts(updateSnapshot);
         resolveLobbedProjectileImpacts(updateSnapshot);
         resolveGrapeImpacts(updateSnapshot);
         reportDeadZombies(updateSnapshot);
         activateReadyShooters(updateSnapshot, entitiesToAdd);
         activateReadyLobbers(updateSnapshot, entitiesToAdd);
         activateReadyStrikeThroughs(updateSnapshot, entitiesToAdd);
+        activateReadyHomings(updateSnapshot, entitiesToAdd);
         applyPendingShooterBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingLobberBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingStrikeThroughBoardEffects(updateSnapshot, entitiesToAdd);
+        applyPendingHomingBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingExplosiveBoardEffects(updateSnapshot, entitiesToAdd);
-        applyPendingMeleeBoardEffects(updateSnapshot);
+        applyPendingMeleeBoardEffects(updateSnapshot, entitiesToAdd);
         activateReadyMelee(updateSnapshot);
-        applyPendingWallnutBoardEffects(updateSnapshot);
+        applyPendingModifierBoardEffects(updateSnapshot, entitiesToAdd);
+        applyPendingWallnutBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingWallnutPassiveEffects(updateSnapshot);
         updateZombies(updateSnapshot, deltaSeconds);
+        applyPendingModifierDeathEffects(updateSnapshot);
 
         cleanupRemovedEntities();
         for (Entity entity : entitiesToAdd) {
+            if (entity instanceof BasePlant) {
+                addPlantInternal((BasePlant) entity, false);
+            } else {
+                addEntity(entity);
+            }
+        }
+    }
+
+    private void updateActiveFamilyBoosts(float deltaSeconds) {
+        for (ActiveFamilyBoost boost : activeFamilyBoosts) {
+            boost.remainingSeconds -= deltaSeconds;
+        }
+        activeFamilyBoosts.removeIf(boost -> !boost.isActive());
+    }
+
+    private void activateFamilyBoost(PlantFamily family, double durationSeconds,
+            boolean resetCooldowns, BasePlant mint, List<Entity> entitiesToAdd,
+            String resultMessage) {
+        ActiveFamilyBoost boost = new ActiveFamilyBoost(family,
+                Math.max(durationSeconds, POSITION_EPSILON), resetCooldowns);
+        activeFamilyBoosts.add(boost);
+        if (resetCooldowns && !pendingPlantCooldownResets.contains(family)) {
+            pendingPlantCooldownResets.add(family);
+        }
+        for (BasePlant plant : getPlants()) {
+            if (plant != mint) {
+                applyFamilyBoostToPlant(boost, plant, entitiesToAdd);
+            }
+        }
+        mint.markForRemoval();
+        pendingResults.add(resultMessage + " The effect remains active for "
+                + formatDuration(durationSeconds) + " seconds.");
+    }
+
+    private static String formatDuration(double seconds) {
+        return String.format(java.util.Locale.ROOT, "%.1f", seconds);
+    }
+
+    private void applyFamilyBoostToPlant(ActiveFamilyBoost boost, BasePlant plant,
+            List<Entity> entitiesToAdd) {
+        if (!boost.family.contains(plant) || boost.affectedPlants.contains(plant)) {
+            return;
+        }
+        if (!applyPlantFoodToPlant(plant, entitiesToAdd)) {
+            return;
+        }
+        boost.affectedPlants.add(plant);
+        if (boost.resetCooldowns) {
+            resetPlantActionTimer(plant);
+        }
+    }
+
+    private void applyActiveFamilyBoostsToPlant(BasePlant plant) {
+        if (activeFamilyBoosts.isEmpty() || plant == null || PlantFamily.isMint(plant)) {
+            return;
+        }
+        List<Entity> spawnedEntities = new ArrayList<>();
+        for (ActiveFamilyBoost boost : activeFamilyBoosts) {
+            applyFamilyBoostToPlant(boost, plant, spawnedEntities);
+        }
+        for (Entity entity : spawnedEntities) {
             addEntity(entity);
         }
     }
 
     private void cleanupRemovedEntities() {
+        List<EntityPosition> affectedPlantPositions = new ArrayList<>();
         for (Entity entity : allEntities) {
-            if (entity.isRemoved() && entity instanceof BasePlant) {
-                Tile tile = getTileAt(entity.getEntityPosition());
-                if (tile != null && tile.getPlant() == entity) {
-                    tile.clearPlant();
-                }
+            if (entity.isRemoved() && entity instanceof BasePlant
+                    && entity.getEntityPosition() != null) {
+                affectedPlantPositions.add(entity.getEntityPosition());
             }
         }
         allEntities.removeIf(Entity::isRemoved);
+        for (EntityPosition position : affectedPlantPositions) {
+            refreshTilePlant(position);
+        }
+    }
+
+    private void refreshTilePlant(EntityPosition position) {
+        Tile tile = getTileAt(position);
+        if (tile == null) {
+            return;
+        }
+        BasePlant remainingPlant = getPlantAt(position);
+        if (remainingPlant == null) {
+            tile.clearPlant();
+        } else {
+            tile.setPlant(remainingPlant);
+        }
     }
 
     private void updateEntities(List<Entity> updateSnapshot, List<Entity> entitiesToAdd,
@@ -156,6 +276,62 @@ public class Board {
         }
     }
 
+    private void applyTorchwoodProjectileEffects(List<Entity> updateSnapshot) {
+        List<Modifier> torchwoods = new ArrayList<>();
+        for (BasePlant plant : getPlants()) {
+            if (plant instanceof Modifier && ((Modifier) plant).isTorchwood()
+                    && !plant.isRemoved()) {
+                torchwoods.add((Modifier) plant);
+            }
+        }
+        if (torchwoods.isEmpty()) {
+            return;
+        }
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Projectile) || entity.isRemoved()) {
+                continue;
+            }
+            Projectile projectile = (Projectile) entity;
+            if (!projectile.isTorchwoodEligible()) {
+                continue;
+            }
+            for (Modifier torchwood : torchwoods) {
+                EntityPosition position = torchwood.getEntityPosition();
+                double parameter = projectile.getIntersectionParameter(
+                        position.getRow(), position.getColumn(),
+                        PROJECTILE_COLLISION_RADIUS);
+                if (!Double.isNaN(parameter)) {
+                    projectile.igniteByTorchwood(
+                            torchwood.getTorchwoodDamageMultiplier());
+                }
+            }
+        }
+    }
+
+    private void meltFrozenTilesHitByFireProjectiles(
+            List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Projectile) || entity.isRemoved()) {
+                continue;
+            }
+            Projectile projectile = (Projectile) entity;
+            if (!projectile.hasFireEffect()) {
+                continue;
+            }
+            for (Tile tile : tiles) {
+                if (tile.getTileType() != TileType.FROZEN) {
+                    continue;
+                }
+                EntityPosition position = tile.getPosition();
+                double parameter = projectile.getIntersectionParameter(
+                        position.getRow(), position.getColumn(), 0.45);
+                if (!Double.isNaN(parameter)) {
+                    tile.setTileType(TileType.NORMAL);
+                }
+            }
+        }
+    }
+
     private void activateReadyShooters(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
@@ -171,7 +347,7 @@ public class Board {
 
     private boolean hasTarget(Shooter shooter) {
         for (Zombie zombie : getZombies()) {
-            if (shooter.canTarget(zombie, numberOfRows)) {
+            if (!zombie.isHypnotized() && shooter.canTarget(zombie, numberOfRows)) {
                 return true;
             }
         }
@@ -207,7 +383,8 @@ public class Board {
         Zombie nearest = null;
         double nearestDistance = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.getLane() != position.getRow()) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.getLane() != position.getRow()) {
                 continue;
             }
             double distance = zombie.getColumnPosition() - position.getColumn();
@@ -238,7 +415,8 @@ public class Board {
 
     private boolean hasStrikeThroughTarget(StrikeThrough plant) {
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isDead() && !zombie.isSubmerged()
+            if (!zombie.isDead() && !zombie.isHypnotized()
+                    && !zombie.isSubmerged()
                     && plant.canTarget(zombie.getColumnPosition(), zombie.getLane())) {
                 return true;
             }
@@ -246,9 +424,144 @@ public class Board {
         return false;
     }
 
+    private void activateReadyHomings(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Homing) || entity.isRemoved()) {
+                continue;
+            }
+            Homing plant = (Homing) entity;
+            if (!plant.isReadyToAttack()) {
+                continue;
+            }
+            Zombie target = findHomingTarget(plant);
+            if (target != null) {
+                performHomingAttack(plant, target, entitiesToAdd);
+            }
+        }
+    }
+
+    private Zombie findHomingTarget(Homing plant) {
+        switch (plant.getType().getBehavior()) {
+        case HYPNOTIZE:
+            return randomHomingTarget(plant, false);
+        case LIGHTNING:
+            return plant.hasTargetPriorityUp()
+                    ? strongestHomingTarget(plant) : randomHomingTarget(plant, true);
+        case MAGNET:
+            return nearestMagnetTarget(plant);
+        case GUIDED_PROJECTILE:
+            return nearestHomingTarget(plant);
+        case FAMILY_BOOST:
+            return null;
+        default:
+            throw new IllegalStateException("Unknown homing behavior: "
+                    + plant.getType().getBehavior());
+        }
+    }
+
+    private void performHomingAttack(Homing plant, Zombie target,
+            List<Entity> entitiesToAdd) {
+        HomingBehavior behavior = plant.getType().getBehavior();
+        if (behavior == HomingBehavior.HYPNOTIZE
+                || behavior == HomingBehavior.GUIDED_PROJECTILE) {
+            HomingProjectile projectile = plant.shoot(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+            return;
+        }
+        if (!plant.consumeDirectAttackReadiness(target)) {
+            return;
+        }
+        if (behavior == HomingBehavior.LIGHTNING) {
+            target.takeDamage(plant.getDamage());
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        } else if (behavior == HomingBehavior.MAGNET
+                && target.removeMagnetizableArmor()) {
+            pendingResults.add(plant.getName() + " removed " + target.getName()
+                    + "'s metal armor.");
+        }
+    }
+
+    private Zombie randomHomingTarget(Homing plant, boolean allowBoss) {
+        List<Zombie> candidates = homingCandidates(plant, allowBoss, false);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        Collections.shuffle(candidates);
+        return candidates.get(0);
+    }
+
+    private Zombie nearestHomingTarget(Homing plant) {
+        List<Zombie> candidates = homingCandidates(plant, true, false);
+        return candidates.stream()
+                .min(Comparator.comparingDouble(zombie -> distanceSquared(plant, zombie)))
+                .orElse(null);
+    }
+
+    private Zombie strongestHomingTarget(Homing plant) {
+        List<Zombie> candidates = homingCandidates(plant, true, false);
+        return candidates.stream()
+                .max(Comparator.comparingInt(Zombie::getCurrentDurability)
+                        .thenComparingDouble(zombie -> -distanceSquared(plant, zombie)))
+                .orElse(null);
+    }
+
+    private Zombie nearestMagnetTarget(Homing plant) {
+        List<Zombie> candidates = homingCandidates(plant, true, true);
+        return candidates.stream()
+                .min(Comparator.comparingDouble(zombie -> distanceSquared(plant, zombie)))
+                .orElse(null);
+    }
+
+    private List<Zombie> homingCandidates(Homing plant, boolean allowBoss,
+            boolean requireMagnetizableArmor) {
+        List<Zombie> candidates = new ArrayList<>();
+        for (Zombie zombie : getZombies()) {
+            if (!isHomingTargetable(zombie) || (!allowBoss && isZomboss(zombie))) {
+                continue;
+            }
+            if (requireMagnetizableArmor && !zombie.hasMagnetizableArmor()) {
+                continue;
+            }
+            if (isInsideHomingRange(plant, zombie)) {
+                candidates.add(zombie);
+            }
+        }
+        return candidates;
+    }
+
+    private static boolean isHomingTargetable(Zombie zombie) {
+        return zombie != null && !zombie.isDead() && !zombie.isRemoved()
+                && !zombie.isHypnotized() && !zombie.isSubmerged();
+    }
+
+    private static boolean isZomboss(Zombie zombie) {
+        return zombie.getType().name().startsWith("ZOMBOSS_");
+    }
+
+    private static boolean isInsideHomingRange(Homing plant, Zombie zombie) {
+        double range = plant.getRangeTiles();
+        return Double.isInfinite(range)
+                || distanceSquared(plant, zombie) <= range * range + POSITION_EPSILON;
+    }
+
+    private static double distanceSquared(Homing plant, Zombie zombie) {
+        EntityPosition position = plant.getEntityPosition();
+        if (position == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double rowDelta = zombie.getLane() - position.getRow();
+        double columnDelta = zombie.getColumnPosition() - position.getColumn();
+        return rowDelta * rowDelta + columnDelta * columnDelta;
+    }
+
     private void applyPendingStrikeThroughBoardEffects(
             List<Entity> updateSnapshot, List<Entity> entitiesToAdd) {
-        applyStrikeThroughFamilyBoosts(updateSnapshot);
+        applyStrikeThroughFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
                 continue;
@@ -262,37 +575,25 @@ public class Board {
         }
     }
 
-    private void applyStrikeThroughFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyStrikeThroughFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
                 continue;
             }
             StrikeThrough mint = (StrikeThrough) entity;
             if (mint.drainFamilyBoostPending()) {
-                boostStrikeThroughFamily(mint);
+                activateFamilyBoost(PlantFamily.STRIKE_THROUGH,
+                        mint.getFamilyBoostDurationSeconds(),
+                        mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                        "Pierce-mint applied plant food to every Strike-through plant.");
             }
         }
-    }
-
-    private void boostStrikeThroughFamily(StrikeThrough mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof StrikeThrough) || plant == mint) {
-                continue;
-            }
-            StrikeThrough strikeThrough = (StrikeThrough) plant;
-            strikeThrough.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                strikeThrough.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add(
-                "Pierce-mint applied plant food to every Strike-through plant.");
     }
 
     private void applyPendingLobberBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
-        applyLobberFamilyBoosts(updateSnapshot);
+        applyLobberFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Lobber) || entity.isRemoved()) {
                 continue;
@@ -305,7 +606,8 @@ public class Board {
         }
     }
 
-    private void applyLobberFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyLobberFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Lobber) || entity.isRemoved()) {
                 continue;
@@ -314,23 +616,11 @@ public class Board {
             if (!mint.drainFamilyBoostPending()) {
                 continue;
             }
-            boostLobberFamily(mint);
+            activateFamilyBoost(PlantFamily.LOBBER,
+                    mint.getFamilyBoostDurationSeconds(),
+                    mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                    "Arma-mint applied plant food to every Lobber plant.");
         }
-    }
-
-    private void boostLobberFamily(Lobber mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Lobber) || plant == mint) {
-                continue;
-            }
-            Lobber lobber = (Lobber) plant;
-            lobber.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                lobber.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("Arma-mint applied plant food to every Lobber plant.");
     }
 
     private void warmTilesAroundPepperPult(Lobber lobber) {
@@ -357,7 +647,7 @@ public class Board {
     private List<Zombie> getLobberPlantFoodTargets(Lobber lobber) {
         List<Zombie> candidates = new ArrayList<>();
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isDead()) {
+            if (!zombie.isDead() && !zombie.isHypnotized()) {
                 candidates.add(zombie);
             }
         }
@@ -380,22 +670,16 @@ public class Board {
     }
 
     private void applyShooterFamilyBoost(Shooter mint, List<Entity> entitiesToAdd) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Shooter) || plant == mint) {
-                continue;
-            }
-            Shooter shooter = (Shooter) plant;
-            shooter.usePlantFood(numberOfRows);
-            entitiesToAdd.addAll(shooter.drainProjectiles());
-        }
-        mint.markForRemoval();
-        pendingResults.add("Appease-mint applied plant food to every Shooter plant.");
+        activateFamilyBoost(PlantFamily.SHOOTER,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Appease-mint applied plant food to every Shooter plant.");
     }
 
     private void resolveProjectileImpacts(List<Entity> updateSnapshot) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Projectile) || entity instanceof LobbedProjectile
-                    || entity.isRemoved()) {
+                    || entity instanceof HomingProjectile || entity.isRemoved()) {
                 continue;
             }
             Projectile projectile = (Projectile) entity;
@@ -425,7 +709,7 @@ public class Board {
         Zombie firstTarget = null;
         double firstParameter = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.isSubmerged()
+            if (zombie.isDead() || zombie.isHypnotized() || zombie.isSubmerged()
                     || !canProjectileHit(projectile, zombie)) {
                 continue;
             }
@@ -449,6 +733,32 @@ public class Board {
                 || projectile.getRowPosition() > numberOfRows - 1 + PROJECTILE_BOARD_MARGIN
                 || projectile.getColumnPosition() < -PROJECTILE_BOARD_MARGIN
                 || projectile.getColumnPosition() > numberOfColumns - 1 + PROJECTILE_BOARD_MARGIN;
+    }
+
+    private void resolveHomingProjectileImpacts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof HomingProjectile) || entity.isRemoved()) {
+                continue;
+            }
+            HomingProjectile projectile = (HomingProjectile) entity;
+            if (!projectile.isTargetAvailable()) {
+                projectile.markForRemoval();
+                continue;
+            }
+            if (projectile.hasReachedTarget()) {
+                Zombie target = projectile.getLockedTarget();
+                projectile.hit(target);
+                if (target.isDead()) {
+                    reportZombieDeath(target);
+                } else if (target.isHypnotized()) {
+                    pendingResults.add("Zombie " + target.getName() + " was hypnotized.");
+                }
+                continue;
+            }
+            if (projectile.hasExpired() || isProjectileOutsideBoard(projectile)) {
+                projectile.markForRemoval();
+            }
+        }
     }
 
     private void resolveLobbedProjectileImpacts(List<Entity> updateSnapshot) {
@@ -479,7 +789,7 @@ public class Board {
         Zombie nearest = null;
         double nearestDistanceSquared = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead()) {
+            if (zombie.isDead() || zombie.isHypnotized()) {
                 continue;
             }
             double rowDelta = zombie.getLane() - projectile.getLandingRow();
@@ -496,7 +806,8 @@ public class Board {
 
     private static boolean isAtLobbedLandingPoint(Zombie zombie,
             LobbedProjectile projectile) {
-        if (zombie == null || zombie.isDead() || zombie.isRemoved()) {
+        if (zombie == null || zombie.isDead() || zombie.isRemoved()
+                || zombie.isHypnotized()) {
             return false;
         }
         double rowDelta = zombie.getLane() - projectile.getLandingRow();
@@ -511,7 +822,7 @@ public class Board {
             return;
         }
         for (Zombie zombie : getZombies()) {
-            if (zombie == directTarget || zombie.isDead()
+            if (zombie == directTarget || zombie.isDead() || zombie.isHypnotized()
                     || isProtectedFromLobbers(zombie)
                     || !isInsideLobbedSplash(zombie, projectile)) {
                 continue;
@@ -565,7 +876,8 @@ public class Board {
         Zombie firstTarget = null;
         double firstParameter = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (!grape.canHit(zombie) || zombie.isSubmerged()) {
+            if (!grape.canHit(zombie) || zombie.isHypnotized()
+                    || zombie.isSubmerged()) {
                 continue;
             }
             double parameter = grape.getIntersectionParameter(
@@ -587,6 +899,127 @@ public class Board {
     }
 
 
+    private void applyPendingHomingBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        applyHomingFamilyBoosts(updateSnapshot, entitiesToAdd);
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Homing) || entity.isRemoved()) {
+                continue;
+            }
+            Homing plant = (Homing) entity;
+            if (plant.drainPlantFoodPending()) {
+                applyHomingPlantFood(plant, entitiesToAdd);
+            }
+        }
+    }
+
+    private void applyHomingFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Homing) || entity.isRemoved()) {
+                continue;
+            }
+            Homing mint = (Homing) entity;
+            if (mint.drainFamilyBoostPending()) {
+                activateFamilyBoost(PlantFamily.HOMING,
+                        mint.getFamilyBoostDurationSeconds(),
+                        mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                        "catTail-mint applied plant food to every Homing plant.");
+            }
+        }
+    }
+
+    private void applyHomingPlantFood(Homing plant,
+            List<Entity> entitiesToAdd) {
+        switch (plant.getType().getBehavior()) {
+        case HYPNOTIZE:
+            addHomingPlantFoodProjectiles(plant, entitiesToAdd, false);
+            break;
+        case LIGHTNING:
+            strikeRandomHomingTargets(plant);
+            break;
+        case MAGNET:
+            removeAllMetalArmorInRange(plant);
+            break;
+        case GUIDED_PROJECTILE:
+            addCatTailBarrage(plant, entitiesToAdd);
+            break;
+        case FAMILY_BOOST:
+            break;
+        default:
+            throw new IllegalStateException("Unknown homing behavior: "
+                    + plant.getType().getBehavior());
+        }
+    }
+
+    private void addHomingPlantFoodProjectiles(Homing plant,
+            List<Entity> entitiesToAdd, boolean allowBoss) {
+        List<Zombie> targets = randomHomingTargets(plant,
+                plant.getPlantFoodTargetCount(), allowBoss);
+        for (Zombie target : targets) {
+            HomingProjectile projectile = plant.createPlantFoodProjectile(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+        reportHomingPlantFood(plant, targets.size());
+    }
+
+    private void strikeRandomHomingTargets(Homing plant) {
+        List<Zombie> targets = randomHomingTargets(plant,
+                plant.getPlantFoodTargetCount(), true);
+        for (Zombie target : targets) {
+            target.takeDamage(plant.getDamage());
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        }
+        reportHomingPlantFood(plant, targets.size());
+    }
+
+    private void removeAllMetalArmorInRange(Homing plant) {
+        int removedArmorCount = 0;
+        for (Zombie zombie : homingCandidates(plant, true, true)) {
+            if (zombie.removeMagnetizableArmor()) {
+                removedArmorCount++;
+            }
+        }
+        reportHomingPlantFood(plant, removedArmorCount);
+    }
+
+    private void addCatTailBarrage(Homing plant,
+            List<Entity> entitiesToAdd) {
+        List<Zombie> targets = homingCandidates(plant, true, false);
+        targets.sort(Comparator.comparingDouble(zombie -> distanceSquared(plant, zombie)));
+        if (targets.isEmpty()) {
+            return;
+        }
+        int projectileCount = plant.getPlantFoodTargetCount();
+        for (int i = 0; i < projectileCount; i++) {
+            Zombie target = targets.get(i % targets.size());
+            HomingProjectile projectile = plant.createPlantFoodProjectile(target);
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+        reportHomingPlantFood(plant, projectileCount);
+    }
+
+    private List<Zombie> randomHomingTargets(Homing plant, int maximumTargets,
+            boolean allowBoss) {
+        List<Zombie> targets = homingCandidates(plant, allowBoss, false);
+        Collections.shuffle(targets);
+        int count = Math.min(maximumTargets, targets.size());
+        return new ArrayList<>(targets.subList(0, count));
+    }
+
+    private void reportHomingPlantFood(Homing plant, int affectedCount) {
+        if (affectedCount > 0) {
+            pendingResults.add(plant.getName() + " used its plant food effect on "
+                    + affectedCount + " target(s).");
+        }
+    }
+
     private void applyPendingSunProducerBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
@@ -603,21 +1036,15 @@ public class Board {
 
     private void applySunProducerFamilyBoost(SunProducer mint,
             List<Entity> entitiesToAdd) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof SunProducer) || plant == mint) {
-                continue;
-            }
-            SunProducer producer = (SunProducer) plant;
-            producer.usePlantFood();
-            collectProducedSuns(producer, entitiesToAdd);
-        }
-        mint.markForRemoval();
-        pendingResults.add("Enlighten-mint applied plant food to every Sun Producer plant.");
+        activateFamilyBoost(PlantFamily.SUN_PRODUCER,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Enlighten-mint applied plant food to every Sun Producer plant.");
     }
 
     private void applyPendingExplosiveBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
-        applyExplosiveFamilyBoosts(updateSnapshot);
+        applyExplosiveFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Explosive) || entity.isRemoved()) {
                 continue;
@@ -631,7 +1058,8 @@ public class Board {
         }
     }
 
-    private void applyExplosiveFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyExplosiveFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Explosive) || entity.isRemoved()) {
                 continue;
@@ -640,17 +1068,10 @@ public class Board {
             if (!mint.drainFamilyBoostPending()) {
                 continue;
             }
-            for (BasePlant plant : getPlants()) {
-                if (plant instanceof Explosive && plant != mint) {
-                    Explosive explosive = (Explosive) plant;
-                    explosive.usePlantFood();
-                    if (mint.resetsFamilyCooldowns()) {
-                        explosive.resetActionTimer();
-                    }
-                }
-            }
-            mint.markForRemoval();
-            pendingResults.add("Bombard-mint applied plant food to every Explosive plant.");
+            activateFamilyBoost(PlantFamily.EXPLOSIVE,
+                    mint.getFamilyBoostDurationSeconds(),
+                    mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                    "Bombard-mint applied plant food to every Explosive plant.");
         }
     }
 
@@ -672,7 +1093,8 @@ public class Board {
         int lane = explosive.getEntityPosition().getRow();
         double column = explosive.getEntityPosition().getColumn();
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.getLane() != lane) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.getLane() != lane) {
                 continue;
             }
             if (explosive.getType().getBehavior() == ExplosiveBehavior.WATER_TRAP
@@ -743,6 +1165,9 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
+            if (zombie.isHypnotized()) {
+                continue;
+            }
             zombie.takeDamage(explosive.getDamage());
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
@@ -760,7 +1185,7 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
-            if (!isWaterZombie(zombie)) {
+            if (zombie.isHypnotized() || !isWaterZombie(zombie)) {
                 continue;
             }
             zombie.kill();
@@ -850,7 +1275,8 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
-            if (zombie != firstTarget && isWaterZombie(zombie)) {
+            if (zombie != firstTarget && !zombie.isHypnotized()
+                    && isWaterZombie(zombie)) {
                 zombie.kill();
                 reportZombieDeath(zombie);
                 targetCount--;
@@ -868,7 +1294,8 @@ public class Board {
     private void damageArea(EntityPosition center, int rowRadius,
             double columnRadius, int damage, boolean fireDamage) {
         for (Zombie zombie : getZombies()) {
-            if (Math.abs(zombie.getLane() - center.getRow()) > rowRadius
+            if (zombie.isHypnotized()
+                    || Math.abs(zombie.getLane() - center.getRow()) > rowRadius
                     || Math.abs(zombie.getColumnPosition() - center.getColumn()) > columnRadius) {
                 continue;
             }
@@ -885,7 +1312,7 @@ public class Board {
 
     private void damageLaneWithFire(int lane, int damage) {
         for (Zombie zombie : getZombies()) {
-            if (zombie.getLane() == lane) {
+            if (!zombie.isHypnotized() && zombie.getLane() == lane) {
                 zombie.applyFireDamage(damage);
                 if (zombie.isDead()) {
                     reportZombieDeath(zombie);
@@ -899,6 +1326,9 @@ public class Board {
             return;
         }
         for (Zombie zombie : getZombies()) {
+            if (zombie.isHypnotized()) {
+                continue;
+            }
             zombie.takeDamage(damage);
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
@@ -908,7 +1338,9 @@ public class Board {
 
     private void freezeAllZombies(double durationSeconds) {
         for (Zombie zombie : getZombies()) {
-            zombie.applyFreeze(durationSeconds);
+            if (!zombie.isHypnotized()) {
+                zombie.applyFreeze(durationSeconds);
+            }
         }
     }
 
@@ -934,8 +1366,9 @@ public class Board {
         }
     }
 
-    private void applyPendingMeleeBoardEffects(List<Entity> updateSnapshot) {
-        applyMeleeFamilyBoosts(updateSnapshot);
+    private void applyPendingMeleeBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        applyMeleeFamilyBoosts(updateSnapshot, entitiesToAdd);
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Melee) || entity.isRemoved()) {
                 continue;
@@ -948,7 +1381,8 @@ public class Board {
         }
     }
 
-    private void applyMeleeFamilyBoosts(List<Entity> updateSnapshot) {
+    private void applyMeleeFamilyBoosts(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Melee) || entity.isRemoved()) {
                 continue;
@@ -957,23 +1391,11 @@ public class Board {
             if (!mint.drainFamilyBoostPending()) {
                 continue;
             }
-            boostMeleeFamily(mint);
+            activateFamilyBoost(PlantFamily.MELEE,
+                    mint.getFamilyBoostDurationSeconds(),
+                    mint.resetsFamilyCooldowns(), mint, entitiesToAdd,
+                    "Enforce-mint applied plant food to every Melee plant.");
         }
-    }
-
-    private void boostMeleeFamily(Melee mint) {
-        for (BasePlant plant : getPlants()) {
-            if (!(plant instanceof Melee) || plant == mint) {
-                continue;
-            }
-            Melee melee = (Melee) plant;
-            melee.usePlantFood();
-            if (mint.resetsFamilyCooldowns()) {
-                melee.resetActionTimer();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("Enforce-mint applied plant food to every Melee plant.");
     }
 
     private void warmTilesAroundWasabiWhip(Melee melee) {
@@ -1088,7 +1510,7 @@ public class Board {
     }
 
     private static boolean isMeleeTargetable(Zombie zombie) {
-        return zombie != null && !zombie.isDead()
+        return zombie != null && !zombie.isDead() && !zombie.isHypnotized()
                 && !zombie.isSubmerged() && !zombie.isFlying();
     }
 
@@ -1220,6 +1642,220 @@ public class Board {
         }
     }
 
+    private void applyPendingModifierBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Modifier) || entity.isRemoved()) {
+                continue;
+            }
+            Modifier modifier = (Modifier) entity;
+            if (modifier.drainFamilyBoostPending()) {
+                applyEnchantMint(modifier, entitiesToAdd);
+            }
+            int copyCount = modifier.drainLilyPadCopiesPending();
+            if (copyCount > 0) {
+                createLilyPadCopies(modifier, copyCount, entitiesToAdd);
+            }
+        }
+    }
+
+    private void applyEnchantMint(Modifier mint, List<Entity> entitiesToAdd) {
+        activateFamilyBoost(PlantFamily.MODIFIER,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Enchant-mint applied plant food to every Modifier plant.");
+    }
+
+    private boolean applyPlantFoodToPlant(BasePlant plant,
+            List<Entity> entitiesToAdd) {
+        if (!supportsPlantFood(plant)) {
+            return false;
+        }
+        if (plant instanceof Shooter) {
+            applyShooterPlantFood((Shooter) plant, entitiesToAdd);
+        } else if (plant instanceof SunProducer) {
+            SunProducer producer = (SunProducer) plant;
+            producer.usePlantFood();
+            collectProducedSuns(producer, entitiesToAdd);
+        } else if (plant instanceof Wallnut) {
+            ((Wallnut) plant).usePlantFood();
+        } else if (plant instanceof Explosive) {
+            ((Explosive) plant).usePlantFood();
+        } else if (plant instanceof Melee) {
+            ((Melee) plant).usePlantFood();
+        } else if (plant instanceof Lobber) {
+            ((Lobber) plant).usePlantFood();
+        } else if (plant instanceof StrikeThrough) {
+            ((StrikeThrough) plant).usePlantFood();
+        } else if (plant instanceof Homing) {
+            ((Homing) plant).usePlantFood();
+        } else if (plant instanceof Modifier) {
+            ((Modifier) plant).usePlantFood();
+        }
+        return true;
+    }
+
+    private void applyShooterPlantFood(Shooter shooter,
+            List<Entity> entitiesToAdd) {
+        shooter.usePlantFood(numberOfRows);
+        entitiesToAdd.addAll(shooter.drainProjectiles());
+        resetTemporaryShooterFamily(shooter);
+        freezeSnowPeaLane(shooter);
+    }
+
+    private void resetTemporaryShooterFamily(Shooter source) {
+        ShooterPlantType type = source.getType();
+        if (type != ShooterPlantType.SEA_SHROOM
+                && type != ShooterPlantType.PUFF_SHROOM) {
+            return;
+        }
+        for (BasePlant plant : getPlants()) {
+            if (plant instanceof Shooter && ((Shooter) plant).getType() == type) {
+                ((Shooter) plant).resetLifespan();
+            }
+        }
+    }
+
+    private void freezeSnowPeaLane(Shooter shooter) {
+        if (shooter.getType() != ShooterPlantType.SNOW_PEA
+                || shooter.getEntityPosition() == null) {
+            return;
+        }
+        int lane = shooter.getEntityPosition().getRow();
+        for (Zombie zombie : getZombies()) {
+            if (!zombie.isDead() && !zombie.isHypnotized()
+                    && zombie.getLane() == lane) {
+                zombie.applyFreeze(shooter.getChillDurationSeconds());
+            }
+        }
+    }
+
+    private static boolean supportsPlantFood(BasePlant plant) {
+        if (plant == null || plant.isRemoved() || PlantFamily.isMint(plant)) {
+            return false;
+        }
+        if (plant instanceof SunProducer) {
+            SunProducerPlantType type = ((SunProducer) plant).getType();
+            return type != SunProducerPlantType.GOLD_BLOOM;
+        }
+        if (plant instanceof Explosive) {
+            ExplosivePlantType type = ((Explosive) plant).getType();
+            return type == ExplosivePlantType.POTATO_MINE
+                    || type == ExplosivePlantType.PRIMAL_POTATO_MINE
+                    || type == ExplosivePlantType.SQUASH
+                    || type == ExplosivePlantType.TANGLE_KELP
+                    || type == ExplosivePlantType.ICEBERG_LETTUCE;
+        }
+        if (plant instanceof Modifier) {
+            ModifierPlantType type = ((Modifier) plant).getType();
+            return type == ModifierPlantType.TORCHWOOD
+                    || type == ModifierPlantType.HYPNO_SHROOM
+                    || type == ModifierPlantType.LILY_PAD;
+        }
+        if (plant instanceof Shooter) {
+            return ((Shooter) plant).getType() != ShooterPlantType.APPEASE_MINT;
+        }
+        if (plant instanceof Lobber) {
+            return ((Lobber) plant).getType() != LobberPlantType.ARMA_MINT;
+        }
+        if (plant instanceof StrikeThrough) {
+            return ((StrikeThrough) plant).getType()
+                    != StrikeThroughPlantType.PIERCE_MINT;
+        }
+        if (plant instanceof Homing) {
+            return ((Homing) plant).getType() != HomingPlantType.CAT_TAIL_MINT;
+        }
+        if (plant instanceof Melee) {
+            return ((Melee) plant).getType() != MeleePlantType.ENFORCE_MINT;
+        }
+        return plant instanceof Wallnut
+                && ((Wallnut) plant).getType() != WallnutPlantType.REINFORCE_MINT;
+    }
+
+    private static void resetPlantActionTimer(BasePlant plant) {
+        if (plant instanceof Shooter) {
+            ((Shooter) plant).resetActionTimer();
+        } else if (plant instanceof SunProducer) {
+            ((SunProducer) plant).resetActionTimer();
+        } else if (plant instanceof Explosive) {
+            ((Explosive) plant).resetActionTimer();
+        } else if (plant instanceof Melee) {
+            ((Melee) plant).resetActionTimer();
+        } else if (plant instanceof Lobber) {
+            ((Lobber) plant).resetActionTimer();
+        } else if (plant instanceof StrikeThrough) {
+            ((StrikeThrough) plant).resetActionTimer();
+        } else if (plant instanceof Homing) {
+            ((Homing) plant).resetActionTimer();
+        }
+    }
+
+    private void createLilyPadCopies(Modifier source, int copyCount,
+            List<Entity> entitiesToAdd) {
+        int created = 0;
+        for (Tile tile : tiles) {
+            if (created >= copyCount) {
+                break;
+            }
+            EntityPosition position = tile.getPosition();
+            if (tile.getTileType() != TileType.WATER
+                    || !getPlantsAt(position).isEmpty()
+                    || containsPendingPlantAt(entitiesToAdd, position)) {
+                continue;
+            }
+            entitiesToAdd.add(new Modifier(ModifierPlantType.LILY_PAD,
+                    source.getLevel(), position));
+            created++;
+        }
+        pendingResults.add(source.getName() + " created " + created
+                + " Lily Pad copy/copies.");
+    }
+
+    private static boolean containsPendingPlantAt(List<Entity> entities,
+            EntityPosition position) {
+        for (Entity entity : entities) {
+            if (entity instanceof BasePlant
+                    && position.equals(entity.getEntityPosition())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applyPendingModifierDeathEffects(
+            List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof Modifier)) {
+                continue;
+            }
+            Modifier modifier = (Modifier) entity;
+            if (!modifier.drainDeathAreaEffectPending()
+                    || modifier.getEntityPosition() == null) {
+                continue;
+            }
+            damageAreaWithFire(modifier.getEntityPosition(), 1,
+                    ModifierPlantType.TORCHWOOD_DEATH_DAMAGE);
+            pendingResults.add(modifier.getName()
+                    + " released a fire explosion when destroyed.");
+        }
+    }
+
+    private void damageAreaWithFire(EntityPosition center, int radius,
+            int damage) {
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || Math.abs(zombie.getLane() - center.getRow()) > radius
+                    || Math.abs(zombie.getColumnPosition()
+                            - center.getColumn()) > radius) {
+                continue;
+            }
+            zombie.applyFireDamage(damage);
+            if (zombie.isDead()) {
+                reportZombieDeath(zombie);
+            }
+        }
+    }
+
     private void applyPendingWallnutPassiveEffects(List<Entity> updateSnapshot) {
         for (Entity entity : updateSnapshot) {
             if (entity instanceof Wallnut) {
@@ -1230,29 +1866,27 @@ public class Board {
         }
     }
 
-    private void applyPendingWallnutBoardEffects(List<Entity> updateSnapshot) {
+    private void applyPendingWallnutBoardEffects(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Wallnut) || entity.isRemoved()) {
                 continue;
             }
             Wallnut wallnut = (Wallnut) entity;
-            applyFamilyBoost(wallnut);
+            applyFamilyBoost(wallnut, entitiesToAdd);
             applyGarlicPlantFood(wallnut);
             applySweetPotatoPlantFood(wallnut);
         }
     }
 
-    private void applyFamilyBoost(Wallnut mint) {
+    private void applyFamilyBoost(Wallnut mint, List<Entity> entitiesToAdd) {
         if (!mint.drainFamilyBoostPending()) {
             return;
         }
-        for (BasePlant plant : getPlants()) {
-            if (plant instanceof Wallnut && plant != mint) {
-                ((Wallnut) plant).usePlantFood();
-            }
-        }
-        mint.markForRemoval();
-        pendingResults.add("Reinforce-mint applied plant food to every Wall-nut family plant.");
+        activateFamilyBoost(PlantFamily.WALL_NUT,
+                mint.getFamilyBoostDurationSeconds(), mint.resetsFamilyCooldowns(),
+                mint, entitiesToAdd,
+                "Reinforce-mint applied plant food to every Wall-nut family plant.");
     }
 
     private void applyGarlicPlantFood(Wallnut garlic) {
@@ -1261,7 +1895,7 @@ public class Board {
         }
         int sourceLane = garlic.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
-            if (zombie.getLane() == sourceLane) {
+            if (!zombie.isHypnotized() && zombie.getLane() == sourceLane) {
                 int targetLane = garlic.chooseAdjacentLane(sourceLane, numberOfRows);
                 zombie.moveToLane(targetLane);
             }
@@ -1275,7 +1909,8 @@ public class Board {
         }
         int targetLane = sweetPotato.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
-            if (Math.abs(zombie.getLane() - targetLane) == 1) {
+            if (!zombie.isHypnotized()
+                    && Math.abs(zombie.getLane() - targetLane) == 1) {
                 zombie.moveToLane(targetLane);
             }
         }
@@ -1292,8 +1927,12 @@ public class Board {
                 reportZombieDeath(zombie);
                 continue;
             }
-            attractZombieToSweetPotato(zombie);
-            updateZombie(zombie, deltaSeconds);
+            if (zombie.isHypnotized()) {
+                updateHypnotizedZombie(zombie, deltaSeconds);
+            } else {
+                attractZombieToSweetPotato(zombie);
+                updateZombie(zombie, deltaSeconds);
+            }
         }
     }
 
@@ -1317,8 +1956,89 @@ public class Board {
         }
     }
 
+    private void updateHypnotizedZombie(Zombie zombie, float deltaSeconds) {
+        Zombie target = findNearestHostileZombieToRight(zombie);
+        if (target == null) {
+            zombie.moveRight(deltaSeconds, numberOfColumns + PROJECTILE_BOARD_MARGIN);
+            if (zombie.getColumnPosition() >= numberOfColumns - POSITION_EPSILON) {
+                zombie.markForRemoval();
+            }
+            return;
+        }
+        double attackColumn = target.getColumnPosition() - Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() + POSITION_EPSILON >= attackColumn) {
+            zombie.attackZombie(target, deltaSeconds);
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        } else {
+            zombie.moveRight(deltaSeconds, attackColumn);
+        }
+    }
+
+    private Zombie findNearestHostileZombieToRight(Zombie hypnotizedZombie) {
+        Zombie nearest = null;
+        double nearestColumn = Double.POSITIVE_INFINITY;
+        for (Zombie zombie : getZombies()) {
+            if (zombie == hypnotizedZombie || zombie.isDead()
+                    || zombie.isHypnotized()
+                    || zombie.getLane() != hypnotizedZombie.getLane()) {
+                continue;
+            }
+            double column = zombie.getColumnPosition();
+            if (column + Zombie.ATTACK_REACH
+                    >= hypnotizedZombie.getColumnPosition() - POSITION_EPSILON
+                    && column < nearestColumn) {
+                nearest = zombie;
+                nearestColumn = column;
+            }
+        }
+        return nearest;
+    }
+
+    private Zombie findNearestHypnotizedZombieAhead(Zombie zombie) {
+        Zombie nearest = null;
+        double nearestColumn = Double.NEGATIVE_INFINITY;
+        for (Zombie candidate : getZombies()) {
+            if (candidate == zombie || candidate.isDead()
+                    || !candidate.isHypnotized()
+                    || candidate.getLane() != zombie.getLane()) {
+                continue;
+            }
+            double column = candidate.getColumnPosition();
+            if (column <= zombie.getColumnPosition() + POSITION_EPSILON
+                    && column > nearestColumn) {
+                nearest = candidate;
+                nearestColumn = column;
+            }
+        }
+        return nearest;
+    }
+
+    private void updateZombieAgainstHypnotizedTarget(Zombie zombie,
+            Zombie target, float deltaSeconds) {
+        double attackColumn = target.getColumnPosition() + Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() <= attackColumn + POSITION_EPSILON) {
+            zombie.attackZombie(target, deltaSeconds);
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+        } else {
+            zombie.move(deltaSeconds, attackColumn);
+        }
+    }
+
     private void updateZombie(Zombie zombie, float deltaSeconds) {
         BasePlant blockingPlant = findNearestPlantAhead(zombie);
+        Zombie blockingHypnotizedZombie = findNearestHypnotizedZombieAhead(zombie);
+        if (blockingHypnotizedZombie != null
+                && (blockingPlant == null
+                || blockingHypnotizedZombie.getColumnPosition()
+                > blockingPlant.getEntityPosition().getColumn())) {
+            updateZombieAgainstHypnotizedTarget(zombie,
+                    blockingHypnotizedZombie, deltaSeconds);
+            return;
+        }
         if (blockingPlant == null) {
             zombie.move(deltaSeconds, 0.0);
             if (zombie.getColumnPosition() <= POSITION_EPSILON) {
@@ -1338,8 +2058,22 @@ public class Board {
     }
 
     private void attackPlant(Zombie zombie, BasePlant plant, float deltaSeconds) {
-        if (!trySmashPlant(zombie, plant)) {
+        boolean eaten = !trySmashPlant(zombie, plant);
+        if (eaten) {
             zombie.eat(plant, deltaSeconds);
+        }
+        handleModifierAfterAttack(zombie, plant, eaten);
+    }
+
+    private void handleModifierAfterAttack(Zombie zombie, BasePlant plant,
+            boolean eaten) {
+        if (!eaten || !(plant instanceof Modifier)) {
+            return;
+        }
+        Modifier modifier = (Modifier) plant;
+        if (modifier.onEatenBy(zombie)) {
+            pendingResults.add("Zombie " + zombie.getName()
+                    + " was hypnotized by " + modifier.getName() + ".");
         }
     }
 
@@ -1400,7 +2134,7 @@ public class Board {
         }
         EntityPosition center = wallnut.getEntityPosition();
         for (Zombie target : getZombies()) {
-            if (isInsideThreeByThree(target, center)) {
+            if (!target.isHypnotized() && isInsideThreeByThree(target, center)) {
                 target.takeDamage(explosionDamage);
             }
         }
@@ -1435,7 +2169,13 @@ public class Board {
         if (candidateColumn > currentColumn) {
             return true;
         }
-        return candidateColumn == currentColumn && isCover(candidate) && !isCover(current);
+        if (candidateColumn != currentColumn) {
+            return false;
+        }
+        if (isCover(candidate) && !isCover(current)) {
+            return true;
+        }
+        return isLilyPad(current) && !isLilyPad(candidate);
     }
 
     private static boolean isCover(BasePlant plant) {
@@ -1489,12 +2229,27 @@ public class Board {
         addEntity(zombie);
     }
 
-    public boolean canAddPlant(BasePlant plant) {
+    public boolean canAddPlant(BasePlant requestedPlant) {
+        BasePlant plant = resolvePlacedPlant(requestedPlant);
         if (plant == null || !isPositionInsideBoard(plant.getEntityPosition())
                 || !canPlantOnTerrain(plant)) {
             return false;
         }
-        List<BasePlant> plantsAtPosition = getPlantsAt(plant.getEntityPosition());
+        EntityPosition position = plant.getEntityPosition();
+        List<BasePlant> plantsAtPosition = getPlantsAt(position);
+        Tile tile = getTileAt(position);
+        if (isLilyPad(plant)) {
+            return tile != null && tile.getTileType() == TileType.WATER
+                    && plantsAtPosition.isEmpty();
+        }
+        if (tile != null && tile.getTileType() == TileType.WATER) {
+            boolean hasLilyPad = plantsAtPosition.stream()
+                    .anyMatch(Board::isLilyPad);
+            if (plantsAtPosition.isEmpty()) {
+                return plant.getTags().contains(PlantTag.WATER);
+            }
+            return hasLilyPad && plantsAtPosition.size() == 1;
+        }
         if (plantsAtPosition.isEmpty()) {
             return !isCover(plant);
         }
@@ -1503,6 +2258,15 @@ public class Board {
         }
         return isCover(plant) && plantsAtPosition.size() == 1
                 && !isCover(plantsAtPosition.get(0));
+    }
+
+    private BasePlant resolvePlacedPlant(BasePlant plant) {
+        if (!(plant instanceof Modifier) || !((Modifier) plant).isImitater()) {
+            return plant;
+        }
+        Modifier imitater = (Modifier) plant;
+        return imitater.hasValidImitatedPlant()
+                ? imitater.getImitatedPlant() : null;
     }
 
     private boolean canPlantOnTerrain(BasePlant plant) {
@@ -1523,7 +2287,9 @@ public class Board {
             }
         }
         if (tile.getTileType() == TileType.WATER) {
-            return plant.getTags().contains(PlantTag.WATER);
+            return plant.getTags().contains(PlantTag.WATER)
+                    || getPlantsAt(plant.getEntityPosition()).stream()
+                            .anyMatch(Board::isLilyPad);
         }
         return tile.isPlantableTerrain();
     }
@@ -1533,30 +2299,93 @@ public class Board {
                 && ((Shooter) plant).getType() == ShooterPlantType.PEA_POD;
     }
 
-    public boolean addPlant(BasePlant plant) {
-        if (!canAddPlant(plant)) {
+    private static boolean isLilyPad(BasePlant plant) {
+        return plant instanceof Modifier && ((Modifier) plant).isLilyPad();
+    }
+
+    public boolean addPlant(BasePlant requestedPlant) {
+        return addPlantInternal(requestedPlant, true);
+    }
+
+    private boolean addPlantInternal(BasePlant requestedPlant,
+            boolean applyActiveFamilyBoosts) {
+        if (!canAddPlant(requestedPlant)) {
             return false;
         }
+        BasePlant plant = resolvePlacedPlant(requestedPlant);
         addEntity(plant);
         Tile tile = getTileAt(plant.getEntityPosition());
         if (tile != null) {
             tile.setPlant(plant);
         }
+        applyImitaterEntranceEffect(requestedPlant, plant);
+        if (applyActiveFamilyBoosts) {
+            applyActiveFamilyBoostsToPlant(plant);
+        }
         return true;
+    }
+
+    private void applyImitaterEntranceEffect(BasePlant requestedPlant,
+            BasePlant placedPlant) {
+        if (!(requestedPlant instanceof Modifier)) {
+            return;
+        }
+        Modifier imitater = (Modifier) requestedPlant;
+        if (!imitater.isImitater() || !imitater.appliesPlantFoodOnEntrance()) {
+            return;
+        }
+        List<Entity> spawnedEntities = new ArrayList<>();
+        applyPlantFoodToPlant(placedPlant, spawnedEntities);
+        for (Entity entity : spawnedEntities) {
+            addEntity(entity);
+        }
+    }
+
+    public PlantFoodResult usePlantFoodAt(EntityPosition position) {
+        BasePlant plant = getPlantAt(position);
+        if (plant == null) {
+            return PlantFoodResult.NO_PLANT;
+        }
+        List<Entity> spawnedEntities = new ArrayList<>();
+        boolean applied = applyPlantFoodAtPosition(plant, position, spawnedEntities);
+        if (!applied) {
+            return PlantFoodResult.NO_EFFECT;
+        }
+        for (Entity entity : spawnedEntities) {
+            addEntity(entity);
+        }
+        pendingResults.add(plant.getName() + " received plant food.");
+        return PlantFoodResult.SUCCESS;
+    }
+
+    private boolean applyPlantFoodAtPosition(BasePlant plant, EntityPosition position,
+            List<Entity> spawnedEntities) {
+        if (!(plant instanceof Shooter)
+                || ((Shooter) plant).getType() != ShooterPlantType.PEA_POD) {
+            return applyPlantFoodToPlant(plant, spawnedEntities);
+        }
+        boolean applied = false;
+        for (BasePlant stackedPlant : getPlantsAt(position)) {
+            if (stackedPlant instanceof Shooter
+                    && ((Shooter) stackedPlant).getType() == ShooterPlantType.PEA_POD) {
+                applied |= applyPlantFoodToPlant(stackedPlant, spawnedEntities);
+            }
+        }
+        return applied;
     }
 
     public boolean removeEntity(Entity entity) {
         if (entity == null) {
             return false;
         }
+        EntityPosition plantPosition = entity instanceof BasePlant
+                ? entity.getEntityPosition() : null;
         entity.markForRemoval();
-        if (entity instanceof BasePlant) {
-            Tile tile = getTileAt(entity.getEntityPosition());
-            if (tile != null && tile.getPlant() == entity) {
-                tile.clearPlant();
-            }
+        boolean removed = allEntities.remove(entity);
+        if (plantPosition != null) {
+            refreshTilePlant(plantPosition);
         }
-        return allEntities.remove(entity);
+        return removed;
     }
 
     public boolean containsEntity(Entity entity) {
@@ -1647,6 +2476,8 @@ public class Board {
 
     public boolean isPositionInsideBoard(EntityPosition position) {
         return position != null
+                && position.getRow() >= 0
+                && position.getColumn() >= 0
                 && position.getRow() < numberOfRows
                 && position.getColumn() < numberOfColumns;
     }
@@ -1752,6 +2583,15 @@ public class Board {
         if (removed instanceof Grave) {
             pendingResults.add("Grave at " + position + " was destroyed.");
         }
+    }
+
+    public List<PlantFamily> drainPlantCooldownResetRequests() {
+        if (pendingPlantCooldownResets.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<PlantFamily> result = new ArrayList<>(pendingPlantCooldownResets);
+        pendingPlantCooldownResets.clear();
+        return Collections.unmodifiableList(result);
     }
 
     public List<Entity> getAllEntities() {
