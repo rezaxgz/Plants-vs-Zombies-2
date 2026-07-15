@@ -50,6 +50,8 @@ public class Zombie extends Entity {
     private boolean flying;
     private boolean submerged;
     private boolean hypnotized;
+    private double hypnotizedDamageMultiplier = 1.0;
+    private int alliedAttackDpsOverride;
     private double pendingZombieAttackDamage;
     private int poisonDamagePerTick;
     private double poisonTickIntervalSeconds;
@@ -486,7 +488,8 @@ public class Zombie extends Entity {
         if (frozen || stunned) {
             return 0;
         }
-        int dps = type.getEatDPS();
+        int dps = hypnotized && alliedAttackDpsOverride > 0
+                ? alliedAttackDpsOverride : type.getEatDPS();
         if (chilled) {
             dps = (int) Math.floor(dps * 0.5);
         }
@@ -497,6 +500,9 @@ public class Zombie extends Entity {
                     dps = (int) Math.floor(dps * scale);
                 }
             }
+        }
+        if (hypnotized) {
+            dps = (int) Math.floor(dps * hypnotizedDamageMultiplier);
         }
         return dps;
     }
@@ -526,11 +532,64 @@ public class Zombie extends Entity {
     }
 
     public void hypnotize() {
+        hypnotize(1.0, 1.0);
+    }
+
+    public void hypnotize(double healthMultiplier, double damageMultiplier) {
         if (isDead()) {
             return;
         }
+        if (!Double.isFinite(healthMultiplier) || healthMultiplier < 1.0
+                || !Double.isFinite(damageMultiplier) || damageMultiplier < 1.0) {
+            throw new IllegalArgumentException("hypnosis multipliers must be finite and at least 1");
+        }
+        if (!hypnotized && healthMultiplier > 1.0) {
+            maximumHitPoints = Math.max(1,
+                    (int) Math.round(maximumHitPoints * healthMultiplier));
+            hitPoints = Math.max(1, (int) Math.round(hitPoints * healthMultiplier));
+        }
         hypnotized = true;
+        hypnotizedDamageMultiplier = Math.max(
+                hypnotizedDamageMultiplier, damageMultiplier);
         reachedHouse = false;
+    }
+
+    public void transformIntoAlliedGargantuar(double healthMultiplier,
+            double damageMultiplier) {
+        if (isDead()) {
+            return;
+        }
+        reconfigureType(ZombieType.GARGANTUAR);
+        alliedAttackDpsOverride = 1500;
+        hypnotize(healthMultiplier, damageMultiplier);
+    }
+
+    private void reconfigureType(ZombieType newType) {
+        if (newType == null) {
+            throw new IllegalArgumentException("newType cannot be null");
+        }
+        type = newType;
+        maximumHitPoints = newType.getHitpoints();
+        hitPoints = maximumHitPoints;
+        armor = null;
+        if (newType.getDefaultArmor() != null
+                && newType.getDefaultArmor() != ArmorType.NONE) {
+            armor = new Armor(newType.getDefaultArmor());
+        }
+        abilities = new ArrayList<>();
+        initializeAbilities(newType.getAbilitySpecs());
+        movementBehavior = new BasicZombieMovement(newType.getSpeed());
+        attackBehavior = new PlantEatingAttack(newType.getEatDPS());
+        dead = false;
+        deathReported = false;
+        reachedHouse = false;
+        pendingZombieAttackDamage = 0.0;
+        clearColdEffects();
+        stunned = false;
+        stunnedDuration = 0.0;
+        poisonDamagePerTick = 0;
+        poisonDurationSeconds = 0.0;
+        poisonTickTimerSeconds = 0.0;
     }
 
     public boolean hasMagnetizableArmor() {

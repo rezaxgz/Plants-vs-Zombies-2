@@ -270,7 +270,8 @@ public class Shooter extends BasePlant {
         return new Projectile(type.getDisplayName(), startRow, startColumn,
                 createEffects(damage),
                 new LinearProjectileMovement(direction, PROJECTILE_SPEED_TILES_PER_SECOND),
-                type.getRangeTiles(getLevel()));
+                type.getRangeTiles(getLevel()), 5.0,
+                type.getTags().contains(model.game.entities.plants.PlantTag.PEA));
     }
 
     private List<ProjectileEffect> createEffects(int damage) {
