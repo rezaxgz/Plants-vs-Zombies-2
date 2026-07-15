@@ -45,6 +45,8 @@ public class Zombie extends Entity {
     private boolean frozen;
     private double frozenDuration;
     private boolean enraged;
+    private boolean stunned;
+    private double stunnedDuration;
     private boolean flying;
     private boolean submerged;
     private int poisonDamagePerTick;
@@ -171,6 +173,13 @@ public class Zombie extends Entity {
                 frozen = false;
                 chilled = true;
                 chilledDuration = 10; // Chill after freeze wears off
+            }
+        }
+        if (stunned) {
+            stunnedDuration -= deltaSeconds;
+            if (stunnedDuration <= 0.0) {
+                stunned = false;
+                stunnedDuration = 0.0;
             }
         }
         updatePoison(deltaSeconds);
@@ -356,6 +365,21 @@ public class Zombie extends Entity {
         return enraged;
     }
 
+    public boolean isStunned() {
+        return stunned;
+    }
+
+    public void applyStun(double duration) {
+        if (!Double.isFinite(duration) || duration < 0.0) {
+            throw new IllegalArgumentException("duration must be finite and non-negative");
+        }
+        if (duration == 0.0) {
+            return;
+        }
+        stunned = true;
+        stunnedDuration = Math.max(stunnedDuration, duration);
+    }
+
     public boolean isFlying() {
         return flying;
     }
@@ -439,7 +463,7 @@ public class Zombie extends Entity {
      */
     public double getEffectiveSpeed() {
         double speed = type.getSpeed();
-        if (frozen)
+        if (frozen || stunned)
             return 0;
         if (chilled)
             speed *= 0.5;
@@ -457,7 +481,7 @@ public class Zombie extends Entity {
      * Get effective eat DPS (modified by enrage).
      */
     public int getEffectiveEatDPS() {
-        if (frozen) {
+        if (frozen || stunned) {
             return 0;
         }
         int dps = type.getEatDPS();
@@ -481,6 +505,10 @@ public class Zombie extends Entity {
 
     public double getFrozenDuration() {
         return Math.max(0.0, frozenDuration);
+    }
+
+    public double getStunnedDuration() {
+        return Math.max(0.0, stunnedDuration);
     }
 
     public double getPoisonDurationSeconds() {

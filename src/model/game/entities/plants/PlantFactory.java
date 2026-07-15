@@ -3,10 +3,14 @@ package model.game.entities.plants;
 import model.game.entities.EntityPosition;
 import model.game.entities.plants.explosive.Explosive;
 import model.game.entities.plants.explosive.ExplosivePlantType;
+import model.game.entities.plants.lobber.Lobber;
+import model.game.entities.plants.lobber.LobberPlantType;
 import model.game.entities.plants.melee.Melee;
 import model.game.entities.plants.melee.MeleePlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
+import model.game.entities.plants.strikeThrough.StrikeThrough;
+import model.game.entities.plants.strikeThrough.StrikeThroughPlantType;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.sunProducer.SunProducerPlantType;
 import model.game.entities.plants.wallnut.Wallnut;
@@ -32,6 +36,18 @@ public final class PlantFactory {
                 .orElse(null);
         if (shooter != null) {
             return shooter;
+        }
+        BasePlant lobber = LobberPlantType.findByName(typeName)
+                .map(type -> createLobber(type, level, position))
+                .orElse(null);
+        if (lobber != null) {
+            return lobber;
+        }
+        BasePlant strikeThrough = StrikeThroughPlantType.findByName(typeName)
+                .map(type -> createStrikeThrough(type, level, position))
+                .orElse(null);
+        if (strikeThrough != null) {
+            return strikeThrough;
         }
         BasePlant explosive = ExplosivePlantType.findByName(typeName)
                 .map(type -> createExplosive(type, level, position))
@@ -59,6 +75,24 @@ public final class PlantFactory {
         return new SunProducer(type, level, position);
     }
 
+    public static Lobber createLobber(LobberPlantType type, EntityPosition position) {
+        return createLobber(type, 1, position);
+    }
+
+    public static Lobber createLobber(LobberPlantType type, int level,
+            EntityPosition position) {
+        return new Lobber(type, level, position);
+    }
+
+    public static StrikeThrough createStrikeThrough(
+            StrikeThroughPlantType type, EntityPosition position) {
+        return createStrikeThrough(type, 1, position);
+    }
+
+    public static StrikeThrough createStrikeThrough(
+            StrikeThroughPlantType type, int level, EntityPosition position) {
+        return new StrikeThrough(type, level, position);
+    }
 
     public static Explosive createExplosive(ExplosivePlantType type,
             EntityPosition position) {

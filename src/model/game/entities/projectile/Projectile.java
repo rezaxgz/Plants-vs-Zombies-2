@@ -102,13 +102,20 @@ public class Projectile extends Entity {
         if (zombie == null || isRemoved()) {
             return;
         }
+        applyEffects(zombie);
+        markForRemoval();
+    }
+
+    protected final void applyEffects(Zombie zombie) {
+        if (zombie == null) {
+            throw new IllegalArgumentException("zombie cannot be null");
+        }
         for (ProjectileEffect effect : effects) {
             if (zombie.isDead()) {
                 break;
             }
             effect.apply(zombie);
         }
-        markForRemoval();
     }
 
     public double getIntersectionParameter(double targetRow, double targetColumn,
