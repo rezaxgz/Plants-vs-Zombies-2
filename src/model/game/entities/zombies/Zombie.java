@@ -408,9 +408,22 @@ public class Zombie extends Entity {
     }
 
     public void setFrozen(double duration) {
-        this.frozen = true;
-        this.frozenDuration = duration;
-        this.chilled = false;
+        applyFreeze(duration);
+    }
+
+    public void applyFreeze(double duration) {
+        if (!Double.isFinite(duration) || duration < 0.0) {
+            throw new IllegalArgumentException("duration must be finite and non-negative");
+        }
+        frozen = true;
+        frozenDuration = Math.max(frozenDuration, duration);
+        chilled = false;
+        chilledDuration = 0.0;
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof TorchAbility) {
+                ((TorchAbility) ability).extinguish();
+            }
+        }
     }
 
     public void setFlying(boolean flying) {
