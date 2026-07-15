@@ -20,10 +20,12 @@ import model.game.entities.plants.melee.MeleeBehavior;
 import model.game.entities.plants.melee.MeleePlantType;
 import model.game.entities.plants.shooter.Shooter;
 import model.game.entities.plants.shooter.ShooterPlantType;
+import model.game.entities.plants.strikeThrough.StrikeThrough;
 import model.game.entities.plants.sunProducer.SunProducer;
 import model.game.entities.plants.wallnut.Wallnut;
 import model.game.entities.projectile.BouncingGrape;
 import model.game.entities.projectile.LobbedProjectile;
+import model.game.entities.projectile.PiercingProjectile;
 import model.game.entities.projectile.Projectile;
 import model.game.entities.projectile.effect.ProjectileEffect;
 import model.game.entities.zombies.Zombie;
@@ -88,8 +90,10 @@ public class Board {
         reportDeadZombies(updateSnapshot);
         activateReadyShooters(updateSnapshot, entitiesToAdd);
         activateReadyLobbers(updateSnapshot, entitiesToAdd);
+        activateReadyStrikeThroughs(updateSnapshot, entitiesToAdd);
         applyPendingShooterBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingLobberBoardEffects(updateSnapshot, entitiesToAdd);
+        applyPendingStrikeThroughBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingSunProducerBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingExplosiveBoardEffects(updateSnapshot, entitiesToAdd);
         applyPendingMeleeBoardEffects(updateSnapshot);
@@ -215,6 +219,77 @@ public class Board {
         return nearest;
     }
 
+    private void activateReadyStrikeThroughs(List<Entity> updateSnapshot,
+            List<Entity> entitiesToAdd) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
+                continue;
+            }
+            StrikeThrough plant = (StrikeThrough) entity;
+            if (!plant.isReadyToAttack() || !hasStrikeThroughTarget(plant)) {
+                continue;
+            }
+            PiercingProjectile projectile = plant.shoot();
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+            }
+        }
+    }
+
+    private boolean hasStrikeThroughTarget(StrikeThrough plant) {
+        for (Zombie zombie : getZombies()) {
+            if (!zombie.isDead() && !zombie.isSubmerged()
+                    && plant.canTarget(zombie.getColumnPosition(), zombie.getLane())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applyPendingStrikeThroughBoardEffects(
+            List<Entity> updateSnapshot, List<Entity> entitiesToAdd) {
+        applyStrikeThroughFamilyBoosts(updateSnapshot);
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
+                continue;
+            }
+            StrikeThrough plant = (StrikeThrough) entity;
+            PiercingProjectile projectile = plant.drainPlantFoodProjectile();
+            if (projectile != null) {
+                entitiesToAdd.add(projectile);
+                pendingResults.add(plant.getName() + " used its plant food effect.");
+            }
+        }
+    }
+
+    private void applyStrikeThroughFamilyBoosts(List<Entity> updateSnapshot) {
+        for (Entity entity : updateSnapshot) {
+            if (!(entity instanceof StrikeThrough) || entity.isRemoved()) {
+                continue;
+            }
+            StrikeThrough mint = (StrikeThrough) entity;
+            if (mint.drainFamilyBoostPending()) {
+                boostStrikeThroughFamily(mint);
+            }
+        }
+    }
+
+    private void boostStrikeThroughFamily(StrikeThrough mint) {
+        for (BasePlant plant : getPlants()) {
+            if (!(plant instanceof StrikeThrough) || plant == mint) {
+                continue;
+            }
+            StrikeThrough strikeThrough = (StrikeThrough) plant;
+            strikeThrough.usePlantFood();
+            if (mint.resetsFamilyCooldowns()) {
+                strikeThrough.resetActionTimer();
+            }
+        }
+        mint.markForRemoval();
+        pendingResults.add(
+                "Pierce-mint applied plant food to every Strike-through plant.");
+    }
+
     private void applyPendingLobberBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
         applyLobberFamilyBoosts(updateSnapshot);
@@ -324,15 +399,25 @@ public class Board {
                 continue;
             }
             Projectile projectile = (Projectile) entity;
-            Zombie target = findFirstZombieHit(projectile);
-            if (target != null) {
-                projectile.hit(target);
-                if (target.isDead()) {
-                    reportZombieDeath(target);
-                }
-            } else if (projectile.hasExpired() || isProjectileOutsideBoard(projectile)) {
+            resolveProjectileHits(projectile);
+            if (!projectile.isRemoved()
+                    && (projectile.hasExpired() || isProjectileOutsideBoard(projectile))) {
                 projectile.markForRemoval();
             }
+        }
+    }
+
+    private void resolveProjectileHits(Projectile projectile) {
+        Zombie target = findFirstZombieHit(projectile);
+        while (target != null && !projectile.isRemoved()) {
+            projectile.hit(target);
+            if (target.isDead()) {
+                reportZombieDeath(target);
+            }
+            if (!(projectile instanceof PiercingProjectile)) {
+                return;
+            }
+            target = findFirstZombieHit(projectile);
         }
     }
 
@@ -340,7 +425,8 @@ public class Board {
         Zombie firstTarget = null;
         double firstParameter = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (zombie.isDead() || zombie.isSubmerged()) {
+            if (zombie.isDead() || zombie.isSubmerged()
+                    || !canProjectileHit(projectile, zombie)) {
                 continue;
             }
             double parameter = projectile.getIntersectionParameter(
@@ -351,6 +437,11 @@ public class Board {
             }
         }
         return firstTarget;
+    }
+
+    private static boolean canProjectileHit(Projectile projectile, Zombie zombie) {
+        return !(projectile instanceof PiercingProjectile)
+                || ((PiercingProjectile) projectile).canHit(zombie);
     }
 
     private boolean isProjectileOutsideBoard(Projectile projectile) {
