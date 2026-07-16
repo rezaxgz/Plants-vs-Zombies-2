@@ -168,6 +168,12 @@ public class Projectile extends Entity {
         return false;
     }
 
+    public int getImpactDamage() {
+        long scaledDamage = (long) originalImpactDamage
+                * torchwoodDamageMultiplier;
+        return (int) Math.min(Integer.MAX_VALUE, scaledDamage);
+    }
+
     public double getIntersectionParameter(double targetRow, double targetColumn,
             double collisionRadius) {
         double rowDelta = rowPosition - previousRowPosition;

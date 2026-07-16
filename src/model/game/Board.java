@@ -10,6 +10,7 @@ import java.util.Set;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.IceBlock;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFamily;
@@ -45,6 +46,7 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.ChillOnHitAbility;
 import model.game.entities.zombies.abilities.FlyAbility;
+import model.game.entities.zombies.abilities.IceBlockPushAbility;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.TackleAbility;
 import model.game.entities.zombies.abilities.TorchAbility;
@@ -700,8 +702,23 @@ public class Board {
 
     private void resolveProjectileHits(Projectile projectile) {
         while (!projectile.isRemoved()) {
+            IceBlock iceBlock = findFirstIceBlockHit(projectile);
             BasePlant frozenPlant = findFirstFrozenPlantHit(projectile);
             Zombie target = findFirstZombieHit(projectile);
+
+            if (iceBlock != null
+                    && isIceBlockBeforeOtherTargets(
+                            projectile, iceBlock, frozenPlant, target)) {
+                int damage = Math.max(1, projectile.getImpactDamage());
+                iceBlock.takeDamage(damage);
+                projectile.markForRemoval();
+                pendingResults.add("Troglobite ice block absorbed "
+                        + damage + " projectile damage."
+                        + (iceBlock.isDestroyed()
+                                ? " The ice block was destroyed." : ""));
+                return;
+            }
+
             if (frozenPlant != null
                     && isFrozenPlantBeforeZombie(projectile, frozenPlant, target)) {
                 int iceDamage = projectile.hasFireEffect()
@@ -725,6 +742,55 @@ public class Board {
                 return;
             }
         }
+    }
+
+    private IceBlock findFirstIceBlockHit(Projectile projectile) {
+        IceBlock firstBlock = null;
+        double firstParameter = Double.POSITIVE_INFINITY;
+        for (IceBlock block : getIceBlocks()) {
+            double parameter = projectile.getIntersectionParameter(
+                    block.getLane(), block.getColumnPosition(),
+                    PROJECTILE_COLLISION_RADIUS);
+            if (!Double.isNaN(parameter)
+                    && parameter > POSITION_EPSILON
+                    && parameter < firstParameter) {
+                firstParameter = parameter;
+                firstBlock = block;
+            }
+        }
+        return firstBlock;
+    }
+
+    private boolean isIceBlockBeforeOtherTargets(Projectile projectile,
+            IceBlock block, BasePlant frozenPlant, Zombie zombie) {
+        double blockParameter = projectile.getIntersectionParameter(
+                block.getLane(), block.getColumnPosition(),
+                PROJECTILE_COLLISION_RADIUS);
+        if (Double.isNaN(blockParameter)) {
+            return false;
+        }
+
+        if (frozenPlant != null) {
+            EntityPosition position = frozenPlant.getEntityPosition();
+            double plantParameter = projectile.getIntersectionParameter(
+                    position.getRow(), position.getColumn(),
+                    PROJECTILE_COLLISION_RADIUS);
+            if (!Double.isNaN(plantParameter)
+                    && plantParameter + POSITION_EPSILON < blockParameter) {
+                return false;
+            }
+        }
+
+        if (zombie != null) {
+            double zombieParameter = projectile.getIntersectionParameter(
+                    zombie.getLane(), zombie.getColumnPosition(),
+                    PROJECTILE_COLLISION_RADIUS);
+            if (!Double.isNaN(zombieParameter)
+                    && zombieParameter + POSITION_EPSILON < blockParameter) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private BasePlant findFirstFrozenPlantHit(Projectile projectile) {
@@ -2032,9 +2098,61 @@ public class Board {
             if (zombie.isHypnotized()) {
                 updateHypnotizedZombie(zombie, deltaSeconds);
             } else {
+                updateTroglobiteIceBlocks(zombie);
                 attractZombieToSweetPotato(zombie);
                 updateZombie(zombie, deltaSeconds);
+                updateTroglobiteIceBlocks(zombie);
             }
+        }
+    }
+
+    private void updateTroglobiteIceBlocks(Zombie zombie) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (!(ability instanceof IceBlockPushAbility)
+                    || !ability.tryUse(zombie, this)) {
+                continue;
+            }
+            IceBlockPushAbility push = (IceBlockPushAbility) ability;
+            if (push.didSpawnThisUse()) {
+                pendingResults.add(zombie.getName() + " started pushing "
+                        + push.getActiveIceBlocks().size() + " ice block(s).");
+            }
+            for (IceBlock block : push.getActiveIceBlocks()) {
+                crushPlantsWithIceBlock(block);
+                crushHypnotizedZombiesWithIceBlock(block);
+            }
+        }
+    }
+
+    private void crushPlantsWithIceBlock(IceBlock block) {
+        for (BasePlant plant : new ArrayList<>(getPlants())) {
+            if (plant.getEntityPosition() == null
+                    || plant.getEntityPosition().getRow() != block.getLane()
+                    || Math.abs(plant.getEntityPosition().getColumn()
+                            - block.getColumnPosition())
+                            > IceBlock.COLLISION_RADIUS_TILES) {
+                continue;
+            }
+            plant.takeDamage(Integer.MAX_VALUE);
+            pendingResults.add("Troglobite ice block crushed "
+                    + plant.getName() + " at " + plant.getEntityPosition() + ".");
+            reportDestroyedPlant(plant);
+        }
+    }
+
+    private void crushHypnotizedZombiesWithIceBlock(IceBlock block) {
+        for (Zombie target : new ArrayList<>(getZombies())) {
+            if (!target.isHypnotized() || target.isDead()
+                    || target.getLane() != block.getLane()
+                    || Math.abs(target.getColumnPosition()
+                            - block.getColumnPosition())
+                            > IceBlock.COLLISION_RADIUS_TILES) {
+                continue;
+            }
+            target.kill();
+            pendingResults.add("Troglobite ice block crushed hypnotized "
+                    + target.getName() + ".");
+            reportZombieDeath(target);
         }
     }
 
@@ -2609,6 +2727,16 @@ public class Board {
             }
         }
         return Collections.unmodifiableList(zombies);
+    }
+
+    public List<IceBlock> getIceBlocks() {
+        List<IceBlock> iceBlocks = new ArrayList<>();
+        for (Entity entity : allEntities) {
+            if (entity instanceof IceBlock && !entity.isRemoved()) {
+                iceBlocks.add((IceBlock) entity);
+            }
+        }
+        return Collections.unmodifiableList(iceBlocks);
     }
 
     public List<Sun> getSuns() {
