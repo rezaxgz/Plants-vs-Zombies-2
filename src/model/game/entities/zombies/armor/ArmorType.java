@@ -11,7 +11,7 @@ public enum ArmorType {
     BRICK("Brick", 2200, true, true, false, true),
     SHOULDER_ARMOR("ShoulderArmor", 1600, true, false, false, false),
     CROWN("Crown", 1600, true, true, true, true),
-    NEWSPAPER("Newspaper", 800, true, false, false, false),
+    NEWSPAPER("Newspaper", 190, true, false, false, false),
     ICE_BLOCK("IceBlock", 1600, true, true, false, false),
     SARCOPHAGUS("Sarcophagus", 2400, true, true, false, false),
     SURFBOARD("Surfboard", 600, true, true, false, false);

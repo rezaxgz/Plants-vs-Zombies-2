@@ -6,6 +6,7 @@ import java.util.List;
 
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.projectile.effect.ChillEffect;
 import model.game.entities.projectile.effect.DamageEffect;
 import model.game.entities.projectile.effect.FireEffect;
 import model.game.entities.projectile.effect.ProjectileEffect;
@@ -166,6 +167,21 @@ public class Projectile extends Entity {
             }
         }
         return false;
+    }
+
+    public boolean hasChillEffect() {
+        for (ProjectileEffect effect : effects) {
+            if (effect instanceof ChillEffect) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public int getImpactDamage() {
+        long scaledDamage = (long) originalImpactDamage
+                * torchwoodDamageMultiplier;
+        return (int) Math.min(Integer.MAX_VALUE, scaledDamage);
     }
 
     public double getIntersectionParameter(double targetRow, double targetColumn,

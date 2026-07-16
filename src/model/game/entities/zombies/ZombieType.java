@@ -120,7 +120,7 @@ public enum ZombieType {
     // === OTHER SPECIAL ZOMBIES ===
     ALL_STAR("ZombieModernAllStarDefault", 1100, 0.16, 100, 1000, 3500,
             ArmorType.NONE, new String[] { "TackleAbility:1500:0.5" }, false),
-    ARCADE("ZombieEightiesArcade", 490, 0.19, 100, 600, 1000,
+    ARCADE("ZombieEightiesArcade", 1290, 0.19, 100, 600, 1000,
             ArmorType.NONE, new String[] { "ArcadePushAbility" }, false),
     LOST_CITY_JANE("ZombieLostCityJaneDefault", 350, 0.25, 100, 200, 3000,
             ArmorType.NONE, new String[] { "UmbrellaBounceAbility" }, false),
@@ -132,6 +132,8 @@ public enum ZombieType {
             ArmorType.NONE, new String[] { "PianoCrushAbility:0.4" }, false),
     NEWSPAPER("ZombieModernNewspaperDefault", 460, 0.22, 200, 700, 4000,
             ArmorType.NEWSPAPER, new String[] { "EnrageAbility:4:4" }, false),
+    ROLLER_BARREL("ZombieRollerBarrelDefault", 490, 0.185, 100, 500, 3000,
+            ArmorType.NONE, new String[] { "BarrelPushAbility:2" }, false),
     PET("ZombiePetDefault", 300, 0.1, 100, 100, 1000,
             ArmorType.NONE, null, false),
 

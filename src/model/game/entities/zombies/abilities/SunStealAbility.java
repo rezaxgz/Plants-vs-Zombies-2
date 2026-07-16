@@ -1,40 +1,95 @@
 package model.game.entities.zombies.abilities;
 
 import model.game.Board;
+import model.game.entities.EntityPosition;
+import model.game.entities.other.Sun;
 import model.game.entities.zombies.Zombie;
 
 /**
- * Ra zombie's ability to steal sun from the player.
+ * Ra periodically pulls the nearest collectable sun from the lawn and stores
+ * it. All stored sun is returned to the player's reserve when Ra dies.
  */
 public class SunStealAbility extends ZombieAbility {
-    private int maxClaimedSun;
+    private final int maxClaimedSun;
     private int sunStolen;
+    private int lastStolenAmount;
+    private boolean stolenSunReleased;
 
     public SunStealAbility(int maxClaimedSun) {
-        super(3.0); // Steal every 3 seconds
+        super(3.0);
+        if (maxClaimedSun <= 0) {
+            throw new IllegalArgumentException("maxClaimedSun must be positive");
+        }
         this.maxClaimedSun = maxClaimedSun;
-        this.sunStolen = 0;
     }
 
     @Override
     public boolean tryUse(Zombie zombie, Board board) {
-        if (!canUse() || sunStolen >= maxClaimedSun) return false;
+        lastStolenAmount = 0;
+        if (!canUse() || zombie == null || board == null
+                || zombie.isDead() || zombie.isHypnotized()
+                || sunStolen >= maxClaimedSun) {
+            return false;
+        }
 
-        // Steal sun from game - requires access to Game instance
-        // Game game = board.getGame();
-        // if (game != null) {
-        //     int availableSun = game.getSunCount();
-        //     int toSteal = Math.min(25, availableSun);
-        //     if (toSteal > 0) {
-        //         game.spendSun(toSteal);
-        //         sunStolen += toSteal;
-        //         resetCooldown();
-        //         return true;
-        //     }
-        // }
-        return false;
+        Sun target = findNearestStealableSun(zombie, board);
+        if (target == null) {
+            return false;
+        }
+
+        int stolen = target.collect();
+        if (stolen <= 0) {
+            return false;
+        }
+        board.removeEntity(target);
+        sunStolen += stolen;
+        lastStolenAmount = stolen;
+        resetCooldown();
+        return true;
     }
 
-    public int getSunStolen() { return sunStolen; }
-    public int getMaxClaimedSun() { return maxClaimedSun; }
+    private Sun findNearestStealableSun(Zombie zombie, Board board) {
+        Sun nearest = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        int remainingCapacity = maxClaimedSun - sunStolen;
+        for (Sun sun : board.getSuns()) {
+            if (!sun.isCollectable() || sun.getSunAmount() > remainingCapacity) {
+                continue;
+            }
+            double distance = distanceSquared(zombie, sun.getEntityPosition());
+            if (distance < nearestDistance) {
+                nearest = sun;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    private static double distanceSquared(Zombie zombie, EntityPosition position) {
+        double rowDistance = zombie.getLane() - position.getRow();
+        double columnDistance = zombie.getColumnPosition() - position.getColumn();
+        return rowDistance * rowDistance + columnDistance * columnDistance;
+    }
+
+    public int releaseStolenSun() {
+        if (stolenSunReleased) {
+            return 0;
+        }
+        stolenSunReleased = true;
+        int released = sunStolen;
+        sunStolen = 0;
+        return released;
+    }
+
+    public int getSunStolen() {
+        return sunStolen;
+    }
+
+    public int getLastStolenAmount() {
+        return lastStolenAmount;
+    }
+
+    public int getMaxClaimedSun() {
+        return maxClaimedSun;
+    }
 }

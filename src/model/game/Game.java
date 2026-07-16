@@ -17,6 +17,17 @@ import model.game.entities.plants.PlantFamily;
 import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
+import model.game.entities.zombies.abilities.FishingHookAbility;
+import model.game.entities.zombies.abilities.ImpThrowAbility;
+import model.game.entities.zombies.abilities.KingBuffAbility;
+import model.game.entities.zombies.abilities.LaserBeamAbility;
+import model.game.entities.zombies.abilities.OctopusThrowAbility;
+import model.game.entities.zombies.abilities.SnowballThrowAbility;
+import model.game.entities.zombies.abilities.SunStealAbility;
+import model.game.entities.zombies.abilities.TombSummonAbility;
+import model.game.entities.zombies.abilities.WeaselReleaseAbility;
+import model.game.entities.zombies.abilities.WizardSpellAbility;
+import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
 public class Game {
@@ -104,7 +115,13 @@ public class Game {
         }
 
         updatePlantCooldowns(deltaSeconds);
+        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+        trackBoardSpawnedZombies();
+        activateAutomaticZombieAbilities(zombieSnapshot);
+        returnStolenSunFromDeadZombies(zombieSnapshot);
+        returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
+        restoreWizardSheepFromDeadZombies(zombieSnapshot);
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
@@ -118,6 +135,281 @@ public class Game {
         checkForWin();
         if (status == GameStatus.ACTIVE) {
             updateSkySuns();
+        }
+    }
+
+    private void activateAutomaticZombieAbilities(List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                activateWeaselRelease(zombie, ability);
+            }
+            if (zombie.isDead() || zombie.isHypnotized()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                activateImpThrow(zombie, ability);
+                activateSunSteal(zombie, ability);
+                activateTombSummon(zombie, ability);
+                activateSnowballThrow(zombie, ability);
+                activateFishingHook(zombie, ability);
+                activateOctopusThrow(zombie, ability);
+                activateWizardSpell(zombie, ability);
+                activateKingBuff(zombie, ability);
+                activateCrystalSkull(zombie, ability);
+            }
+        }
+    }
+
+    private void activateCrystalSkull(Zombie crystalSkull,
+            ZombieAbility ability) {
+        if (!(ability instanceof LaserBeamAbility)) {
+            return;
+        }
+
+        LaserBeamAbility laser = (LaserBeamAbility) ability;
+        boolean stateChanged = laser.tryUse(crystalSkull, board);
+        int requestedSun = laser.drainPendingSunRequest();
+        int stolenSun = Math.min(sunCount, requestedSun);
+        if (stolenSun > 0) {
+            spendSun(stolenSun);
+            laser.recordStolenSun(stolenSun);
+            pendingResults.add(crystalSkull.getName() + " stole "
+                    + stolenSun + " stored sun while charging.");
+        }
+
+        if (stateChanged && laser.didStartChargingThisUse()) {
+            pendingResults.add(crystalSkull.getName()
+                    + " started charging its skull laser.");
+        }
+        if (stateChanged && laser.didFireThisUse()) {
+            pendingResults.add(crystalSkull.getName()
+                    + " fired its laser and destroyed "
+                    + laser.getLastDestroyedPlantCount()
+                    + " plant(s).");
+        }
+    }
+
+    private void activateWizardSpell(Zombie wizard,
+            ZombieAbility ability) {
+        if (!(ability instanceof WizardSpellAbility)
+                || !ability.tryUse(wizard, board)) {
+            return;
+        }
+        BasePlant target =
+                ((WizardSpellAbility) ability).getLastTarget();
+        if (target != null) {
+            pendingResults.add(wizard.getName() + " transformed "
+                    + target.getName() + " into a sheep at "
+                    + target.getEntityPosition() + ".");
+        }
+    }
+
+    private void activateKingBuff(Zombie king,
+            ZombieAbility ability) {
+        if (!(ability instanceof KingBuffAbility)
+                || !ability.tryUse(king, board)) {
+            return;
+        }
+        Zombie target =
+                ((KingBuffAbility) ability).getLastKnightedZombie();
+        if (target != null) {
+            pendingResults.add(king.getName() + " knighted "
+                    + target.getName() + " with crown armor.");
+        }
+    }
+
+    private void activateFishingHook(Zombie fisherman,
+            ZombieAbility ability) {
+        if (!(ability instanceof FishingHookAbility)
+                || !ability.tryUse(fisherman, board)) {
+            return;
+        }
+        FishingHookAbility hook = (FishingHookAbility) ability;
+        BasePlant target = hook.getLastTarget();
+        if (target == null) {
+            return;
+        }
+        if (hook.wasLastTargetDestroyed()) {
+            pendingResults.add(fisherman.getName() + " hooked and destroyed "
+                    + target.getName() + " beside the right edge.");
+        } else {
+            pendingResults.add(fisherman.getName() + " pulled "
+                    + target.getName() + " from " + hook.getLastFromPosition()
+                    + " to " + hook.getLastToPosition() + ".");
+        }
+    }
+
+    private void activateOctopusThrow(Zombie octopusZombie,
+            ZombieAbility ability) {
+        if (!(ability instanceof OctopusThrowAbility)
+                || !ability.tryUse(octopusZombie, board)) {
+            return;
+        }
+        BasePlant target =
+                ((OctopusThrowAbility) ability).getLastTarget();
+        if (target != null) {
+            pendingResults.add(octopusZombie.getName()
+                    + " covered " + target.getName()
+                    + " with an octopus at "
+                    + target.getEntityPosition() + ".");
+        }
+    }
+
+    private void activateSnowballThrow(Zombie hunter, ZombieAbility ability) {
+        if (!(ability instanceof SnowballThrowAbility)
+                || !ability.tryUse(hunter, board)) {
+            return;
+        }
+        SnowballThrowAbility snowball = (SnowballThrowAbility) ability;
+        BasePlant target = snowball.getLastTarget();
+        if (target == null) {
+            return;
+        }
+        pendingResults.add(hunter.getName() + " hit " + target.getName()
+                + " with " + snowball.getLastSnowballCount() + " snowball(s)."
+                + (snowball.didLastBarrageFreezeTarget()
+                        ? " The plant is now frozen." : ""));
+    }
+
+    private void activateWeaselRelease(Zombie hoarder, ZombieAbility ability) {
+        if (!(ability instanceof WeaselReleaseAbility)
+                || !ability.tryUse(hoarder, board)) {
+            return;
+        }
+        WeaselReleaseAbility release = (WeaselReleaseAbility) ability;
+        for (Zombie weasel : release.getLastSpawnedWeasels()) {
+            trackSpawnedZombie(weasel);
+        }
+        pendingResults.add(hoarder.getName() + " released "
+                + release.getLastSpawnedWeasels().size() + " weasel(s).");
+    }
+
+    private void activateImpThrow(Zombie gargantuar, ZombieAbility ability) {
+        if (!(ability instanceof ImpThrowAbility)
+                || !ability.tryUse(gargantuar, board)) {
+            return;
+        }
+
+        ImpThrowAbility impThrow = (ImpThrowAbility) ability;
+        Zombie imp = impThrow.getSpawnedImp();
+        if (imp == null) {
+            return;
+        }
+
+        trackSpawnedZombie(imp);
+        pendingResults.add(gargantuar.getName() + " threw "
+                + imp.getName() + " into lane " + imp.getLane()
+                + " at column "
+                + String.format(Locale.ROOT, "%.0f", imp.getColumnPosition())
+                + ".");
+    }
+
+    private void activateSunSteal(Zombie raZombie, ZombieAbility ability) {
+        if (!(ability instanceof SunStealAbility)
+                || !ability.tryUse(raZombie, board)) {
+            return;
+        }
+        SunStealAbility sunSteal = (SunStealAbility) ability;
+        pendingResults.add(raZombie.getName() + " pulled and stole "
+                + sunSteal.getLastStolenAmount() + " sun.");
+    }
+
+    private void activateTombSummon(Zombie tombRaiser, ZombieAbility ability) {
+        if (!(ability instanceof TombSummonAbility)
+                || !ability.tryUse(tombRaiser, board)) {
+            return;
+        }
+        TombSummonAbility tombSummon = (TombSummonAbility) ability;
+        pendingResults.add(tombRaiser.getName() + " raised "
+                + tombSummon.getLastSpawnedCount() + " grave(s) at "
+                + tombSummon.getLastSpawnedPositions() + ".");
+    }
+
+    private void returnStolenSunFromDeadZombies(List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (!zombie.isDead()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                if (!(ability instanceof SunStealAbility)) {
+                    continue;
+                }
+                int returnedSun = ((SunStealAbility) ability).releaseStolenSun();
+                if (returnedSun > 0) {
+                    addSun(returnedSun);
+                    pendingResults.add(returnedSun + " stolen sun returned after "
+                            + zombie.getName() + " died.");
+                }
+            }
+        }
+    }
+
+    private void returnCrystalSkullSunFromDeadZombies(
+            List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (!zombie.isDead()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                if (!(ability instanceof LaserBeamAbility)) {
+                    continue;
+                }
+                int droppedSun =
+                        ((LaserBeamAbility) ability)
+                                .releaseHalfStolenSun();
+                if (droppedSun <= 0) {
+                    continue;
+                }
+                EntityPosition position = new EntityPosition(
+                        zombie.getLane(),
+                        Math.max(0, Math.min(
+                                board.getNumberOfColumns() - 1,
+                                (int) Math.floor(
+                                        zombie.getColumnPosition()))));
+                board.addEntity(Sun.createPlantSun(
+                        droppedSun, position));
+                pendingResults.add(zombie.getName() + " dropped "
+                        + droppedSun + " stolen sun on death.");
+            }
+        }
+    }
+
+    private void restoreWizardSheepFromDeadZombies(
+            List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (!zombie.isDead()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                if (!(ability instanceof WizardSpellAbility)) {
+                    continue;
+                }
+                int restored =
+                        ((WizardSpellAbility) ability)
+                                .restoreTransformedPlants();
+                if (restored > 0) {
+                    pendingResults.add(restored
+                            + " sheep plant(s) returned to normal after "
+                            + zombie.getName() + " died.");
+                }
+            }
+        }
+    }
+
+    private void trackBoardSpawnedZombies() {
+        for (Zombie zombie : board.drainSpawnedZombies()) {
+            trackSpawnedZombie(zombie);
+        }
+    }
+
+    private void trackSpawnedZombie(Zombie zombie) {
+        int waveIndex = zombie.getWaveNumber() - 1;
+        if (waveIndex < 0 || waveIndex >= spawnedZombiesByWave.size()) {
+            return;
+        }
+        List<Zombie> waveZombies = spawnedZombiesByWave.get(waveIndex);
+        if (!waveZombies.contains(zombie)) {
+            waveZombies.add(zombie);
         }
     }
 
@@ -270,10 +562,14 @@ public class Game {
         if (status != GameStatus.ACTIVE) {
             return;
         }
-        for (Zombie zombie : new ArrayList<>(board.getZombies())) {
+        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
+        for (Zombie zombie : zombieSnapshot) {
             zombie.kill();
         }
         board.update(0.0f);
+        returnStolenSunFromDeadZombies(zombieSnapshot);
+        returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
+        restoreWizardSheepFromDeadZombies(zombieSnapshot);
         pendingResults.addAll(board.drainResults());
         startNextWaveIfPossible();
         checkForWin();

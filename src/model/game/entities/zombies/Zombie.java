@@ -4,6 +4,7 @@ import model.game.Board;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.PushedObstacle;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.zombies.armor.Armor;
 import model.game.entities.zombies.armor.ArmorType;
@@ -107,6 +108,8 @@ public class Zombie extends Entity {
                 return new SmashAbility(Integer.parseInt(parts[1]));
             case "ImpThrowAbility":
                 return new ImpThrowAbility(Double.parseDouble(parts[1]), parts[2]);
+            case "PharaohSpeedAbility":
+                return new PharaohSpeedAbility(Double.parseDouble(parts[1]));
             case "SunStealAbility":
                 return new SunStealAbility(Integer.parseInt(parts[1]));
             case "TorchAbility":
@@ -116,8 +119,12 @@ public class Zombie extends Entity {
                         Integer.parseInt(parts[1]),
                         Integer.parseInt(parts[2]),
                         Double.parseDouble(parts[3]));
+            case "CamelSegmentAbility":
+                return new CamelSegmentAbility(Integer.parseInt(parts[1]));
             case "FlyAbility":
                 return new FlyAbility(Integer.parseInt(parts[1]), Double.parseDouble(parts[2]));
+            case "ChillOnHitAbility":
+                return new ChillOnHitAbility();
             case "SnowballThrowAbility":
                 return new SnowballThrowAbility(
                         Integer.parseInt(parts[1]),
@@ -125,6 +132,14 @@ public class Zombie extends Entity {
                         Double.parseDouble(parts[3]));
             case "IceBlockPushAbility":
                 return new IceBlockPushAbility(Integer.parseInt(parts[1]));
+            case "WeaselReleaseAbility":
+                return new WeaselReleaseAbility(Integer.parseInt(parts[1]));
+            case "SubmergeAbility":
+                return new SubmergeAbility();
+            case "SurfAbility":
+                return new SurfAbility(Double.parseDouble(parts[1]));
+            case "FastSwimAbility":
+                return new FastSwimAbility();
             case "FishingHookAbility":
                 return new FishingHookAbility(
                         Double.parseDouble(parts[1]),
@@ -142,6 +157,12 @@ public class Zombie extends Entity {
                         Double.parseDouble(parts[1]),
                         Double.parseDouble(parts[2]),
                         Double.parseDouble(parts[3]));
+            case "ArcadePushAbility":
+                return new ArcadePushAbility();
+            case "BarrelPushAbility":
+                return new BarrelPushAbility(Integer.parseInt(parts[1]));
+            case "UmbrellaBounceAbility":
+                return new UmbrellaBounceAbility();
             case "LaserBeamAbility":
                 return new LaserBeamAbility(
                         Integer.parseInt(parts[1]),
@@ -156,6 +177,10 @@ public class Zombie extends Entity {
                 return new PianoCrushAbility(Double.parseDouble(parts[1]));
             case "EnrageAbility":
                 return new EnrageAbility(Double.parseDouble(parts[1]), Double.parseDouble(parts[2]));
+            case "TackleAbility":
+                return new TackleAbility(
+                        Integer.parseInt(parts[1]),
+                        Double.parseDouble(parts[2]));
             default:
                 return null;
         }
@@ -191,6 +216,18 @@ public class Zombie extends Entity {
         // Update abilities
         for (ZombieAbility ability : abilities) {
             ability.update(deltaSeconds);
+            if (ability instanceof PharaohSpeedAbility) {
+                ability.tryUse(this, null);
+            }
+        }
+        synchronizeCamelSegments();
+    }
+
+    private void synchronizeCamelSegments() {
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof CamelSegmentAbility) {
+                ability.tryUse(this, null);
+            }
         }
     }
 
@@ -221,14 +258,16 @@ public class Zombie extends Entity {
         }
 
         // Check for enrage trigger (newspaper destroyed)
-        if (armor != null && armor.isDestroyed() && armor.getType() == ArmorType.NEWSPAPER) {
+        if (!dead && armor != null && armor.isDestroyed()
+                && armor.getType() == ArmorType.NEWSPAPER) {
             for (ZombieAbility ability : abilities) {
-                if (ability instanceof EnrageAbility) {
-                    ((EnrageAbility) ability).tryUse(this, null);
+                if (ability instanceof EnrageAbility
+                        && ability.tryUse(this, null)) {
                     enraged = true;
                 }
             }
         }
+        synchronizeCamelSegments();
     }
 
     public void takeDirectDamage(int damage) {
@@ -242,6 +281,7 @@ public class Zombie extends Entity {
         if (hitPoints == 0) {
             kill();
         }
+        synchronizeCamelSegments();
     }
 
     public void applyPoison(int damagePerTick, double tickIntervalSeconds,
@@ -345,8 +385,30 @@ public class Zombie extends Entity {
         return armor;
     }
 
+    public boolean canReceiveArmor() {
+        return !isDead() && (armor == null || armor.isDestroyed());
+    }
+
+    public boolean equipArmor(ArmorType armorType) {
+        if (armorType == null || armorType == ArmorType.NONE
+                || !canReceiveArmor()) {
+            return false;
+        }
+        armor = new Armor(armorType);
+        return true;
+    }
+
     public List<ZombieAbility> getAbilities() {
         return abilities;
+    }
+
+    public int getActiveCamelSegments() {
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof CamelSegmentAbility) {
+                return ((CamelSegmentAbility) ability).getCurrentSegments();
+            }
+        }
+        return 1;
     }
 
     public MovementBehavior getMovementBehavior() {
@@ -401,6 +463,9 @@ public class Zombie extends Entity {
         if (!Double.isFinite(duration) || duration < 0.0) {
             throw new IllegalArgumentException("duration must be finite and non-negative");
         }
+        if (isColdImmune()) {
+            return;
+        }
         setChilled(Math.max(chilledDuration, duration));
         for (ZombieAbility ability : abilities) {
             if (ability instanceof TorchAbility) {
@@ -435,6 +500,25 @@ public class Zombie extends Entity {
         return type == ZombieType.DRAGON_IMP;
     }
 
+    public boolean isColdImmune() {
+        switch (type) {
+            case ICEAGE:
+            case ICEAGE_CONEHEAD:
+            case ICEAGE_BUCKETHEAD:
+            case ICEAGE_BLOCKHEAD:
+            case HUNTER:
+            case TROGLOBITE:
+            case DODO:
+            case WEASEL_HOARDER:
+            case WEASEL:
+            case ICEAGE_GARGANTUAR:
+            case ICEAGE_IMP:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public void setFrozen(double duration) {
         applyFreeze(duration);
     }
@@ -442,6 +526,9 @@ public class Zombie extends Entity {
     public void applyFreeze(double duration) {
         if (!Double.isFinite(duration) || duration < 0.0) {
             throw new IllegalArgumentException("duration must be finite and non-negative");
+        }
+        if (isColdImmune()) {
+            return;
         }
         frozen = true;
         frozenDuration = Math.max(frozenDuration, duration);
@@ -467,6 +554,15 @@ public class Zombie extends Entity {
      */
     public double getEffectiveSpeed() {
         double speed = type.getSpeed();
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof PharaohSpeedAbility) {
+                speed = ((PharaohSpeedAbility) ability).getEffectiveSpeed(speed);
+            } else if (ability instanceof SurfAbility) {
+                speed = ((SurfAbility) ability).getEffectiveSpeed(speed);
+            } else if (ability instanceof FastSwimAbility) {
+                speed = ((FastSwimAbility) ability).getEffectiveSpeed(speed);
+            }
+        }
         if (frozen || stunned)
             return 0;
         if (chilled)
@@ -476,6 +572,11 @@ public class Zombie extends Entity {
                 if (ability instanceof EnrageAbility) {
                     speed *= ((EnrageAbility) ability).getEnragedSpeedScale();
                 }
+            }
+        }
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof TackleAbility) {
+                speed *= ((TackleAbility) ability).getSpeedMultiplier();
             }
         }
         return speed;
@@ -552,6 +653,7 @@ public class Zombie extends Entity {
         hypnotizedDamageMultiplier = Math.max(
                 hypnotizedDamageMultiplier, damageMultiplier);
         reachedHouse = false;
+        submerged = false;
     }
 
     public void transformIntoAlliedGargantuar(double healthMultiplier,
@@ -623,7 +725,8 @@ public class Zombie extends Entity {
             throw new IllegalArgumentException("target cannot be null");
         }
         if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f) {
-            throw new IllegalArgumentException("deltaSeconds must be finite and non-negative");
+            throw new IllegalArgumentException(
+                    "deltaSeconds must be finite and non-negative");
         }
         if (isDead() || target.isDead() || target == this) {
             return;
@@ -632,6 +735,30 @@ public class Zombie extends Entity {
         int damage = (int) pendingZombieAttackDamage;
         if (damage > 0) {
             target.takeDamage(damage);
+            pendingZombieAttackDamage -= damage;
+        }
+    }
+
+    public void attackObstacle(PushedObstacle obstacle,
+            float deltaSeconds) {
+        if (obstacle == null) {
+            throw new IllegalArgumentException(
+                    "obstacle cannot be null");
+        }
+        if (!Float.isFinite(deltaSeconds)
+                || deltaSeconds < 0.0f) {
+            throw new IllegalArgumentException(
+                    "deltaSeconds must be finite and non-negative");
+        }
+        if (isDead() || obstacle.isDestroyed()) {
+            return;
+        }
+
+        pendingZombieAttackDamage +=
+                getEffectiveEatDPS() * deltaSeconds;
+        int damage = (int) pendingZombieAttackDamage;
+        if (damage > 0) {
+            obstacle.takeDamage(damage);
             pendingZombieAttackDamage -= damage;
         }
     }

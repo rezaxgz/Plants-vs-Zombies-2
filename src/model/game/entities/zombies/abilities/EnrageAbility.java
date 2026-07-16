@@ -4,32 +4,46 @@ import model.game.Board;
 import model.game.entities.zombies.Zombie;
 
 /**
- * Newspaper zombie's enrage ability when newspaper is destroyed.
+ * Newspaper Zombie permanently becomes faster and deals more eating damage
+ * once its newspaper armor has been destroyed.
  */
 public class EnrageAbility extends ZombieAbility {
-    private double enragedDamageScale;
-    private double enragedSpeedScale;
+    private final double enragedDamageScale;
+    private final double enragedSpeedScale;
     private boolean enraged;
 
-    public EnrageAbility(double damageScale, double speedScale) {
-        super(0);
+    public EnrageAbility(double damageScale,
+            double speedScale) {
+        super(0.0);
+        if (!Double.isFinite(damageScale)
+                || damageScale <= 0.0
+                || !Double.isFinite(speedScale)
+                || speedScale <= 0.0) {
+            throw new IllegalArgumentException(
+                    "enrage multipliers must be positive");
+        }
         this.enragedDamageScale = damageScale;
         this.enragedSpeedScale = speedScale;
-        this.enraged = false;
     }
 
     @Override
     public boolean tryUse(Zombie zombie, Board board) {
-        // Triggered when newspaper armor is destroyed
-        if (!enraged) {
-            enraged = true;
-            // Apply speed and damage multipliers to zombie
-            return true;
+        if (enraged || zombie == null || zombie.isDead()) {
+            return false;
         }
-        return false;
+        enraged = true;
+        return true;
     }
 
-    public boolean isEnraged() { return enraged; }
-    public double getEnragedDamageScale() { return enragedDamageScale; }
-    public double getEnragedSpeedScale() { return enragedSpeedScale; }
+    public boolean isEnraged() {
+        return enraged;
+    }
+
+    public double getEnragedDamageScale() {
+        return enragedDamageScale;
+    }
+
+    public double getEnragedSpeedScale() {
+        return enragedSpeedScale;
+    }
 }
