@@ -33,6 +33,10 @@ public enum GameMenuCommand implements Command<CommandResult> {
                     + "\\(\\s*(?<x>-?\\d+)\\s*,"
                     + "\\s*(?<y>-?\\d+)\\s*\\)$",
             GameStatusCommandController::handleShowTileStatus),
+    SHOW_AVAILABLE_PLANTS("^show\\s+available\\s+plants$",
+            GameMenuController::handleShowAvailablePlants),
+    SHOW_FORCED_PLANTS("^show\\s+forced\\s+plants$",
+            GameMenuController::handleShowForcedPlants),
     SHOW_CONVEYOR_BELT("^show\\s+conveyor\\s+belt$",
             GameMenuController::handleShowConveyorBelt),
     PLANT_FROM_CONVEYOR(

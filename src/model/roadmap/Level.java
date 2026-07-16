@@ -94,12 +94,20 @@ public final class Level {
             throw new IllegalArgumentException(
                     "special plant pool cannot be null");
         }
-        if (specialLevelType
-                == SpecialLevelType.CONVEYOR_BELT
+        if (requiresPlantPool(specialLevelType)
                 && specialPlantPool.isEmpty()) {
             throw new IllegalArgumentException(
-                    "Conveyor Belt requires a plant pool");
+                    specialLevelType
+                            + " requires a plant pool");
         }
+    }
+
+    private static boolean requiresPlantPool(
+            SpecialLevelType specialLevelType) {
+        return specialLevelType
+                == SpecialLevelType.CONVEYOR_BELT
+                || specialLevelType
+                        == SpecialLevelType.LOCKED_PLANTS;
     }
 
     public static Level createExampleLevel() {
@@ -124,12 +132,21 @@ public final class Level {
         Game game = new Game(
                 new Board(numberOfRows, numberOfColumns),
                 null, initialSunCount, freshWaves);
+        configureSpecialPlantRules(game);
+        return game;
+    }
+
+    private void configureSpecialPlantRules(
+            Game game) {
         if (specialLevelType
                 == SpecialLevelType.CONVEYOR_BELT) {
             game.enableConveyorBelt(
                     specialPlantPool);
+        } else if (specialLevelType
+                == SpecialLevelType.LOCKED_PLANTS) {
+            game.enableLockedPlantsForcedLoadout(
+                    specialPlantPool);
         }
-        return game;
     }
 
     public int getNumber() {

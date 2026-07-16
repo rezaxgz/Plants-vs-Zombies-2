@@ -123,16 +123,23 @@ public final class ChapterCatalog {
 
     private static List<String> plantPoolFor(
             SpecialLevelType type) {
-        if (type
-                != SpecialLevelType.CONVEYOR_BELT) {
-            return Collections.emptyList();
+        if (type == SpecialLevelType.CONVEYOR_BELT) {
+            return List.of(
+                    "Peashooter",
+                    "Sunflower",
+                    "Wall-nut",
+                    "Potato Mine",
+                    "Cabbage-pult");
         }
-        return List.of(
-                "Peashooter",
-                "Sunflower",
-                "Wall-nut",
-                "Potato Mine",
-                "Cabbage-pult");
+        if (type == SpecialLevelType.LOCKED_PLANTS) {
+            return List.of(
+                    "Sunflower",
+                    "Peashooter",
+                    "Cabbage-pult",
+                    "Wall-nut",
+                    "Potato Mine");
+        }
+        return Collections.emptyList();
     }
 
     private static Level createBossLevel(

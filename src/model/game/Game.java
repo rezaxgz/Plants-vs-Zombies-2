@@ -37,6 +37,8 @@ import model.game.gameTypes.GameType;
 import model.game.special.ConveyorBeltSystem;
 import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
+import model.game.special.LockedPlantsMode;
+import model.game.special.LockedPlantsSystem;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
@@ -46,6 +48,7 @@ public class Game {
     private final GameType gameType;
     private final LawnMowerSystem lawnMowerSystem;
     private ConveyorBeltSystem conveyorBeltSystem;
+    private LockedPlantsSystem lockedPlantsSystem;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
@@ -737,9 +740,10 @@ public class Game {
 
     public void enableConveyorBelt(
             List<String> availablePlantTypes) {
-        if (conveyorBeltSystem != null) {
+        if (conveyorBeltSystem != null
+                || lockedPlantsSystem != null) {
             throw new IllegalStateException(
-                    "Conveyor Belt is already enabled");
+                    "another plant-selection rule is already enabled");
         }
         conveyorBeltSystem =
                 new ConveyorBeltSystem(
@@ -815,9 +819,77 @@ public class Game {
         return ConveyorPlacementResult.SUCCESS;
     }
 
+    public void enableLockedPlantsForcedLoadout(
+            List<String> forcedPlantTypes) {
+        if (lockedPlantsSystem != null
+                || conveyorBeltSystem != null) {
+            throw new IllegalStateException(
+                    "another plant-selection rule is already enabled");
+        }
+        lockedPlantsSystem =
+                LockedPlantsSystem.forcedLoadout(
+                        forcedPlantTypes);
+        pendingResults.add(
+                "Locked Plants level started. "
+                        + lockedPlantsSystem.describeRule());
+    }
+
+    public void enableLockedPlantFamilyRepresentatives(
+            List<String> representativePlantTypes) {
+        if (lockedPlantsSystem != null
+                || conveyorBeltSystem != null) {
+            throw new IllegalStateException(
+                    "another plant-selection rule is already enabled");
+        }
+        lockedPlantsSystem =
+                LockedPlantsSystem.familyRepresentatives(
+                        representativePlantTypes);
+        pendingResults.add(
+                "Locked Plants level started. "
+                        + lockedPlantsSystem.describeRule());
+    }
+
+    public boolean hasLockedPlants() {
+        return lockedPlantsSystem != null;
+    }
+
+    public boolean isPlantAllowed(BasePlant plant) {
+        return lockedPlantsSystem == null
+                || lockedPlantsSystem.isAllowed(plant);
+    }
+
+    public LockedPlantsMode getLockedPlantsMode() {
+        return lockedPlantsSystem == null
+                ? null : lockedPlantsSystem.getMode();
+    }
+
+    public List<String> getLockedPlantTypes() {
+        if (lockedPlantsSystem == null) {
+            return Collections.emptyList();
+        }
+        return lockedPlantsSystem.getConfiguredPlantTypes();
+    }
+
+    public List<String> getForcedPlantTypes() {
+        if (lockedPlantsSystem == null) {
+            return Collections.emptyList();
+        }
+        return lockedPlantsSystem.getForcedPlantTypes();
+    }
+
+    public String getLockedPlantsRuleDescription() {
+        if (lockedPlantsSystem == null) {
+            return "none";
+        }
+        return lockedPlantsSystem.describeRule();
+    }
+
     public PlantPlacementResult plant(BasePlant plant) {
         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
             return PlantPlacementResult.INVALID_POSITION;
+        }
+        if (!isPlantAllowed(plant)) {
+            return PlantPlacementResult.PLANT_LOCKED;
         }
         if (!board.canAddPlant(plant)) {
             return PlantPlacementResult.POSITION_OCCUPIED;
