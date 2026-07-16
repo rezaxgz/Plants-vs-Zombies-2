@@ -6,7 +6,8 @@ import java.util.List;
 
 import model.Constants;
 import model.game.ZombieWave;
-import model.game.entities.zombies.ZombieType;
+import model.game.entities.EntityPosition;
+import model.game.special.ProtectedPlantSpec;
 
 /**
  * Static adventure definition for the four chapters required by the project.
@@ -28,32 +29,28 @@ public final class ChapterCatalog {
                 List.of("egypt"),
                 "egypt",
                 SpecialLevelType.CONVEYOR_BELT,
-                SpecialLevelType.LOCKED_PLANTS,
-                ZombieType.ZOMBOSS_EGYPT));
+                SpecialLevelType.LOCKED_PLANTS));
         chapters.add(createChapter(
                 "frostbite-caves",
                 "Frostbite Caves",
                 List.of("frostbite", "iceage"),
                 "iceage",
                 SpecialLevelType.SAVE_OUR_SEEDS,
-                SpecialLevelType.TIMED_WAR,
-                ZombieType.ZOMBOSS_PIRATE));
+                SpecialLevelType.TIMED_WAR));
         chapters.add(createChapter(
                 "big-wave-beach",
                 "Big Wave Beach",
                 List.of("beach", "bigwave"),
                 "beach",
                 SpecialLevelType.NIGHT_OPS,
-                SpecialLevelType.DEAD_LINE,
-                ZombieType.ZOMBOSS_COWBOY));
+                SpecialLevelType.DEAD_LINE));
         chapters.add(createChapter(
                 "dark-ages",
                 "Dark Ages",
                 List.of("dark", "medieval"),
                 "dark",
                 SpecialLevelType.LOVE_YOUR_PLANTS,
-                SpecialLevelType.PLANT_WHAT_YOU_GET,
-                ZombieType.ZOMBOSS_DARK));
+                SpecialLevelType.PLANT_WHAT_YOU_GET));
         return chapters;
     }
 
@@ -61,8 +58,7 @@ public final class ChapterCatalog {
             String id, String displayName,
             List<String> aliases, String theme,
             SpecialLevelType firstSpecial,
-            SpecialLevelType secondSpecial,
-            ZombieType bossType) {
+            SpecialLevelType secondSpecial) {
         List<Level> levels = List.of(
                 createRegularLevel(
                         1, displayName + " - Normal",
@@ -85,9 +81,9 @@ public final class ChapterCatalog {
                         LevelKind.SPECIAL,
                         secondSpecial,
                         theme, 250, 700, 1050, 1500),
-                createBossLevel(
-                        displayName + " - Zomboss",
-                        theme, bossType));
+                createDeferredBossLevel(
+                        displayName + " - Final Challenge",
+                        theme));
         return new Chapter(
                 id, displayName, aliases, levels);
     }
@@ -116,6 +112,7 @@ public final class ChapterCatalog {
                 number, name, kind,
                 specialLevelType,
                 plantPoolFor(specialLevelType),
+                protectedPlantsFor(specialLevelType),
                 Constants.DEFAULT_BOARD_ROWS,
                 Constants.DEFAULT_BOARD_COLUMNS,
                 sun, waves);
@@ -142,20 +139,41 @@ public final class ChapterCatalog {
         return Collections.emptyList();
     }
 
-    private static Level createBossLevel(
-            String name, String theme,
-            ZombieType bossType) {
+    private static List<ProtectedPlantSpec>
+            protectedPlantsFor(
+                    SpecialLevelType type) {
+        if (type
+                != SpecialLevelType.SAVE_OUR_SEEDS) {
+            return Collections.emptyList();
+        }
+        return List.of(
+                new ProtectedPlantSpec(
+                        "Sunflower",
+                        new EntityPosition(1, 4)),
+                new ProtectedPlantSpec(
+                        "Wall-nut",
+                        new EntityPosition(2, 4)),
+                new ProtectedPlantSpec(
+                        "Cabbage-pult",
+                        new EntityPosition(3, 4)));
+    }
+
+    private static Level createDeferredBossLevel(
+            String name, String theme) {
+        // Boss mechanics belong to a later project phase.
+        // This placeholder deliberately contains no Zomboss zombie.
         List<ZombieWave> waves = List.of(
                 ZombieWave.themedWave(
                         theme, 800, false),
                 ZombieWave.themedWave(
                         theme, 1200, false),
-                new ZombieWave(
-                        List.of(bossType),
-                        bossType.getHitpoints(),
-                        true));
+                ZombieWave.themedWave(
+                        theme, 1800, true));
         return new Level(
                 4, name, LevelKind.BOSS,
+                SpecialLevelType.NONE,
+                Collections.emptyList(),
+                Collections.emptyList(),
                 Constants.DEFAULT_BOARD_ROWS,
                 Constants.DEFAULT_BOARD_COLUMNS,
                 250, waves);

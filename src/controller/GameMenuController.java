@@ -16,6 +16,7 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
 import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
+import model.game.special.ProtectedPlantStatus;
 import model.menu.GameMenu;
 import model.menu.Menu;
 import model.roadmap.AdventureSession;
@@ -279,6 +280,13 @@ public final class GameMenuController {
         }
 
         EntityPosition position = new EntityPosition(x, y);
+        if (game.isProtectedSeedAt(position)) {
+            return CommandResult.error(
+                    "the protected plant at " + position
+                            + " cannot be plucked!")
+                    .addPreCommandResults(preCommandResults);
+        }
+
         BasePlant removedPlant = game.pluckPlantAt(position);
         if (removedPlant == null) {
             return CommandResult.error("there is no plant at " + position + "!")
@@ -360,6 +368,47 @@ public final class GameMenuController {
                         .append("- ")
                         .append(plantType);
             }
+        }
+
+        return CommandResult.success(output.toString())
+                .addPreCommandResults(pending);
+    }
+
+    public static CommandResult handleShowProtectedPlants(
+            Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> pending = game.drainResults();
+        if (!game.hasSaveOurSeeds()) {
+            return CommandResult.error(
+                    "this level has no protected plants!")
+                    .addPreCommandResults(pending);
+        }
+
+        StringBuilder output =
+                new StringBuilder("protected plants");
+        for (ProtectedPlantStatus status
+                : game.getProtectedPlantStatuses()) {
+            output.append(System.lineSeparator())
+                    .append("WARNING - RED DEFENSE LINE: row ")
+                    .append(status.getDefenseRow())
+                    .append(System.lineSeparator())
+                    .append("- ")
+                    .append(status.getPlantType())
+                    .append(" | start: ")
+                    .append(status.getOriginalPosition())
+                    .append(" | current: ")
+                    .append(status.getCurrentPosition())
+                    .append(" | hp: ")
+                    .append(status.getCurrentHitPoints())
+                    .append('/')
+                    .append(status.getMaximumHitPoints())
+                    .append(" | ")
+                    .append(status.isAlive()
+                            ? "protected" : "lost");
         }
 
         return CommandResult.success(output.toString())
