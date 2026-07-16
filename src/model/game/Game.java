@@ -16,6 +16,7 @@ import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.other.SunType;
 import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.PlantFactory;
 import model.game.entities.plants.PlantFamily;
 import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
@@ -33,6 +34,9 @@ import model.game.entities.zombies.abilities.WizardSpellAbility;
 import model.game.entities.zombies.abilities.ZombossAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
+import model.game.special.ConveyorBeltSystem;
+import model.game.special.ConveyorPlacementResult;
+import model.game.special.ConveyorPlantPacket;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
@@ -41,6 +45,7 @@ public class Game {
     private final Board board;
     private final GameType gameType;
     private final LawnMowerSystem lawnMowerSystem;
+    private ConveyorBeltSystem conveyorBeltSystem;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
@@ -121,6 +126,7 @@ public class Game {
             return;
         }
 
+        updateConveyorBelt(deltaSeconds);
         updatePlantCooldowns(deltaSeconds);
         List<Zombie> zombieSnapshot =
                 new ArrayList<>(board.getZombies());
@@ -156,6 +162,16 @@ public class Game {
         if (status == GameStatus.ACTIVE) {
             updateSkySuns();
         }
+    }
+
+    private void updateConveyorBelt(
+            float deltaSeconds) {
+        if (conveyorBeltSystem == null) {
+            return;
+        }
+        conveyorBeltSystem.update(deltaSeconds);
+        pendingResults.addAll(
+                conveyorBeltSystem.drainMessages());
     }
 
     private void activateAutomaticZombieAbilities(List<Zombie> zombies) {
@@ -522,6 +538,9 @@ public class Game {
     }
 
     private void updateSkySuns() {
+        if (hasConveyorBelt()) {
+            return;
+        }
         if (gameType != null && !gameType.spawnsSuns()) {
             return;
         }
@@ -714,6 +733,86 @@ public class Game {
             throw new IllegalArgumentException("sun total is too large");
         }
         sunCount += amount;
+    }
+
+    public void enableConveyorBelt(
+            List<String> availablePlantTypes) {
+        if (conveyorBeltSystem != null) {
+            throw new IllegalStateException(
+                    "Conveyor Belt is already enabled");
+        }
+        conveyorBeltSystem =
+                new ConveyorBeltSystem(
+                        availablePlantTypes);
+        pendingResults.addAll(
+                conveyorBeltSystem.drainMessages());
+    }
+
+    public boolean hasConveyorBelt() {
+        return conveyorBeltSystem != null;
+    }
+
+    public List<ConveyorPlantPacket>
+            getConveyorPackets() {
+        if (conveyorBeltSystem == null) {
+            return Collections.emptyList();
+        }
+        return conveyorBeltSystem.getPackets();
+    }
+
+    public ConveyorPlantPacket getConveyorPacket(
+            int index) {
+        if (conveyorBeltSystem == null) {
+            return null;
+        }
+        return conveyorBeltSystem.getPacket(index);
+    }
+
+    public double
+            getConveyorSecondsUntilNextPacket() {
+        if (conveyorBeltSystem == null) {
+            return 0.0;
+        }
+        return conveyorBeltSystem
+                .getSecondsUntilNextPacket();
+    }
+
+    public ConveyorPlacementResult
+            plantFromConveyor(
+                    int index,
+                    EntityPosition position) {
+        if (conveyorBeltSystem == null) {
+            return ConveyorPlacementResult
+                    .NOT_CONVEYOR_LEVEL;
+        }
+        ConveyorPlantPacket packet =
+                conveyorBeltSystem.getPacket(index);
+        if (packet == null) {
+            return ConveyorPlacementResult
+                    .INVALID_PACKET;
+        }
+        if (!board.isPositionInsideBoard(position)) {
+            return ConveyorPlacementResult
+                    .INVALID_POSITION;
+        }
+
+        BasePlant plant = PlantFactory.createPlant(
+                packet.getPlantType(), position);
+        if (plant == null) {
+            return ConveyorPlacementResult
+                    .UNKNOWN_PLANT;
+        }
+        if (!board.canAddPlant(plant)
+                || !board.addPlant(plant)) {
+            return ConveyorPlacementResult
+                    .POSITION_OCCUPIED;
+        }
+
+        conveyorBeltSystem.consumePacket(index);
+        pendingResults.add("Conveyor Belt plant "
+                + plant.getName() + " was planted at "
+                + position + ".");
+        return ConveyorPlacementResult.SUCCESS;
     }
 
     public PlantPlacementResult plant(BasePlant plant) {

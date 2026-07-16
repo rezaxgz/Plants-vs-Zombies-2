@@ -1,6 +1,7 @@
 package commands;
 
 import controller.GameMenuController;
+import controller.GameStatusCommandController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
@@ -21,9 +22,29 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handlePlant),
     PLUCK_PLANT("^pluck\\s+plant\\s+-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
             GameMenuController::handlePluckPlant),
-    SHOW_SUN_AMOUNT("^show\\s+sun\\s+amount$", GameMenuController::handleShowSunAmount),
-    ZOMBIES_INFO("^zombies\\s+info$", GameMenuController::handleZombiesInfo),
-    RELEASE_NUKE("^release\\s+the\\s+nuke$", GameMenuController::handleReleaseNuke);
+    SHOW_SUN_AMOUNT("^show\\s+sun\\s+amount$",
+            GameMenuController::handleShowSunAmount),
+    SHOW_MAP("^show\\s+map$",
+            GameStatusCommandController::handleShowMap),
+    SHOW_PLANTS_STATUS("^show\\s+plants\\s+status$",
+            GameStatusCommandController::handleShowPlantsStatus),
+    SHOW_TILE_STATUS(
+            "^show\\s+tile\\s+status\\s+-l\\s+"
+                    + "\\(\\s*(?<x>-?\\d+)\\s*,"
+                    + "\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameStatusCommandController::handleShowTileStatus),
+    SHOW_CONVEYOR_BELT("^show\\s+conveyor\\s+belt$",
+            GameMenuController::handleShowConveyorBelt),
+    PLANT_FROM_CONVEYOR(
+            "^plant\\s+from-conveyor\\s+-i\\s+"
+                    + "(?<index>\\d+)\\s+-l\\s+"
+                    + "\\(\\s*(?<x>-?\\d+)\\s*,"
+                    + "\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameMenuController::handlePlantFromConveyor),
+    ZOMBIES_INFO("^zombies\\s+info$",
+            GameMenuController::handleZombiesInfo),
+    RELEASE_NUKE("^release\\s+the\\s+nuke$",
+            GameMenuController::handleReleaseNuke);
 
     private final String pattern;
     private final CommandAction<CommandResult> action;

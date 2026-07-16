@@ -14,8 +14,11 @@ import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
+import model.game.special.ConveyorPlacementResult;
+import model.game.special.ConveyorPlantPacket;
 import model.menu.GameMenu;
 import model.menu.Menu;
+import model.roadmap.AdventureSession;
 
 public final class GameMenuController {
     private GameMenuController() {
@@ -40,9 +43,13 @@ public final class GameMenuController {
         }
 
         game.advanceTicks(tickCount);
-        return CommandResult.success("time advanced by " + tickCount + " ticks")
+        List<String> progressResults =
+                synchronizeAdventureProgress();
+        return CommandResult.success(
+                "time advanced by " + tickCount + " ticks")
                 .addPreCommandResults(preCommandResults)
-                .addPostCommandResults(game.drainResults());
+                .addPostCommandResults(game.drainResults())
+                .addPostCommandResults(progressResults);
     }
 
     public static CommandResult handleCollectSun(Matcher matcher) {
@@ -187,6 +194,13 @@ public final class GameMenuController {
         }
 
         List<String> preCommandResults = game.drainResults();
+        if (game.hasConveyorBelt()) {
+            return CommandResult.error(
+                    "this is a Conveyor Belt level; "
+                            + "use plant from-conveyor instead!")
+                    .addPreCommandResults(preCommandResults);
+        }
+
         int x;
         int y;
         try {
@@ -281,6 +295,122 @@ public final class GameMenuController {
                 .addPostCommandResults(game.drainResults());
     }
 
+    public static CommandResult handleShowConveyorBelt(
+            Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> pending = game.drainResults();
+        if (!game.hasConveyorBelt()) {
+            return CommandResult.error(
+                    "this level does not use a Conveyor Belt!")
+                    .addPreCommandResults(pending);
+        }
+
+        List<ConveyorPlantPacket> packets =
+                game.getConveyorPackets();
+        StringBuilder output =
+                new StringBuilder("conveyor belt");
+        if (packets.isEmpty()) {
+            output.append(System.lineSeparator())
+                    .append("- empty");
+        } else {
+            for (int index = 0;
+                    index < packets.size(); index++) {
+                ConveyorPlantPacket packet =
+                        packets.get(index);
+                output.append(System.lineSeparator())
+                        .append(index + 1)
+                        .append(". ")
+                        .append(packet.getPlantType());
+            }
+        }
+        output.append(System.lineSeparator())
+                .append("next packet in: ")
+                .append(String.format(
+                        Locale.ROOT, "%.1fs",
+                        game.getConveyorSecondsUntilNextPacket()));
+
+        return CommandResult.success(output.toString())
+                .addPreCommandResults(pending);
+    }
+
+    public static CommandResult handlePlantFromConveyor(
+            Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> pending = game.drainResults();
+        if (!game.hasConveyorBelt()) {
+            return CommandResult.error(
+                    "this level does not use a Conveyor Belt!")
+                    .addPreCommandResults(pending);
+        }
+
+        int index;
+        int row;
+        int column;
+        try {
+            index = Integer.parseInt(
+                    matcher.group("index"));
+            row = Integer.parseInt(matcher.group("x"));
+            column = Integer.parseInt(matcher.group("y"));
+        } catch (NumberFormatException exception) {
+            return CommandResult.error(
+                    "conveyor index or plant location is invalid!")
+                    .addPreCommandResults(pending);
+        }
+
+        EntityPosition position =
+                new EntityPosition(row, column);
+        ConveyorPlantPacket packet =
+                game.getConveyorPacket(index);
+        ConveyorPlacementResult result =
+                game.plantFromConveyor(index, position);
+
+        switch (result) {
+            case NOT_CONVEYOR_LEVEL:
+                return CommandResult.error(
+                        "this level does not use a Conveyor Belt!")
+                        .addPreCommandResults(pending);
+            case INVALID_PACKET:
+                return CommandResult.error(
+                        "there is no conveyor packet at index "
+                                + index + "!")
+                        .addPreCommandResults(pending);
+            case INVALID_POSITION:
+                return CommandResult.error(
+                        "plant location is outside the board!")
+                        .addPreCommandResults(pending);
+            case POSITION_OCCUPIED:
+                return CommandResult.error(
+                        "there is already a plant at "
+                                + position + "!")
+                        .addPreCommandResults(pending);
+            case UNKNOWN_PLANT:
+                return CommandResult.error(
+                        "the conveyor packet contains an unknown plant!")
+                        .addPreCommandResults(pending);
+            case SUCCESS:
+                return CommandResult.success(
+                        "planted " + packet.getPlantType()
+                                + " from conveyor slot "
+                                + index + " at " + position
+                                + "; no sun was spent")
+                        .addPreCommandResults(pending)
+                        .addPostCommandResults(
+                                game.drainResults());
+            default:
+                throw new IllegalStateException(
+                        "unknown conveyor placement result: "
+                                + result);
+        }
+    }
+
     public static CommandResult handleZombiesInfo(Matcher matcher) {
         Game game = getCurrentGame();
         if (game == null) {
@@ -359,11 +489,29 @@ public final class GameMenuController {
                     .addPreCommandResults(preCommandResults);
         }
 
-        int zombieCount = game.getBoard().getZombies().size();
+        int zombieCount =
+                game.getBoard().getZombies().size();
         game.releaseNuke();
-        return CommandResult.success("the nuke killed " + zombieCount + " zombies")
+        List<String> progressResults =
+                synchronizeAdventureProgress();
+        return CommandResult.success(
+                "the nuke killed " + zombieCount + " zombies")
                 .addPreCommandResults(preCommandResults)
-                .addPostCommandResults(game.drainResults());
+                .addPostCommandResults(game.drainResults())
+                .addPostCommandResults(progressResults);
+    }
+
+    private static List<String>
+            synchronizeAdventureProgress() {
+        Menu currentMenu =
+                App.getInstance().getCurrentMenu();
+        if (!(currentMenu instanceof GameMenu)) {
+            return List.of();
+        }
+        ((GameMenu) currentMenu)
+                .synchronizeAdventureProgress();
+        return AdventureSession.getInstance()
+                .drainNotifications();
     }
 
     private static boolean isInsideBoard(Game game, int x, int y) {

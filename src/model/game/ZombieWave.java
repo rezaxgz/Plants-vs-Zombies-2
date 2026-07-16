@@ -128,6 +128,11 @@ public class ZombieWave {
         }
     }
 
+    public ZombieWave copy() {
+        return new ZombieWave(
+                zombieTypes, difficulty, finalWave);
+    }
+
     public List<ZombieType> getZombieTypes() { return zombieTypes; }
     public int getDifficulty() { return difficulty; }
     public boolean isFinalWave() { return finalWave; }
