@@ -14,6 +14,8 @@ import model.security.SecurityQuestion;
 import model.security.Sha256;
 import model.shop.item.ItemPrice;
 import model.shop.item.ShopItem;
+import model.news.NewsPanel;
+import model.news.News;
 
 public class User {
     // profile info
@@ -48,6 +50,8 @@ public class User {
     private GameProgerss gameProgerss;
     private AllQuestsProgress questProgress;
 
+    private NewsPanel newsPanel;
+
     public User(String username, String password, String nickname, String email, Gender gender) {
         this(username, Sha256.hash(password), nickname, email, gender, null, 0, 0, 0, 0);
     }
@@ -68,6 +72,10 @@ public class User {
         this.greenHouse = new GreenHouse();
         this.plantBoosts = new HashMap<>();
         this.plantCollection = new PlantCollection();
+        this.gameProgerss = new GameProgerss();
+        this.questProgress = new AllQuestsProgress();
+        this.questProgress = new AllQuestsProgress();
+        this.newsPanel = new NewsPanel();
     }
 
     public static User fromStoredData(String username, String passwordHash, String nickname, String email,
@@ -234,5 +242,21 @@ public class User {
 
     public void changePassword(String password) {
         passwordHash = Sha256.hash(password);
+    }
+
+    public GameProgerss getGameProgerss() {
+        return gameProgerss;
+    }
+
+    public AllQuestsProgress getQuestProgress() {
+        return questProgress;
+    }
+
+    public NewsPanel getNewsPanel() {
+        return newsPanel;
+    }
+
+    public void addNews(String title, String description) {
+        newsPanel.addNews(new News(System.currentTimeMillis(), title, description, false));
     }
 }

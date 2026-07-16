@@ -3,6 +3,8 @@ package model.collections.plants;
 import java.util.ArrayList;
 import java.util.List;
 
+import model.App;
+
 public class PlantCollection {
     private List<PlantCollectionItem> allPlants;
 
@@ -53,6 +55,15 @@ public class PlantCollection {
     }
 
     public void unlockPlant(PlantCollectionItem plant) {
-        // Implement logic if tracking unlocking manually
+        if (!plant.isUnlocked()) {
+            plant.setUnlocked(true);
+
+            // Dispatch notification to user
+            if (App.getInstance() != null && App.getInstance().getLoggedInUser() != null) {
+                App.getInstance().getLoggedInUser().addNews(
+                        "New Plant Unlocked!",
+                        "You have successfully unlocked the " + plant.getName() + ".");
+            }
+        }
     }
 }
