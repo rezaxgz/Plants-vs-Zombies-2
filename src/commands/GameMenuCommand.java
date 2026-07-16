@@ -37,6 +37,8 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handleShowAvailablePlants),
     SHOW_FORCED_PLANTS("^show\\s+forced\\s+plants$",
             GameMenuController::handleShowForcedPlants),
+    SHOW_PROTECTED_PLANTS("^show\\s+protected\\s+plants$",
+            GameMenuController::handleShowProtectedPlants),
     SHOW_CONVEYOR_BELT("^show\\s+conveyor\\s+belt$",
             GameMenuController::handleShowConveyorBelt),
     PLANT_FROM_CONVEYOR(

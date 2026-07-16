@@ -39,6 +39,9 @@ import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
 import model.game.special.LockedPlantsMode;
 import model.game.special.LockedPlantsSystem;
+import model.game.special.ProtectedPlantSpec;
+import model.game.special.ProtectedPlantStatus;
+import model.game.special.SaveOurSeedsSystem;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
@@ -49,6 +52,7 @@ public class Game {
     private final LawnMowerSystem lawnMowerSystem;
     private ConveyorBeltSystem conveyorBeltSystem;
     private LockedPlantsSystem lockedPlantsSystem;
+    private SaveOurSeedsSystem saveOurSeedsSystem;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
@@ -154,6 +158,13 @@ public class Game {
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
+
+        ProtectedPlantStatus failedPlant =
+                getFailedProtectedPlant();
+        if (failedPlant != null) {
+            loseSaveOurSeeds(failedPlant);
+            return;
+        }
 
         if (hasZombieReachedHouse()) {
             loseGame();
@@ -635,6 +646,15 @@ public class Game {
         pendingResults.add("The zombie ate your brain; LOSER!!!");
     }
 
+    private void loseSaveOurSeeds(
+            ProtectedPlantStatus failedPlant) {
+        status = GameStatus.LOST;
+        pendingResults.add(
+                "A protected plant was eaten or destroyed at "
+                        + failedPlant.getOriginalPosition()
+                        + "; Save Our Seeds failed!");
+    }
+
     public void releaseNuke() {
         if (status != GameStatus.ACTIVE) {
             return;
@@ -884,6 +904,47 @@ public class Game {
         return lockedPlantsSystem.describeRule();
     }
 
+    public void enableSaveOurSeeds(
+            List<ProtectedPlantSpec> protectedPlants) {
+        if (saveOurSeedsSystem != null) {
+            throw new IllegalStateException(
+                    "Save Our Seeds is already enabled");
+        }
+        saveOurSeedsSystem =
+                new SaveOurSeedsSystem(
+                        board, protectedPlants);
+        pendingResults.addAll(
+                saveOurSeedsSystem.getStartMessages());
+    }
+
+    public boolean hasSaveOurSeeds() {
+        return saveOurSeedsSystem != null;
+    }
+
+    public List<ProtectedPlantStatus>
+            getProtectedPlantStatuses() {
+        if (saveOurSeedsSystem == null) {
+            return Collections.emptyList();
+        }
+        return saveOurSeedsSystem.getStatuses(board);
+    }
+
+    public boolean isProtectedSeedAt(
+            EntityPosition position) {
+        return saveOurSeedsSystem != null
+                && saveOurSeedsSystem
+                        .isProtectedPlantAt(position);
+    }
+
+    private ProtectedPlantStatus
+            getFailedProtectedPlant() {
+        if (saveOurSeedsSystem == null) {
+            return null;
+        }
+        return saveOurSeedsSystem
+                .findFailedPlant(board);
+    }
+
     public PlantPlacementResult plant(BasePlant plant) {
         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
             return PlantPlacementResult.INVALID_POSITION;
@@ -910,7 +971,8 @@ public class Game {
     }
 
     public BasePlant pluckPlantAt(EntityPosition position) {
-        if (!board.isPositionInsideBoard(position)) {
+        if (!board.isPositionInsideBoard(position)
+                || isProtectedSeedAt(position)) {
             return null;
         }
         return board.removePlantAt(position);
