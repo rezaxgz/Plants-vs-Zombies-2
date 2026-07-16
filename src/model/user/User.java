@@ -68,6 +68,8 @@ public class User {
         this.greenHouse = new GreenHouse();
         this.plantBoosts = new HashMap<>();
         this.plantCollection = new PlantCollection();
+        this.gameProgerss = new GameProgerss();
+        this.questProgress = new AllQuestsProgress();
     }
 
     public static User fromStoredData(String username, String passwordHash, String nickname, String email,
@@ -234,5 +236,13 @@ public class User {
 
     public void changePassword(String password) {
         passwordHash = Sha256.hash(password);
+    }
+
+    public GameProgerss getGameProgerss() {
+        return gameProgerss;
+    }
+
+    public AllQuestsProgress getQuestProgress() {
+        return questProgress;
     }
 }

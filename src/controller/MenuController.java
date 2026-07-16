@@ -15,7 +15,9 @@ import model.menu.NewsMenu;
 import model.menu.ProfileMenu;
 import model.menu.SettingsMenu;
 import model.menu.SignUpMenu;
+import model.menu.TravelLogMenu;
 import model.menu.GreenhouseMenu;
+import model.menu.LeaderboardMenu;
 
 public final class MenuController {
     private MenuController() {
@@ -92,6 +94,7 @@ public final class MenuController {
         return null;
     }
 
+    // Inside your existing createMainChild method in MenuController:
     private static Menu createMainChild(String requestedName) {
         if ("game".equals(requestedName))
             return new GameMenu();
@@ -105,19 +108,25 @@ public final class MenuController {
             return new ProfileMenu();
         if ("greenhouse".equals(requestedName))
             return new GreenhouseMenu();
+        if ("leaderboard".equals(requestedName)) // NEW
+            return new LeaderboardMenu(); // NEW
+        if ("travellog".equals(requestedName)) // NEW
+            return new TravelLogMenu(); // NEW
         return null;
     }
 
     private static boolean isMainChild(Menu menu) {
         return menu instanceof SettingsMenu || menu instanceof NetworkMenu || menu instanceof NewsMenu
-                || menu instanceof ProfileMenu || menu instanceof GreenhouseMenu;
+                || menu instanceof ProfileMenu || menu instanceof GreenhouseMenu
+                || menu instanceof LeaderboardMenu || menu instanceof TravelLogMenu;
     }
 
     private static boolean isKnownMenu(String menuName) {
         return "signup".equals(menuName) || "login".equals(menuName) || "main".equals(menuName)
                 || "game".equals(menuName) || "collection".equals(menuName) || "settings".equals(menuName)
                 || "network".equals(menuName) || "news".equals(menuName) || "profile".equals(menuName)
-                || "greenhouse".equals(menuName);
+                || "greenhouse".equals(menuName)
+                || "leaderboard".equals(menuName) || "travellog".equals(menuName);
     }
 
     private static String normalizeMenuName(String menuName) {
