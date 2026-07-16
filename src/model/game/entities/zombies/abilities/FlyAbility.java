@@ -1,33 +1,91 @@
 package model.game.entities.zombies.abilities;
 
 import model.game.Board;
+import model.game.entities.plants.BasePlant;
+import model.game.entities.plants.PlantTag;
+import model.game.entities.plants.wallnut.Wallnut;
+import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.zombies.Zombie;
 
 /**
- * Dodo zombie's ability to fly over plants and obstacles.
+ * Dodo Rider flies over defensive, lane-changing, and explosive obstacles.
+ * Tall-nut remains too high to cross.
  */
 public class FlyAbility extends ZombieAbility {
+    private final int maxGridSquaresToFly;
+    private final double jumpChance;
     private boolean flying;
-    private int maxGridSquaresToFly;
-    private double jumpChance;
 
-    public FlyAbility(int maxGridSquares, double jumpChance) {
-        super(0);
-        this.maxGridSquaresToFly = maxGridSquares;
+    public FlyAbility(int maxGridSquaresToFly, double jumpChance) {
+        super(0.0);
+        if (maxGridSquaresToFly <= 0) {
+            throw new IllegalArgumentException(
+                    "maxGridSquaresToFly must be positive");
+        }
+        if (!Double.isFinite(jumpChance)
+                || jumpChance < 0.0 || jumpChance > 1.0) {
+            throw new IllegalArgumentException(
+                    "jumpChance must be finite and in the range [0, 1]");
+        }
+        this.maxGridSquaresToFly = maxGridSquaresToFly;
         this.jumpChance = jumpChance;
-        this.flying = false;
     }
 
     @Override
     public boolean tryUse(Zombie zombie, Board board) {
-        // Check if should start flying over obstacles
-        // Random chance per grid walked
-        // When flying, zombie ignores plants and obstacles
-        return false;
+        return zombie != null && board != null && !zombie.isDead();
     }
 
-    public boolean isFlying() { return flying; }
-    public void setFlying(boolean flying) { this.flying = flying; }
-    public int getMaxGridSquaresToFly() { return maxGridSquaresToFly; }
-    public double getJumpChance() { return jumpChance; }
+    public boolean tryFlyOver(Zombie zombie, BasePlant plant, Board board) {
+        if (flying || !tryUse(zombie, board) || !canFlyOver(plant)) {
+            return false;
+        }
+        double distanceAhead = zombie.getColumnPosition()
+                - plant.getEntityPosition().getColumn();
+        if (distanceAhead < 0.0
+                || distanceAhead > maxGridSquaresToFly) {
+            return false;
+        }
+
+        double landingColumn = Math.max(0.0,
+                plant.getEntityPosition().getColumn()
+                        - Math.max(0.5, maxGridSquaresToFly - 1.0));
+        flying = true;
+        zombie.setFlying(true);
+        zombie.moveTo(landingColumn);
+        return true;
+    }
+
+    private boolean canFlyOver(BasePlant plant) {
+        if (plant == null || plant.isRemoved()
+                || plant.getEntityPosition() == null) {
+            return false;
+        }
+        if (plant instanceof Wallnut) {
+            WallnutPlantType type = ((Wallnut) plant).getType();
+            return type != WallnutPlantType.TALL_NUT
+                    && type != WallnutPlantType.REINFORCE_MINT;
+        }
+        return plant.getTags().contains(PlantTag.MOVE_ZOMBIES)
+                || plant.getTags().contains(PlantTag.EXPLOSIVE);
+    }
+
+    public void finishFlight(Zombie zombie) {
+        flying = false;
+        if (zombie != null) {
+            zombie.setFlying(false);
+        }
+    }
+
+    public boolean isFlying() {
+        return flying;
+    }
+
+    public int getMaxGridSquaresToFly() {
+        return maxGridSquaresToFly;
+    }
+
+    public double getJumpChance() {
+        return jumpChance;
+    }
 }

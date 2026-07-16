@@ -118,6 +118,8 @@ public class Zombie extends Entity {
                         Integer.parseInt(parts[1]),
                         Integer.parseInt(parts[2]),
                         Double.parseDouble(parts[3]));
+            case "CamelSegmentAbility":
+                return new CamelSegmentAbility(Integer.parseInt(parts[1]));
             case "FlyAbility":
                 return new FlyAbility(Integer.parseInt(parts[1]), Double.parseDouble(parts[2]));
             case "SnowballThrowAbility":
@@ -201,6 +203,15 @@ public class Zombie extends Entity {
                 ability.tryUse(this, null);
             }
         }
+        synchronizeCamelSegments();
+    }
+
+    private void synchronizeCamelSegments() {
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof CamelSegmentAbility) {
+                ability.tryUse(this, null);
+            }
+        }
     }
 
     /**
@@ -238,6 +249,7 @@ public class Zombie extends Entity {
                 }
             }
         }
+        synchronizeCamelSegments();
     }
 
     public void takeDirectDamage(int damage) {
@@ -251,6 +263,7 @@ public class Zombie extends Entity {
         if (hitPoints == 0) {
             kill();
         }
+        synchronizeCamelSegments();
     }
 
     public void applyPoison(int damagePerTick, double tickIntervalSeconds,
@@ -358,6 +371,15 @@ public class Zombie extends Entity {
         return abilities;
     }
 
+    public int getActiveCamelSegments() {
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof CamelSegmentAbility) {
+                return ((CamelSegmentAbility) ability).getCurrentSegments();
+            }
+        }
+        return 1;
+    }
+
     public MovementBehavior getMovementBehavior() {
         return movementBehavior;
     }
@@ -410,6 +432,9 @@ public class Zombie extends Entity {
         if (!Double.isFinite(duration) || duration < 0.0) {
             throw new IllegalArgumentException("duration must be finite and non-negative");
         }
+        if (isColdImmune()) {
+            return;
+        }
         setChilled(Math.max(chilledDuration, duration));
         for (ZombieAbility ability : abilities) {
             if (ability instanceof TorchAbility) {
@@ -444,6 +469,25 @@ public class Zombie extends Entity {
         return type == ZombieType.DRAGON_IMP;
     }
 
+    public boolean isColdImmune() {
+        switch (type) {
+            case ICEAGE:
+            case ICEAGE_CONEHEAD:
+            case ICEAGE_BUCKETHEAD:
+            case ICEAGE_BLOCKHEAD:
+            case HUNTER:
+            case TROGLOBITE:
+            case DODO:
+            case WEASEL_HOARDER:
+            case WEASEL:
+            case ICEAGE_GARGANTUAR:
+            case ICEAGE_IMP:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public void setFrozen(double duration) {
         applyFreeze(duration);
     }
@@ -451,6 +495,9 @@ public class Zombie extends Entity {
     public void applyFreeze(double duration) {
         if (!Double.isFinite(duration) || duration < 0.0) {
             throw new IllegalArgumentException("duration must be finite and non-negative");
+        }
+        if (isColdImmune()) {
+            return;
         }
         frozen = true;
         frozenDuration = Math.max(frozenDuration, duration);

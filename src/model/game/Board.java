@@ -43,6 +43,7 @@ import model.game.entities.projectile.Projectile;
 import model.game.entities.projectile.effect.ProjectileEffect;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
+import model.game.entities.zombies.abilities.FlyAbility;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.TackleAbility;
 import model.game.entities.zombies.abilities.TorchAbility;
@@ -2035,8 +2036,16 @@ public class Board {
     }
 
     private void updateZombie(Zombie zombie, float deltaSeconds) {
+        finishDodoFlight(zombie);
         BasePlant blockingPlant = findNearestPlantAhead(zombie);
         Zombie blockingHypnotizedZombie = findNearestHypnotizedZombieAhead(zombie);
+        if (blockingPlant != null
+                && (blockingHypnotizedZombie == null
+                || blockingHypnotizedZombie.getColumnPosition()
+                <= blockingPlant.getEntityPosition().getColumn())
+                && tryFlyOverPlant(zombie, blockingPlant)) {
+            return;
+        }
         if (blockingPlant != null
                 && (blockingHypnotizedZombie == null
                 || blockingHypnotizedZombie.getColumnPosition()
@@ -2072,6 +2081,27 @@ public class Board {
             reportDestroyedPlant(blockingPlant);
         } else {
             zombie.move(deltaSeconds, attackColumn);
+        }
+    }
+
+    private boolean tryFlyOverPlant(Zombie zombie, BasePlant plant) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof FlyAbility
+                    && ((FlyAbility) ability).tryFlyOver(zombie, plant, this)) {
+                pendingResults.add(zombie.getName() + " flew over "
+                        + plant.getName() + ".");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void finishDodoFlight(Zombie zombie) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof FlyAbility
+                    && ((FlyAbility) ability).isFlying()) {
+                ((FlyAbility) ability).finishFlight(zombie);
+            }
         }
     }
 
