@@ -45,6 +45,7 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.TackleAbility;
+import model.game.entities.zombies.abilities.TorchAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
@@ -2036,6 +2037,14 @@ public class Board {
     private void updateZombie(Zombie zombie, float deltaSeconds) {
         BasePlant blockingPlant = findNearestPlantAhead(zombie);
         Zombie blockingHypnotizedZombie = findNearestHypnotizedZombieAhead(zombie);
+        if (blockingPlant != null
+                && (blockingHypnotizedZombie == null
+                || blockingHypnotizedZombie.getColumnPosition()
+                <= blockingPlant.getEntityPosition().getColumn())
+                && tryBurnPlant(zombie, blockingPlant)) {
+            reportDestroyedPlant(blockingPlant);
+            return;
+        }
         if (blockingHypnotizedZombie != null
                 && (blockingPlant == null
                 || blockingHypnotizedZombie.getColumnPosition()
@@ -2064,6 +2073,24 @@ public class Board {
         } else {
             zombie.move(deltaSeconds, attackColumn);
         }
+    }
+
+    private boolean tryBurnPlant(Zombie zombie, BasePlant plant) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (!(ability instanceof TorchAbility)) {
+                continue;
+            }
+            TorchAbility torch = (TorchAbility) ability;
+            if (!torch.canBurn(zombie, plant)
+                    || !torch.tryUse(zombie, this)) {
+                continue;
+            }
+            plant.takeDamage(Integer.MAX_VALUE);
+            pendingResults.add(zombie.getName() + " burned "
+                    + plant.getName() + " at " + plant.getEntityPosition() + ".");
+            return true;
+        }
+        return false;
     }
 
     private boolean tryTacklePlant(Zombie zombie, BasePlant plant) {

@@ -18,6 +18,8 @@ import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.ImpThrowAbility;
+import model.game.entities.zombies.abilities.SunStealAbility;
+import model.game.entities.zombies.abilities.TombSummonAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
@@ -106,8 +108,10 @@ public class Game {
         }
 
         updatePlantCooldowns(deltaSeconds);
+        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
-        activateAutomaticZombieAbilities();
+        activateAutomaticZombieAbilities(zombieSnapshot);
+        returnStolenSunFromDeadZombies(zombieSnapshot);
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
@@ -124,13 +128,15 @@ public class Game {
         }
     }
 
-    private void activateAutomaticZombieAbilities() {
-        for (Zombie zombie : new ArrayList<>(board.getZombies())) {
+    private void activateAutomaticZombieAbilities(List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
             if (zombie.isDead() || zombie.isHypnotized()) {
                 continue;
             }
             for (ZombieAbility ability : zombie.getAbilities()) {
                 activateImpThrow(zombie, ability);
+                activateSunSteal(zombie, ability);
+                activateTombSummon(zombie, ability);
             }
         }
     }
@@ -153,6 +159,46 @@ public class Game {
                 + " at column "
                 + String.format(Locale.ROOT, "%.0f", imp.getColumnPosition())
                 + ".");
+    }
+
+    private void activateSunSteal(Zombie raZombie, ZombieAbility ability) {
+        if (!(ability instanceof SunStealAbility)
+                || !ability.tryUse(raZombie, board)) {
+            return;
+        }
+        SunStealAbility sunSteal = (SunStealAbility) ability;
+        pendingResults.add(raZombie.getName() + " pulled and stole "
+                + sunSteal.getLastStolenAmount() + " sun.");
+    }
+
+    private void activateTombSummon(Zombie tombRaiser, ZombieAbility ability) {
+        if (!(ability instanceof TombSummonAbility)
+                || !ability.tryUse(tombRaiser, board)) {
+            return;
+        }
+        TombSummonAbility tombSummon = (TombSummonAbility) ability;
+        pendingResults.add(tombRaiser.getName() + " raised "
+                + tombSummon.getLastSpawnedCount() + " grave(s) at "
+                + tombSummon.getLastSpawnedPositions() + ".");
+    }
+
+    private void returnStolenSunFromDeadZombies(List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (!zombie.isDead()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                if (!(ability instanceof SunStealAbility)) {
+                    continue;
+                }
+                int returnedSun = ((SunStealAbility) ability).releaseStolenSun();
+                if (returnedSun > 0) {
+                    addSun(returnedSun);
+                    pendingResults.add(returnedSun + " stolen sun returned after "
+                            + zombie.getName() + " died.");
+                }
+            }
+        }
     }
 
     private void trackSpawnedZombie(Zombie zombie) {
@@ -315,10 +361,12 @@ public class Game {
         if (status != GameStatus.ACTIVE) {
             return;
         }
-        for (Zombie zombie : new ArrayList<>(board.getZombies())) {
+        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
+        for (Zombie zombie : zombieSnapshot) {
             zombie.kill();
         }
         board.update(0.0f);
+        returnStolenSunFromDeadZombies(zombieSnapshot);
         pendingResults.addAll(board.drainResults());
         startNextWaveIfPossible();
         checkForWin();
