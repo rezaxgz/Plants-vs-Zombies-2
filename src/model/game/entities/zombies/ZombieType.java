@@ -101,7 +101,7 @@ public enum ZombieType {
     DARK_BUCKETHEAD("ZombieDarkArmor2Default", 190, 0.185, 100, 400, 4000,
             ArmorType.BUCKET, null, false),
     DARK_SHOULDER_ARMOR("ZombieDarkArmor3Default", 190, 0.185, 100, 550, 4500,
-            ArmorType.SHOULDER_ARMOR, new String[] { "CrownArmorAbility:1600" }, false),
+            ArmorType.KNIGHT, null, false),
     DARK_BRICKHEAD("ZombieDarkArmor4Default", 190, 0.185, 100, 700, 3000,
             ArmorType.BRICK, null, false),
     WIZARD("ZombieWizardDefault", 490, 0.12, 100, 800, 3500,
@@ -138,13 +138,13 @@ public enum ZombieType {
             ArmorType.NONE, null, false),
 
     // === ZOMBOSS ===
-    ZOMBOSS_EGYPT("ZombieZombossMechEgypt", 4000, 0.1, 0, 0, 0,
+    ZOMBOSS_EGYPT("ZombieZombossMechEgypt", 18500, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:egypt" }, true),
-    ZOMBOSS_PIRATE("ZombieZombossMechPirate", 5500, 0.1, 0, 0, 0,
+    ZOMBOSS_PIRATE("ZombieZombossMechPirate", 26500, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:pirate" }, true),
-    ZOMBOSS_COWBOY("ZombieZombossMechCowboy", 6500, 0.1, 0, 0, 0,
+    ZOMBOSS_COWBOY("ZombieZombossMechCowboy", 25500, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:cowboy" }, true),
-    ZOMBOSS_DARK("ZombieZombossMechDark", 7000, 0.1, 0, 0, 0,
+    ZOMBOSS_DARK("ZombieZombossMechDark", 27000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:dark" }, true);
 
     private final String alias;
@@ -205,6 +205,13 @@ public enum ZombieType {
 
     public boolean isLarge() {
         return isLarge;
+    }
+
+    public boolean isBoss() {
+        return this == ZOMBOSS_EGYPT
+                || this == ZOMBOSS_PIRATE
+                || this == ZOMBOSS_COWBOY
+                || this == ZOMBOSS_DARK;
     }
 
     /**

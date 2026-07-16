@@ -10,13 +10,13 @@ import model.game.entities.plants.BasePlant;
 import model.game.entities.zombies.Zombie;
 
 /**
- * Wizard periodically transforms the nearest active plant into a harmless
- * sheep. All surviving sheep created by this Wizard return to normal when the
- * Wizard dies.
+ * Wizard periodically transforms an active plant into a harmless cat. Cats
+ * cannot act and are ignored by eating zombies until their Wizard dies.
  */
 public class WizardSpellAbility extends ZombieAbility {
     private final Set<BasePlant> transformedPlants =
-            Collections.newSetFromMap(new IdentityHashMap<>());
+            Collections.newSetFromMap(
+                    new IdentityHashMap<>());
 
     private BasePlant lastTarget;
     private boolean releasedAfterDeath;
@@ -34,21 +34,47 @@ public class WizardSpellAbility extends ZombieAbility {
             return false;
         }
 
-        BasePlant target = findNearestActivePlant(wizard, board);
-        if (target == null || !target.transformToSheep()) {
+        BasePlant target =
+                findNearestActivePlant(wizard, board);
+        if (!transformPlant(target)) {
             return false;
         }
-
-        transformedPlants.add(target);
-        lastTarget = target;
         resetCooldown();
+        return true;
+    }
+
+    public boolean transformReachedPlant(
+            Zombie wizard, BasePlant plant) {
+        lastTarget = null;
+        if (wizard == null || plant == null
+                || wizard.isDead()
+                || wizard.isHypnotized()
+                || wizard.isFrozen()
+                || wizard.isStunned()) {
+            return false;
+        }
+        if (!transformPlant(plant)) {
+            return false;
+        }
+        resetCooldown();
+        return true;
+    }
+
+    private boolean transformPlant(BasePlant plant) {
+        if (plant == null
+                || !plant.transformToSheep()) {
+            return false;
+        }
+        transformedPlants.add(plant);
+        lastTarget = plant;
         return true;
     }
 
     private BasePlant findNearestActivePlant(
             Zombie wizard, Board board) {
         BasePlant nearest = null;
-        double nearestDistance = Double.POSITIVE_INFINITY;
+        double nearestDistance =
+                Double.POSITIVE_INFINITY;
         for (BasePlant plant : board.getPlants()) {
             if (plant.isRemoved() || plant.isDestroyed()
                     || plant.isDisabled()
@@ -59,7 +85,8 @@ public class WizardSpellAbility extends ZombieAbility {
                     - plant.getEntityPosition().getRow();
             double columnDistance =
                     wizard.getColumnPosition()
-                            - plant.getEntityPosition().getColumn();
+                            - plant.getEntityPosition()
+                                    .getColumn();
             double distance = rowDistance * rowDistance
                     + columnDistance * columnDistance;
             if (distance < nearestDistance) {

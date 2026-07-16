@@ -23,6 +23,8 @@ public class Projectile extends Entity {
     private final double maxLifetimeSeconds;
     private final boolean torchwoodEligible;
     private final int originalImpactDamage;
+    private final double sourceRowPosition;
+    private final double sourceColumnPosition;
 
     private double rowPosition;
     private double columnPosition;
@@ -65,6 +67,8 @@ public class Projectile extends Entity {
             throw new IllegalArgumentException("projectile range and lifetime are invalid");
         }
         this.sourcePlantName = sourcePlantName;
+        this.sourceRowPosition = rowPosition;
+        this.sourceColumnPosition = columnPosition;
         this.rowPosition = rowPosition;
         this.columnPosition = columnPosition;
         this.previousRowPosition = rowPosition;
@@ -219,6 +223,14 @@ public class Projectile extends Entity {
 
     public String getSourcePlantName() {
         return sourcePlantName;
+    }
+
+    public double getSourceRowPosition() {
+        return sourceRowPosition;
+    }
+
+    public double getSourceColumnPosition() {
+        return sourceColumnPosition;
     }
 
     public List<ProjectileEffect> getEffects() {

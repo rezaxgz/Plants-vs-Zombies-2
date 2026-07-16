@@ -181,6 +181,8 @@ public class Zombie extends Entity {
                 return new TackleAbility(
                         Integer.parseInt(parts[1]),
                         Double.parseDouble(parts[2]));
+            case "ZombossAbility":
+                return new ZombossAbility(parts[1]);
             default:
                 return null;
         }
@@ -561,6 +563,8 @@ public class Zombie extends Entity {
                 speed = ((SurfAbility) ability).getEffectiveSpeed(speed);
             } else if (ability instanceof FastSwimAbility) {
                 speed = ((FastSwimAbility) ability).getEffectiveSpeed(speed);
+            } else if (ability instanceof JuggleAbility) {
+                speed *= ((JuggleAbility) ability).getSpeedMultiplier();
             }
         }
         if (frozen || stunned)
@@ -637,7 +641,7 @@ public class Zombie extends Entity {
     }
 
     public void hypnotize(double healthMultiplier, double damageMultiplier) {
-        if (isDead()) {
+        if (isDead() || type.isBoss()) {
             return;
         }
         if (!Double.isFinite(healthMultiplier) || healthMultiplier < 1.0
@@ -658,7 +662,7 @@ public class Zombie extends Entity {
 
     public void transformIntoAlliedGargantuar(double healthMultiplier,
             double damageMultiplier) {
-        if (isDead()) {
+        if (isDead() || type.isBoss()) {
             return;
         }
         reconfigureType(ZombieType.GARGANTUAR);
@@ -695,8 +699,7 @@ public class Zombie extends Entity {
     }
 
     public boolean hasMagnetizableArmor() {
-        return armor != null && !armor.isDestroyed()
-                && armor.getType().isMagnetizable();
+        return armor != null && armor.isMagnetizable();
     }
 
     public boolean removeMagnetizableArmor() {

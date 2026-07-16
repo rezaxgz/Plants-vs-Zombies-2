@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.Random;
 
 import model.Constants;
+import model.game.defense.LawnMower;
+import model.game.defense.LawnMowerResolution;
+import model.game.defense.LawnMowerSystem;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.other.SunType;
@@ -27,6 +30,7 @@ import model.game.entities.zombies.abilities.SunStealAbility;
 import model.game.entities.zombies.abilities.TombSummonAbility;
 import model.game.entities.zombies.abilities.WeaselReleaseAbility;
 import model.game.entities.zombies.abilities.WizardSpellAbility;
+import model.game.entities.zombies.abilities.ZombossAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
@@ -36,6 +40,7 @@ public class Game {
 
     private final Board board;
     private final GameType gameType;
+    private final LawnMowerSystem lawnMowerSystem;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
@@ -77,6 +82,8 @@ public class Game {
 
         this.board = board;
         this.gameType = gameType;
+        this.lawnMowerSystem =
+                new LawnMowerSystem(board.getNumberOfRows());
         this.sunCount = initialSunCount;
         this.zombieWaves = zombieWaves == null
                 ? new ArrayList<>()
@@ -115,9 +122,22 @@ public class Game {
         }
 
         updatePlantCooldowns(deltaSeconds);
-        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
+        List<Zombie> zombieSnapshot =
+                new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+
+        LawnMowerResolution mowerResolution =
+                lawnMowerSystem.resolve(board);
+        pendingResults.addAll(mowerResolution.getMessages());
         trackBoardSpawnedZombies();
+
+        if (mowerResolution.isBrainEaten()) {
+            pendingResults.addAll(board.drainResults());
+            elapsedSeconds += deltaSeconds;
+            loseGame();
+            return;
+        }
+
         activateAutomaticZombieAbilities(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
         returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
@@ -156,7 +176,39 @@ public class Game {
                 activateWizardSpell(zombie, ability);
                 activateKingBuff(zombie, ability);
                 activateCrystalSkull(zombie, ability);
+                activateZomboss(zombie, ability);
             }
+        }
+    }
+
+    private void activateZomboss(Zombie zomboss,
+            ZombieAbility ability) {
+        if (!(ability instanceof ZombossAbility)) {
+            return;
+        }
+
+        ZombossAbility bossAbility = (ZombossAbility) ability;
+        if (!bossAbility.tryUse(zomboss, board)) {
+            return;
+        }
+
+        for (Zombie spawned : bossAbility.getLastSpawnedZombies()) {
+            trackSpawnedZombie(spawned);
+        }
+        if (bossAbility.didPhaseChangeThisUse()) {
+            pendingResults.add(zomboss.getName()
+                    + " entered phase "
+                    + bossAbility.getCurrentPhase() + ".");
+        }
+        for (BasePlant plant :
+                bossAbility.getLastDestroyedPlants()) {
+            pendingResults.add("Plant " + plant.getName()
+                    + " at " + plant.getEntityPosition()
+                    + " is destroyed.");
+        }
+        if (bossAbility.didPerformActionThisUse()) {
+            pendingResults.add(zomboss.getName() + " "
+                    + bossAbility.getLastActionDescription());
         }
     }
 
@@ -199,7 +251,7 @@ public class Game {
                 ((WizardSpellAbility) ability).getLastTarget();
         if (target != null) {
             pendingResults.add(wizard.getName() + " transformed "
-                    + target.getName() + " into a sheep at "
+                    + target.getName() + " into a cat at "
                     + target.getEntityPosition() + ".");
         }
     }
@@ -214,7 +266,8 @@ public class Game {
                 ((KingBuffAbility) ability).getLastKnightedZombie();
         if (target != null) {
             pendingResults.add(king.getName() + " knighted "
-                    + target.getName() + " with crown armor.");
+                    + target.getName()
+                    + " with helmet and shoulder armor.");
         }
     }
 
@@ -389,7 +442,7 @@ public class Game {
                                 .restoreTransformedPlants();
                 if (restored > 0) {
                     pendingResults.add(restored
-                            + " sheep plant(s) returned to normal after "
+                            + " cat-transformed plant(s) returned to normal after "
                             + zombie.getName() + " died.");
                 }
             }
@@ -531,7 +584,9 @@ public class Game {
 
     private boolean hasZombieReachedHouse() {
         for (Zombie zombie : board.getZombies()) {
-            if (!zombie.isHypnotized() && zombie.hasReachedHouse()) {
+            if (!zombie.isHypnotized()
+                    && !zombie.getType().isBoss()
+                    && zombie.hasReachedHouse()) {
                 return true;
             }
         }
@@ -730,6 +785,14 @@ public class Game {
 
     public GameType getGameType() {
         return gameType;
+    }
+
+    public List<LawnMower> getLawnMowers() {
+        return lawnMowerSystem.getMowers();
+    }
+
+    public LawnMower getLawnMowerAtRow(int row) {
+        return lawnMowerSystem.getMowerAtRow(row);
     }
 
     public int getSunCount() {

@@ -55,6 +55,7 @@ import model.game.entities.zombies.abilities.FastSwimAbility;
 import model.game.entities.zombies.abilities.FishingHookAbility;
 import model.game.entities.zombies.abilities.IceBlockPushAbility;
 import model.game.entities.zombies.abilities.JuggleAbility;
+import model.game.entities.zombies.abilities.KingBuffAbility;
 import model.game.entities.zombies.abilities.LaunchAbility;
 import model.game.entities.zombies.abilities.PianoCrushAbility;
 import model.game.entities.zombies.abilities.SmashAbility;
@@ -63,6 +64,7 @@ import model.game.entities.zombies.abilities.SurfAbility;
 import model.game.entities.zombies.abilities.TackleAbility;
 import model.game.entities.zombies.abilities.TorchAbility;
 import model.game.entities.zombies.abilities.UmbrellaBounceAbility;
+import model.game.entities.zombies.abilities.WizardSpellAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
@@ -1028,10 +1030,17 @@ public class Board {
             int reflectedDamage =
                     Math.max(1, projectile.getImpactDamage());
             if (source != null && !source.isDestroyed()) {
+                boolean frozenByReflection = false;
+                if (projectile.hasChillEffect()
+                        && !source.isDisabled()) {
+                    frozenByReflection = source.applyIceHit();
+                }
                 source.takeDamage(reflectedDamage);
                 pendingResults.add(target.getName()
                         + " reflected " + reflectedDamage
-                        + " damage back to " + source.getName() + ".");
+                        + " damage back to " + source.getName() + "."
+                        + (frozenByReflection
+                                ? " The plant is now frozen." : ""));
                 reportDestroyedPlant(source);
             } else {
                 pendingResults.add(target.getName()
@@ -1071,14 +1080,15 @@ public class Board {
                             projectile.getSourcePlantName())) {
                 continue;
             }
-            double rowDistance = Math.abs(plant.getEntityPosition().getRow()
-                    - projectile.getPreviousRowPosition());
+            double rowDistance = Math.abs(
+                    plant.getEntityPosition().getRow()
+                            - projectile.getSourceRowPosition());
             if (rowDistance > PROJECTILE_COLLISION_RADIUS) {
                 continue;
             }
             double columnDistance = Math.abs(
                     plant.getEntityPosition().getColumn()
-                            - projectile.getPreviousColumnPosition());
+                            - projectile.getSourceColumnPosition());
             if (columnDistance < nearestDistance) {
                 nearest = plant;
                 nearestDistance = columnDistance;
@@ -1130,9 +1140,7 @@ public class Board {
             if (projectile.hasReachedTarget()) {
                 Zombie target = projectile.getLockedTarget();
                 extinguishProspectorDynamite(projectile, target);
-                if (tryReflectProjectile(projectile, target)) {
-                    continue;
-                }
+                chillProjectileSourceIfBlockhead(projectile, target);
                 projectile.hit(target);
                 if (target.isDead()) {
                     reportZombieDeath(target);
@@ -1162,9 +1170,7 @@ public class Board {
                 continue;
             }
             extinguishProspectorDynamite(projectile, target);
-            if (tryReflectProjectile(projectile, target)) {
-                continue;
-            }
+            chillProjectileSourceIfBlockhead(projectile, target);
             projectile.hit(target);
             applyLobbedSplash(projectile, target);
             reportDeadLobberTargets();
@@ -1499,7 +1505,11 @@ public class Board {
                     || zombie.getLane() != lane) {
                 continue;
             }
-            if (explosive.getType().getBehavior() == ExplosiveBehavior.WATER_TRAP
+            if (canDodoFlyOverExplosive(zombie, explosive)) {
+                continue;
+            }
+            if (explosive.getType().getBehavior()
+                    == ExplosiveBehavior.WATER_TRAP
                     && !isWaterZombie(zombie)) {
                 continue;
             }
@@ -1511,6 +1521,19 @@ public class Board {
             }
         }
         return closest;
+    }
+
+    private boolean canDodoFlyOverExplosive(
+            Zombie zombie, Explosive explosive) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof FlyAbility
+                    && ability.tryUse(zombie, this)
+                    && ((FlyAbility) ability)
+                            .canFlyOver(explosive)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isWaterZombie(Zombie zombie) {
@@ -1567,7 +1590,8 @@ public class Board {
             if (targetCount <= 0) {
                 break;
             }
-            if (zombie.isHypnotized()) {
+            if (zombie.isHypnotized()
+                    || zombie.isSubmerged()) {
                 continue;
             }
             zombie.takeDamage(explosive.getDamage());
@@ -2248,6 +2272,7 @@ public class Board {
             int damage) {
         for (Zombie zombie : getZombies()) {
             if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.isSubmerged()
                     || Math.abs(zombie.getLane() - center.getRow()) > radius
                     || Math.abs(zombie.getColumnPosition()
                             - center.getColumn()) > radius) {
@@ -2299,7 +2324,9 @@ public class Board {
         }
         int sourceLane = garlic.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isHypnotized() && zombie.getLane() == sourceLane) {
+            if (!zombie.isHypnotized()
+                    && !zombie.getType().isBoss()
+                    && zombie.getLane() == sourceLane) {
                 int targetLane = garlic.chooseAdjacentLane(sourceLane, numberOfRows);
                 zombie.moveToLane(targetLane);
             }
@@ -2314,6 +2341,7 @@ public class Board {
         int targetLane = sweetPotato.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
             if (!zombie.isHypnotized()
+                    && !zombie.getType().isBoss()
                     && Math.abs(zombie.getLane() - targetLane) == 1) {
                 zombie.moveToLane(targetLane);
             }
@@ -2329,6 +2357,9 @@ public class Board {
             Zombie zombie = (Zombie) entity;
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
+                continue;
+            }
+            if (zombie.getType().isBoss()) {
                 continue;
             }
             if (zombie.isHypnotized()) {
@@ -2722,10 +2753,14 @@ public class Board {
 
     private void updateZombie(Zombie zombie, float deltaSeconds) {
         finishDodoFlight(zombie);
-        if (keepFishermanAtRightEdge(zombie)) {
+        if (keepStationaryZombieAtRightEdge(zombie)) {
             return;
         }
         BasePlant blockingPlant = findNearestPlantAhead(zombie);
+        if (tryTransformPlantWithWizard(
+                zombie, blockingPlant)) {
+            return;
+        }
         updateBeachMovementStates(zombie, blockingPlant);
         Zombie blockingHypnotizedZombie = findNearestHypnotizedZombieAhead(zombie);
         if (blockingPlant != null
@@ -2810,9 +2845,46 @@ public class Board {
         return false;
     }
 
-    private boolean keepFishermanAtRightEdge(Zombie zombie) {
+    private boolean tryTransformPlantWithWizard(
+            Zombie zombie, BasePlant plant) {
+        if (plant == null
+                || plant.getEntityPosition() == null) {
+            return false;
+        }
+
+        double distance = zombie.getColumnPosition()
+                - plant.getEntityPosition().getColumn();
+        if (distance < 0.0
+                || distance > Zombie.ATTACK_REACH
+                        + POSITION_EPSILON) {
+            return false;
+        }
+
         for (ZombieAbility ability : zombie.getAbilities()) {
-            if (ability instanceof FishingHookAbility) {
+            if (!(ability instanceof WizardSpellAbility)) {
+                continue;
+            }
+            WizardSpellAbility spell =
+                    (WizardSpellAbility) ability;
+            boolean transformed =
+                    spell.transformReachedPlant(
+                            zombie, plant);
+            if (transformed) {
+                pendingResults.add(zombie.getName()
+                        + " transformed "
+                        + plant.getName()
+                        + " into a cat on contact.");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private boolean keepStationaryZombieAtRightEdge(
+            Zombie zombie) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof FishingHookAbility
+                    || ability instanceof KingBuffAbility) {
                 zombie.moveTo(numberOfColumns - 1.0);
                 return true;
             }
@@ -3003,7 +3075,9 @@ public class Board {
         }
         EntityPosition center = wallnut.getEntityPosition();
         for (Zombie target : getZombies()) {
-            if (!target.isHypnotized() && isInsideThreeByThree(target, center)) {
+            if (!target.isHypnotized()
+                    && !target.isSubmerged()
+                    && isInsideThreeByThree(target, center)) {
                 target.takeDamage(explosionDamage);
             }
         }
@@ -3020,7 +3094,10 @@ public class Board {
         BasePlant nearestPlant = null;
         int nearestColumn = -1;
         for (BasePlant plant : getPlants()) {
-            if (plant.isRemoved() || plant.getEntityPosition().getRow() != zombie.getLane()) {
+            if (plant.isRemoved()
+                    || plant.isTransformedToSheep()
+                    || plant.getEntityPosition().getRow()
+                            != zombie.getLane()) {
                 continue;
             }
             int plantColumn = plant.getEntityPosition().getColumn();

@@ -10,6 +10,7 @@ public class Armor {
     private int maximumHealth;
     private boolean destroyed;
     private boolean dropped;
+    private boolean magnetLayerRemoved;
 
     public Armor(ArmorType type) {
         this.type = type;
@@ -50,9 +51,30 @@ public class Armor {
         }
     }
 
-    public boolean removeByMagnet() {
-        if (destroyed || !type.isMagnetizable()) {
+    public boolean isMagnetizable() {
+        if (destroyed) {
             return false;
+        }
+        if (type == ArmorType.KNIGHT) {
+            return !magnetLayerRemoved;
+        }
+        return type.isMagnetizable();
+    }
+
+    public boolean removeByMagnet() {
+        if (!isMagnetizable()) {
+            return false;
+        }
+        if (type == ArmorType.KNIGHT) {
+            currentHealth = Math.max(0,
+                    currentHealth
+                            - ArmorType.CROWN.getBaseHealth());
+            magnetLayerRemoved = true;
+            dropped = true;
+            if (currentHealth == 0) {
+                destroyed = true;
+            }
+            return true;
         }
         currentHealth = 0;
         destroyed = true;
@@ -65,6 +87,9 @@ public class Armor {
     public int getMaximumHealth() { return maximumHealth; }
     public boolean isDestroyed() { return destroyed; }
     public boolean isDropped() { return dropped; }
+    public boolean isMagnetLayerRemoved() {
+        return magnetLayerRemoved;
+    }
 
     public double getHealthPercent() {
         return maximumHealth > 0 ? (double) currentHealth / maximumHealth : 0;

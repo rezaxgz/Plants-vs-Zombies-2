@@ -5,18 +5,23 @@ import model.game.entities.projectile.Projectile;
 import model.game.entities.zombies.Zombie;
 
 /**
- * Juggler catches incoming projectiles and reflects their impact damage back
- * toward the source plant. The short cooldown prevents unlimited simultaneous
- * catches while the configured capacity limits total reflections.
+ * Juggler reflects direct projectiles while spinning. Each reflected shot
+ * refreshes the spin window; spinning slightly increases movement speed.
  */
 public class JuggleAbility extends ZombieAbility {
-    private final int maxProjectiles;
+    private static final double SPIN_GRACE_SECONDS = 2.0;
+    private static final double SPIN_SPEED_MULTIPLIER = 1.1;
+
+    private final int configuredMaxProjectiles;
     private final double catchArcDegrees;
+
     private int reflectedProjectileCount;
+    private boolean spinning;
+    private double spinTimeRemaining;
 
     public JuggleAbility(int maxProjectiles,
             double catchArcDegrees) {
-        super(0.5);
+        super(0.0);
         if (maxProjectiles <= 0
                 || !Double.isFinite(catchArcDegrees)
                 || catchArcDegrees <= 0.0
@@ -24,8 +29,25 @@ public class JuggleAbility extends ZombieAbility {
             throw new IllegalArgumentException(
                     "invalid Juggler configuration");
         }
-        this.maxProjectiles = maxProjectiles;
+        configuredMaxProjectiles = maxProjectiles;
         this.catchArcDegrees = catchArcDegrees;
+    }
+
+    @Override
+    public void update(double deltaSeconds) {
+        if (!Double.isFinite(deltaSeconds)
+                || deltaSeconds < 0.0) {
+            throw new IllegalArgumentException(
+                    "deltaSeconds must be finite and non-negative");
+        }
+        if (!spinning) {
+            return;
+        }
+        spinTimeRemaining = Math.max(
+                0.0, spinTimeRemaining - deltaSeconds);
+        if (spinTimeRemaining == 0.0) {
+            spinning = false;
+        }
     }
 
     @Override
@@ -40,29 +62,36 @@ public class JuggleAbility extends ZombieAbility {
             return false;
         }
         reflectedProjectileCount++;
-        resetCooldown();
+        spinning = true;
+        spinTimeRemaining = SPIN_GRACE_SECONDS;
         return true;
     }
 
-    private boolean canReflect(Zombie zombie, Board board) {
-        return canUse()
-                && zombie != null
-                && board != null
+    private boolean canReflect(
+            Zombie zombie, Board board) {
+        return zombie != null && board != null
                 && !zombie.isDead()
                 && !zombie.isHypnotized()
                 && !zombie.isFrozen()
-                && !zombie.isStunned()
-                && reflectedProjectileCount < maxProjectiles;
+                && !zombie.isStunned();
     }
 
-    public boolean canCatchProjectile(String projectileType) {
+    public boolean canCatchProjectile(
+            String projectileType) {
         return projectileType != null
-                && !projectileType.isBlank()
-                && reflectedProjectileCount < maxProjectiles;
+                && !projectileType.isBlank();
+    }
+
+    public double getSpeedMultiplier() {
+        return spinning ? SPIN_SPEED_MULTIPLIER : 1.0;
+    }
+
+    public boolean isSpinning() {
+        return spinning;
     }
 
     public int getMaxProjectiles() {
-        return maxProjectiles;
+        return configuredMaxProjectiles;
     }
 
     public double getCatchArcDegrees() {
