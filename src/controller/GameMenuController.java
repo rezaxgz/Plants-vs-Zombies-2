@@ -236,6 +236,12 @@ public final class GameMenuController {
                                 game.getPlantCooldownRemainingSeconds(plant))
                         + " more seconds!")
                         .addPreCommandResults(preCommandResults);
+            case PLANT_LOCKED:
+                return CommandResult.error(
+                        plant.getName()
+                                + " is locked in this level! "
+                                + "Use show available plants.")
+                        .addPreCommandResults(preCommandResults);
             case POSITION_OCCUPIED:
                 return CommandResult.error("there is already a plant at " + position + "!")
                         .addPreCommandResults(preCommandResults);
@@ -293,6 +299,71 @@ public final class GameMenuController {
         return CommandResult.success("sun amount: " + game.getSunCount())
                 .addPreCommandResults(game.drainResults())
                 .addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleShowAvailablePlants(
+            Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> pending = game.drainResults();
+        if (!game.hasLockedPlants()) {
+            return CommandResult.success(
+                    "all implemented plants are available in this level.")
+                    .addPreCommandResults(pending);
+        }
+
+        StringBuilder output =
+                new StringBuilder("available plants")
+                        .append(System.lineSeparator())
+                        .append("rule: ")
+                        .append(game.getLockedPlantsRuleDescription());
+
+        List<String> available =
+                game.getLockedPlantTypes();
+        for (String plantType : available) {
+            output.append(System.lineSeparator())
+                    .append("- ")
+                    .append(plantType);
+        }
+
+        return CommandResult.success(output.toString())
+                .addPreCommandResults(pending);
+    }
+
+    public static CommandResult handleShowForcedPlants(
+            Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+
+        List<String> pending = game.drainResults();
+        if (!game.hasLockedPlants()) {
+            return CommandResult.success(
+                    "this level has no forced plants.")
+                    .addPreCommandResults(pending);
+        }
+
+        List<String> forced =
+                game.getForcedPlantTypes();
+        StringBuilder output =
+                new StringBuilder("forced plants");
+        if (forced.isEmpty()) {
+            output.append(System.lineSeparator())
+                    .append("- none");
+        } else {
+            for (String plantType : forced) {
+                output.append(System.lineSeparator())
+                        .append("- ")
+                        .append(plantType);
+            }
+        }
+
+        return CommandResult.success(output.toString())
+                .addPreCommandResults(pending);
     }
 
     public static CommandResult handleShowConveyorBelt(
