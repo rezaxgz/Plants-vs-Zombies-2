@@ -25,6 +25,7 @@ public abstract class BasePlant extends Entity {
     private boolean frozenByIce;
     private int octopusHitsRemaining;
     private boolean coveredByOctopus;
+    private boolean transformedToSheep;
 
     protected BasePlant(PlantCategory category) {
         this(null, category, Collections.emptySet(), 1, 0, 0, 0, null);
@@ -180,8 +181,28 @@ public abstract class BasePlant extends Entity {
         return octopusHitsRemaining;
     }
 
+    public boolean transformToSheep() {
+        if (isDestroyed() || isDisabled()) {
+            return false;
+        }
+        transformedToSheep = true;
+        return true;
+    }
+
+    public boolean restoreFromSheep() {
+        if (!transformedToSheep) {
+            return false;
+        }
+        transformedToSheep = false;
+        return true;
+    }
+
+    public boolean isTransformedToSheep() {
+        return transformedToSheep;
+    }
+
     public boolean isDisabled() {
-        return frozenByIce || coveredByOctopus;
+        return frozenByIce || coveredByOctopus || transformedToSheep;
     }
 
     public boolean isFrozen() {

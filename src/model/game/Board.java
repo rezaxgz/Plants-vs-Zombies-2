@@ -49,6 +49,7 @@ import model.game.entities.zombies.abilities.FlyAbility;
 import model.game.entities.zombies.abilities.FastSwimAbility;
 import model.game.entities.zombies.abilities.FishingHookAbility;
 import model.game.entities.zombies.abilities.IceBlockPushAbility;
+import model.game.entities.zombies.abilities.JuggleAbility;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.SubmergeAbility;
 import model.game.entities.zombies.abilities.SurfAbility;
@@ -754,6 +755,9 @@ public class Board {
                 return;
             }
 
+            if (tryReflectProjectile(projectile, target)) {
+                return;
+            }
             chillProjectileSourceIfBlockhead(projectile, target);
             projectile.hit(target);
             if (target.isDead()) {
@@ -931,6 +935,38 @@ public class Board {
                 || plantParameter <= zombieParameter + POSITION_EPSILON;
     }
 
+    private boolean tryReflectProjectile(Projectile projectile,
+            Zombie target) {
+        if (projectile == null || target == null
+                || projectile.isRemoved()) {
+            return false;
+        }
+        for (ZombieAbility ability : target.getAbilities()) {
+            if (!(ability instanceof JuggleAbility)
+                    || !((JuggleAbility) ability)
+                            .tryReflect(target, projectile, this)) {
+                continue;
+            }
+
+            BasePlant source = findProjectileSourcePlant(projectile);
+            int reflectedDamage =
+                    Math.max(1, projectile.getImpactDamage());
+            if (source != null && !source.isDestroyed()) {
+                source.takeDamage(reflectedDamage);
+                pendingResults.add(target.getName()
+                        + " reflected " + reflectedDamage
+                        + " damage back to " + source.getName() + ".");
+                reportDestroyedPlant(source);
+            } else {
+                pendingResults.add(target.getName()
+                        + " caught and discarded a projectile.");
+            }
+            projectile.markForRemoval();
+            return true;
+        }
+        return false;
+    }
+
     private void chillProjectileSourceIfBlockhead(Projectile projectile,
             Zombie blockhead) {
         for (ZombieAbility ability : blockhead.getAbilities()) {
@@ -1017,6 +1053,9 @@ public class Board {
             }
             if (projectile.hasReachedTarget()) {
                 Zombie target = projectile.getLockedTarget();
+                if (tryReflectProjectile(projectile, target)) {
+                    continue;
+                }
                 projectile.hit(target);
                 if (target.isDead()) {
                     reportZombieDeath(target);
@@ -1043,6 +1082,9 @@ public class Board {
             Zombie target = findLobbedLandingTarget(projectile);
             if (target == null || isProtectedFromLobbers(target)) {
                 projectile.markForRemoval();
+                continue;
+            }
+            if (tryReflectProjectile(projectile, target)) {
                 continue;
             }
             projectile.hit(target);

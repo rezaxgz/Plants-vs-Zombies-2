@@ -19,11 +19,13 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.FishingHookAbility;
 import model.game.entities.zombies.abilities.ImpThrowAbility;
+import model.game.entities.zombies.abilities.KingBuffAbility;
 import model.game.entities.zombies.abilities.OctopusThrowAbility;
 import model.game.entities.zombies.abilities.SnowballThrowAbility;
 import model.game.entities.zombies.abilities.SunStealAbility;
 import model.game.entities.zombies.abilities.TombSummonAbility;
 import model.game.entities.zombies.abilities.WeaselReleaseAbility;
+import model.game.entities.zombies.abilities.WizardSpellAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
@@ -116,6 +118,7 @@ public class Game {
         board.update(deltaSeconds);
         activateAutomaticZombieAbilities(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
+        restoreWizardSheepFromDeadZombies(zombieSnapshot);
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
@@ -147,7 +150,38 @@ public class Game {
                 activateSnowballThrow(zombie, ability);
                 activateFishingHook(zombie, ability);
                 activateOctopusThrow(zombie, ability);
+                activateWizardSpell(zombie, ability);
+                activateKingBuff(zombie, ability);
             }
+        }
+    }
+
+    private void activateWizardSpell(Zombie wizard,
+            ZombieAbility ability) {
+        if (!(ability instanceof WizardSpellAbility)
+                || !ability.tryUse(wizard, board)) {
+            return;
+        }
+        BasePlant target =
+                ((WizardSpellAbility) ability).getLastTarget();
+        if (target != null) {
+            pendingResults.add(wizard.getName() + " transformed "
+                    + target.getName() + " into a sheep at "
+                    + target.getEntityPosition() + ".");
+        }
+    }
+
+    private void activateKingBuff(Zombie king,
+            ZombieAbility ability) {
+        if (!(ability instanceof KingBuffAbility)
+                || !ability.tryUse(king, board)) {
+            return;
+        }
+        Zombie target =
+                ((KingBuffAbility) ability).getLastKnightedZombie();
+        if (target != null) {
+            pendingResults.add(king.getName() + " knighted "
+                    + target.getName() + " with crown armor.");
         }
     }
 
@@ -271,6 +305,28 @@ public class Game {
                 if (returnedSun > 0) {
                     addSun(returnedSun);
                     pendingResults.add(returnedSun + " stolen sun returned after "
+                            + zombie.getName() + " died.");
+                }
+            }
+        }
+    }
+
+    private void restoreWizardSheepFromDeadZombies(
+            List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (!zombie.isDead()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                if (!(ability instanceof WizardSpellAbility)) {
+                    continue;
+                }
+                int restored =
+                        ((WizardSpellAbility) ability)
+                                .restoreTransformedPlants();
+                if (restored > 0) {
+                    pendingResults.add(restored
+                            + " sheep plant(s) returned to normal after "
                             + zombie.getName() + " died.");
                 }
             }
@@ -443,6 +499,7 @@ public class Game {
         }
         board.update(0.0f);
         returnStolenSunFromDeadZombies(zombieSnapshot);
+        restoreWizardSheepFromDeadZombies(zombieSnapshot);
         pendingResults.addAll(board.drainResults());
         startNextWaveIfPossible();
         checkForWin();

@@ -377,6 +377,19 @@ public class Zombie extends Entity {
         return armor;
     }
 
+    public boolean canReceiveArmor() {
+        return !isDead() && (armor == null || armor.isDestroyed());
+    }
+
+    public boolean equipArmor(ArmorType armorType) {
+        if (armorType == null || armorType == ArmorType.NONE
+                || !canReceiveArmor()) {
+            return false;
+        }
+        armor = new Armor(armorType);
+        return true;
+    }
+
     public List<ZombieAbility> getAbilities() {
         return abilities;
     }
