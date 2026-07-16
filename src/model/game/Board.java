@@ -10,7 +10,10 @@ import java.util.Set;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.ArcadeMachine;
 import model.game.entities.other.IceBlock;
+import model.game.entities.other.PushedObstacle;
+import model.game.entities.other.RollingBarrel;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFamily;
@@ -44,6 +47,8 @@ import model.game.entities.projectile.Projectile;
 import model.game.entities.projectile.effect.ProjectileEffect;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
+import model.game.entities.zombies.abilities.ArcadePushAbility;
+import model.game.entities.zombies.abilities.BarrelPushAbility;
 import model.game.entities.zombies.abilities.ChillOnHitAbility;
 import model.game.entities.zombies.abilities.FlyAbility;
 import model.game.entities.zombies.abilities.FastSwimAbility;
@@ -57,6 +62,7 @@ import model.game.entities.zombies.abilities.SubmergeAbility;
 import model.game.entities.zombies.abilities.SurfAbility;
 import model.game.entities.zombies.abilities.TackleAbility;
 import model.game.entities.zombies.abilities.TorchAbility;
+import model.game.entities.zombies.abilities.UmbrellaBounceAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
@@ -97,6 +103,7 @@ public class Board {
     private final List<Entity> allEntities;
     private final List<BaseStructure> structures;
     private final List<String> pendingResults;
+    private final List<Zombie> pendingSpawnedZombies;
     private final List<ActiveFamilyBoost> activeFamilyBoosts;
     private final List<PlantFamily> pendingPlantCooldownResets;
 
@@ -114,6 +121,7 @@ public class Board {
         this.allEntities = new ArrayList<>();
         this.structures = new ArrayList<>();
         this.pendingResults = new ArrayList<>();
+        this.pendingSpawnedZombies = new ArrayList<>();
         this.activeFamilyBoosts = new ArrayList<>();
         this.pendingPlantCooldownResets = new ArrayList<>();
         initializeTiles();
@@ -710,7 +718,8 @@ public class Board {
 
     private void resolveProjectileHits(Projectile projectile) {
         while (!projectile.isRemoved()) {
-            IceBlock iceBlock = findFirstIceBlockHit(projectile);
+            PushedObstacle pushedObstacle =
+                    findFirstPushedObstacleHit(projectile);
             BasePlant octopusPlant =
                     findFirstOctopusCoveredPlantHit(projectile);
             BasePlant frozenPlant = findFirstFrozenPlantHit(projectile);
@@ -719,7 +728,7 @@ public class Board {
             if (octopusPlant != null
                     && isOctopusBeforeOtherTargets(
                             projectile, octopusPlant,
-                            iceBlock, frozenPlant, target)) {
+                            pushedObstacle, frozenPlant, target)) {
                 boolean octopusDestroyed =
                         octopusPlant.damageOctopus(1);
                 projectile.markForRemoval();
@@ -730,16 +739,20 @@ public class Board {
                 return;
             }
 
-            if (iceBlock != null
-                    && isIceBlockBeforeOtherTargets(
-                            projectile, iceBlock, frozenPlant, target)) {
-                int damage = Math.max(1, projectile.getImpactDamage());
-                iceBlock.takeDamage(damage);
+            if (pushedObstacle != null
+                    && isPushedObstacleBeforeOtherTargets(
+                            projectile, pushedObstacle,
+                            frozenPlant, target)) {
+                int damage = Math.max(
+                        1, projectile.getImpactDamage());
+                damagePushedObstacle(pushedObstacle, damage);
                 projectile.markForRemoval();
-                pendingResults.add("Troglobite ice block absorbed "
-                        + damage + " projectile damage."
-                        + (iceBlock.isDestroyed()
-                                ? " The ice block was destroyed." : ""));
+                pendingResults.add(
+                        pushedObstacle.getDisplayName()
+                        + " absorbed " + damage
+                        + " projectile damage."
+                        + (pushedObstacle.isDestroyed()
+                                ? " It was destroyed." : ""));
                 return;
             }
 
@@ -797,8 +810,8 @@ public class Board {
 
     private boolean isOctopusBeforeOtherTargets(
             Projectile projectile, BasePlant octopusPlant,
-            IceBlock iceBlock, BasePlant frozenPlant,
-            Zombie zombie) {
+            PushedObstacle pushedObstacle,
+            BasePlant frozenPlant, Zombie zombie) {
         EntityPosition octopusPosition =
                 octopusPlant.getEntityPosition();
         double octopusParameter =
@@ -810,14 +823,14 @@ public class Board {
             return false;
         }
 
-        if (iceBlock != null) {
-            double blockParameter =
+        if (pushedObstacle != null) {
+            double obstacleParameter =
                     projectile.getIntersectionParameter(
-                            iceBlock.getLane(),
-                            iceBlock.getColumnPosition(),
+                            pushedObstacle.getLane(),
+                            pushedObstacle.getColumnPosition(),
                             PROJECTILE_COLLISION_RADIUS);
-            if (!Double.isNaN(blockParameter)
-                    && blockParameter + POSITION_EPSILON
+            if (!Double.isNaN(obstacleParameter)
+                    && obstacleParameter + POSITION_EPSILON
                             < octopusParameter) {
                 return false;
             }
@@ -853,53 +866,97 @@ public class Board {
         return true;
     }
 
-    private IceBlock findFirstIceBlockHit(Projectile projectile) {
-        IceBlock firstBlock = null;
+    private PushedObstacle findFirstPushedObstacleHit(
+            Projectile projectile) {
+        PushedObstacle firstObstacle = null;
         double firstParameter = Double.POSITIVE_INFINITY;
-        for (IceBlock block : getIceBlocks()) {
+        for (PushedObstacle obstacle : getPushedObstacles()) {
             double parameter = projectile.getIntersectionParameter(
-                    block.getLane(), block.getColumnPosition(),
+                    obstacle.getLane(),
+                    obstacle.getColumnPosition(),
                     PROJECTILE_COLLISION_RADIUS);
             if (!Double.isNaN(parameter)
                     && parameter > POSITION_EPSILON
                     && parameter < firstParameter) {
                 firstParameter = parameter;
-                firstBlock = block;
+                firstObstacle = obstacle;
             }
         }
-        return firstBlock;
+        return firstObstacle;
     }
 
-    private boolean isIceBlockBeforeOtherTargets(Projectile projectile,
-            IceBlock block, BasePlant frozenPlant, Zombie zombie) {
-        double blockParameter = projectile.getIntersectionParameter(
-                block.getLane(), block.getColumnPosition(),
-                PROJECTILE_COLLISION_RADIUS);
-        if (Double.isNaN(blockParameter)) {
+    private boolean isPushedObstacleBeforeOtherTargets(
+            Projectile projectile, PushedObstacle obstacle,
+            BasePlant frozenPlant, Zombie zombie) {
+        double obstacleParameter =
+                projectile.getIntersectionParameter(
+                        obstacle.getLane(),
+                        obstacle.getColumnPosition(),
+                        PROJECTILE_COLLISION_RADIUS);
+        if (Double.isNaN(obstacleParameter)) {
             return false;
         }
 
         if (frozenPlant != null) {
-            EntityPosition position = frozenPlant.getEntityPosition();
-            double plantParameter = projectile.getIntersectionParameter(
-                    position.getRow(), position.getColumn(),
-                    PROJECTILE_COLLISION_RADIUS);
+            EntityPosition position =
+                    frozenPlant.getEntityPosition();
+            double plantParameter =
+                    projectile.getIntersectionParameter(
+                            position.getRow(),
+                            position.getColumn(),
+                            PROJECTILE_COLLISION_RADIUS);
             if (!Double.isNaN(plantParameter)
-                    && plantParameter + POSITION_EPSILON < blockParameter) {
+                    && plantParameter + POSITION_EPSILON
+                            < obstacleParameter) {
                 return false;
             }
         }
 
         if (zombie != null) {
-            double zombieParameter = projectile.getIntersectionParameter(
-                    zombie.getLane(), zombie.getColumnPosition(),
-                    PROJECTILE_COLLISION_RADIUS);
+            double zombieParameter =
+                    projectile.getIntersectionParameter(
+                            zombie.getLane(),
+                            zombie.getColumnPosition(),
+                            PROJECTILE_COLLISION_RADIUS);
             if (!Double.isNaN(zombieParameter)
-                    && zombieParameter + POSITION_EPSILON < blockParameter) {
+                    && zombieParameter + POSITION_EPSILON
+                            < obstacleParameter) {
                 return false;
             }
         }
         return true;
+    }
+
+    private void damagePushedObstacle(
+            PushedObstacle obstacle, int damage) {
+        if (obstacle == null || obstacle.isDestroyed()) {
+            return;
+        }
+        obstacle.takeDamage(damage);
+        handleDestroyedPushedObstacle(obstacle);
+    }
+
+    private void handleDestroyedPushedObstacle(
+            PushedObstacle obstacle) {
+        if (obstacle == null || !obstacle.isDestroyed()) {
+            return;
+        }
+        if (obstacle instanceof RollingBarrel) {
+            releaseBarrelImps((RollingBarrel) obstacle);
+        }
+    }
+
+    private void releaseBarrelImps(RollingBarrel barrel) {
+        List<Zombie> imps = barrel.releaseImps();
+        for (Zombie imp : imps) {
+            addZombie(imp);
+            pendingSpawnedZombies.add(imp);
+        }
+        if (!imps.isEmpty()) {
+            pendingResults.add("Rolling barrel released "
+                    + imps.size() + " Imp(s) in lane "
+                    + barrel.getLane() + ".");
+        }
     }
 
     private BasePlant findFirstFrozenPlantHit(Projectile projectile) {
@@ -1169,8 +1226,19 @@ public class Board {
         }
     }
 
-    private static boolean isProtectedFromLobbers(Zombie zombie) {
-        return zombie != null && zombie.getType() == ZombieType.LOST_CITY_JANE;
+    private boolean isProtectedFromLobbers(Zombie zombie) {
+        if (zombie == null) {
+            return false;
+        }
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof UmbrellaBounceAbility
+                    && ability.tryUse(zombie, this)) {
+                pendingResults.add(zombie.getName()
+                        + " deflected a lobbed projectile.");
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isInsideLobbedSplash(Zombie zombie,
@@ -2267,13 +2335,102 @@ public class Board {
                 updateHypnotizedZombie(zombie, deltaSeconds);
             } else {
                 updateTroglobiteIceBlocks(zombie);
+                updatePushedObjects(zombie);
                 updatePianoMusic(zombie);
                 attractZombieToSweetPotato(zombie);
                 if (!updateProspector(zombie, deltaSeconds)) {
                     updateZombie(zombie, deltaSeconds);
                 }
                 updateTroglobiteIceBlocks(zombie);
+                updatePushedObjects(zombie);
             }
+        }
+    }
+
+    private void updatePushedObjects(Zombie zombie) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof ArcadePushAbility) {
+                updateArcadeMachine(zombie,
+                        (ArcadePushAbility) ability);
+            } else if (ability instanceof BarrelPushAbility) {
+                updateRollingBarrel(zombie,
+                        (BarrelPushAbility) ability);
+            }
+        }
+    }
+
+    private void updateArcadeMachine(
+            Zombie zombie, ArcadePushAbility ability) {
+        if (!ability.tryUse(zombie, this)) {
+            return;
+        }
+        ArcadeMachine machine = ability.getMachine();
+        if (ability.didSpawnThisUse()) {
+            pendingResults.add(zombie.getName()
+                    + " started pushing an arcade machine.");
+        }
+        crushWithPushedObstacle(machine);
+    }
+
+    private void updateRollingBarrel(
+            Zombie zombie, BarrelPushAbility ability) {
+        if (!ability.tryUse(zombie, this)) {
+            return;
+        }
+        RollingBarrel barrel = ability.getBarrel();
+        if (ability.didSpawnThisUse()) {
+            pendingResults.add(zombie.getName()
+                    + " started pushing a rolling barrel.");
+        }
+        crushWithPushedObstacle(barrel);
+    }
+
+    private void crushWithPushedObstacle(
+            PushedObstacle obstacle) {
+        if (obstacle == null || obstacle.isDestroyed()) {
+            return;
+        }
+        crushPlantsWithPushedObstacle(obstacle);
+        crushHypnotizedZombiesWithPushedObstacle(obstacle);
+    }
+
+    private void crushPlantsWithPushedObstacle(
+            PushedObstacle obstacle) {
+        for (BasePlant plant :
+                new ArrayList<>(getPlants())) {
+            if (plant.getEntityPosition() == null
+                    || plant.getEntityPosition().getRow()
+                            != obstacle.getLane()
+                    || Math.abs(
+                            plant.getEntityPosition().getColumn()
+                            - obstacle.getColumnPosition())
+                            > PushedObstacle.COLLISION_RADIUS_TILES) {
+                continue;
+            }
+            plant.takeDamage(Integer.MAX_VALUE);
+            pendingResults.add(obstacle.getDisplayName()
+                    + " crushed " + plant.getName()
+                    + " at " + plant.getEntityPosition() + ".");
+            reportDestroyedPlant(plant);
+        }
+    }
+
+    private void crushHypnotizedZombiesWithPushedObstacle(
+            PushedObstacle obstacle) {
+        for (Zombie target :
+                new ArrayList<>(getZombies())) {
+            if (!target.isHypnotized() || target.isDead()
+                    || target.getLane() != obstacle.getLane()
+                    || Math.abs(target.getColumnPosition()
+                            - obstacle.getColumnPosition())
+                            > PushedObstacle.COLLISION_RADIUS_TILES) {
+                continue;
+            }
+            target.kill();
+            pendingResults.add(obstacle.getDisplayName()
+                    + " crushed hypnotized "
+                    + target.getName() + ".");
+            reportZombieDeath(target);
         }
     }
 
@@ -2436,17 +2593,36 @@ public class Board {
         }
     }
 
-    private void updateHypnotizedZombie(Zombie zombie, float deltaSeconds) {
-        Zombie target = findNearestHostileZombieToRight(zombie);
+    private void updateHypnotizedZombie(
+            Zombie zombie, float deltaSeconds) {
+        Zombie target =
+                findNearestHostileZombieToRight(zombie);
+        PushedObstacle obstacle =
+                findNearestPushedObstacleToRight(zombie);
+
+        if (obstacle != null
+                && (target == null
+                || obstacle.getColumnPosition()
+                        <= target.getColumnPosition())) {
+            updateHypnotizedZombieAgainstObstacle(
+                    zombie, obstacle, deltaSeconds);
+            return;
+        }
+
         if (target == null) {
-            zombie.moveRight(deltaSeconds, numberOfColumns + PROJECTILE_BOARD_MARGIN);
-            if (zombie.getColumnPosition() >= numberOfColumns - POSITION_EPSILON) {
+            zombie.moveRight(deltaSeconds,
+                    numberOfColumns + PROJECTILE_BOARD_MARGIN);
+            if (zombie.getColumnPosition()
+                    >= numberOfColumns - POSITION_EPSILON) {
                 zombie.markForRemoval();
             }
             return;
         }
-        double attackColumn = target.getColumnPosition() - Zombie.ATTACK_REACH;
-        if (zombie.getColumnPosition() + POSITION_EPSILON >= attackColumn) {
+
+        double attackColumn =
+                target.getColumnPosition() - Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() + POSITION_EPSILON
+                >= attackColumn) {
             zombie.attackZombie(target, deltaSeconds);
             if (target.isDead()) {
                 reportZombieDeath(target);
@@ -2454,6 +2630,38 @@ public class Board {
         } else {
             zombie.moveRight(deltaSeconds, attackColumn);
         }
+    }
+
+    private PushedObstacle findNearestPushedObstacleToRight(
+            Zombie zombie) {
+        PushedObstacle nearest = null;
+        double nearestColumn = Double.POSITIVE_INFINITY;
+        for (PushedObstacle obstacle : getPushedObstacles()) {
+            double column = obstacle.getColumnPosition();
+            if (obstacle.getLane() != zombie.getLane()
+                    || column + Zombie.ATTACK_REACH
+                            < zombie.getColumnPosition()
+                    || column >= nearestColumn) {
+                continue;
+            }
+            nearest = obstacle;
+            nearestColumn = column;
+        }
+        return nearest;
+    }
+
+    private void updateHypnotizedZombieAgainstObstacle(
+            Zombie zombie, PushedObstacle obstacle,
+            float deltaSeconds) {
+        double attackColumn = obstacle.getColumnPosition()
+                - Zombie.ATTACK_REACH;
+        if (zombie.getColumnPosition() + POSITION_EPSILON
+                >= attackColumn) {
+            zombie.attackObstacle(obstacle, deltaSeconds);
+            handleDestroyedPushedObstacle(obstacle);
+            return;
+        }
+        zombie.moveRight(deltaSeconds, attackColumn);
     }
 
     private Zombie findNearestHostileZombieToRight(Zombie hypnotizedZombie) {
@@ -3114,6 +3322,17 @@ public class Board {
         return Collections.unmodifiableList(iceBlocks);
     }
 
+    public List<PushedObstacle> getPushedObstacles() {
+        List<PushedObstacle> obstacles = new ArrayList<>();
+        for (Entity entity : allEntities) {
+            if (entity instanceof PushedObstacle
+                    && !entity.isRemoved()) {
+                obstacles.add((PushedObstacle) entity);
+            }
+        }
+        return Collections.unmodifiableList(obstacles);
+    }
+
     public List<Sun> getSuns() {
         List<Sun> suns = new ArrayList<>();
         for (Entity entity : allEntities) {
@@ -3285,6 +3504,16 @@ public class Board {
         if (removed instanceof Grave) {
             pendingResults.add("Grave at " + position + " was destroyed.");
         }
+    }
+
+    public List<Zombie> drainSpawnedZombies() {
+        if (pendingSpawnedZombies.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Zombie> result =
+                new ArrayList<>(pendingSpawnedZombies);
+        pendingSpawnedZombies.clear();
+        return Collections.unmodifiableList(result);
     }
 
     public List<PlantFamily> drainPlantCooldownResetRequests() {

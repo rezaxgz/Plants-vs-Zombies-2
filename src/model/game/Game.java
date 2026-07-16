@@ -117,6 +117,7 @@ public class Game {
         updatePlantCooldowns(deltaSeconds);
         List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+        trackBoardSpawnedZombies();
         activateAutomaticZombieAbilities(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
         returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
@@ -392,6 +393,12 @@ public class Game {
                             + zombie.getName() + " died.");
                 }
             }
+        }
+    }
+
+    private void trackBoardSpawnedZombies() {
+        for (Zombie zombie : board.drainSpawnedZombies()) {
+            trackSpawnedZombie(zombie);
         }
     }
 

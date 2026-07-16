@@ -4,6 +4,7 @@ import model.game.Board;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.PushedObstacle;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.zombies.armor.Armor;
 import model.game.entities.zombies.armor.ArmorType;
@@ -156,6 +157,12 @@ public class Zombie extends Entity {
                         Double.parseDouble(parts[1]),
                         Double.parseDouble(parts[2]),
                         Double.parseDouble(parts[3]));
+            case "ArcadePushAbility":
+                return new ArcadePushAbility();
+            case "BarrelPushAbility":
+                return new BarrelPushAbility(Integer.parseInt(parts[1]));
+            case "UmbrellaBounceAbility":
+                return new UmbrellaBounceAbility();
             case "LaserBeamAbility":
                 return new LaserBeamAbility(
                         Integer.parseInt(parts[1]),
@@ -718,7 +725,8 @@ public class Zombie extends Entity {
             throw new IllegalArgumentException("target cannot be null");
         }
         if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f) {
-            throw new IllegalArgumentException("deltaSeconds must be finite and non-negative");
+            throw new IllegalArgumentException(
+                    "deltaSeconds must be finite and non-negative");
         }
         if (isDead() || target.isDead() || target == this) {
             return;
@@ -727,6 +735,30 @@ public class Zombie extends Entity {
         int damage = (int) pendingZombieAttackDamage;
         if (damage > 0) {
             target.takeDamage(damage);
+            pendingZombieAttackDamage -= damage;
+        }
+    }
+
+    public void attackObstacle(PushedObstacle obstacle,
+            float deltaSeconds) {
+        if (obstacle == null) {
+            throw new IllegalArgumentException(
+                    "obstacle cannot be null");
+        }
+        if (!Float.isFinite(deltaSeconds)
+                || deltaSeconds < 0.0f) {
+            throw new IllegalArgumentException(
+                    "deltaSeconds must be finite and non-negative");
+        }
+        if (isDead() || obstacle.isDestroyed()) {
+            return;
+        }
+
+        pendingZombieAttackDamage +=
+                getEffectiveEatDPS() * deltaSeconds;
+        int damage = (int) pendingZombieAttackDamage;
+        if (damage > 0) {
+            obstacle.takeDamage(damage);
             pendingZombieAttackDamage -= damage;
         }
     }
