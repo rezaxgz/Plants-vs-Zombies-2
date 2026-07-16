@@ -16,6 +16,7 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
 import model.menu.GameMenu;
 import model.menu.Menu;
+import model.roadmap.AdventureSession;
 
 public final class GameMenuController {
     private GameMenuController() {
@@ -40,9 +41,13 @@ public final class GameMenuController {
         }
 
         game.advanceTicks(tickCount);
-        return CommandResult.success("time advanced by " + tickCount + " ticks")
+        List<String> progressResults =
+                synchronizeAdventureProgress();
+        return CommandResult.success(
+                "time advanced by " + tickCount + " ticks")
                 .addPreCommandResults(preCommandResults)
-                .addPostCommandResults(game.drainResults());
+                .addPostCommandResults(game.drainResults())
+                .addPostCommandResults(progressResults);
     }
 
     public static CommandResult handleCollectSun(Matcher matcher) {
@@ -359,11 +364,29 @@ public final class GameMenuController {
                     .addPreCommandResults(preCommandResults);
         }
 
-        int zombieCount = game.getBoard().getZombies().size();
+        int zombieCount =
+                game.getBoard().getZombies().size();
         game.releaseNuke();
-        return CommandResult.success("the nuke killed " + zombieCount + " zombies")
+        List<String> progressResults =
+                synchronizeAdventureProgress();
+        return CommandResult.success(
+                "the nuke killed " + zombieCount + " zombies")
                 .addPreCommandResults(preCommandResults)
-                .addPostCommandResults(game.drainResults());
+                .addPostCommandResults(game.drainResults())
+                .addPostCommandResults(progressResults);
+    }
+
+    private static List<String>
+            synchronizeAdventureProgress() {
+        Menu currentMenu =
+                App.getInstance().getCurrentMenu();
+        if (!(currentMenu instanceof GameMenu)) {
+            return List.of();
+        }
+        ((GameMenu) currentMenu)
+                .synchronizeAdventureProgress();
+        return AdventureSession.getInstance()
+                .drainNotifications();
     }
 
     private static boolean isInsideBoard(Game game, int x, int y) {
