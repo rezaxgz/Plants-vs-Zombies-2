@@ -8,19 +8,17 @@ import model.Constants;
 import model.game.Board;
 import model.game.Game;
 import model.game.ZombieWave;
-import model.game.special.ProtectedPlantSpec;
+import model.game.special.TimedWarObjective;
 
 /**
- * Replayable level definition. Every created game receives fresh wave state.
+ * Replayable level definition. Every game receives fresh wave state.
  */
 public final class Level {
     private final int number;
     private final String name;
     private final LevelKind kind;
     private final SpecialLevelType specialLevelType;
-    private final List<String> specialPlantPool;
-    private final List<ProtectedPlantSpec>
-            protectedPlantSpecs;
+    private final SpecialLevelConfig specialConfig;
     private final int numberOfRows;
     private final int numberOfColumns;
     private final int initialSunCount;
@@ -31,99 +29,65 @@ public final class Level {
             List<ZombieWave> zombieWaves) {
         this(1, name, LevelKind.NORMAL,
                 SpecialLevelType.NONE,
-                Collections.emptyList(),
-                Collections.emptyList(),
+                SpecialLevelConfig.none(),
                 numberOfRows, numberOfColumns,
                 initialSunCount, zombieWaves);
     }
 
-    public Level(int number, String name, LevelKind kind,
-            int numberOfRows, int numberOfColumns,
+    public Level(int number, String name,
+            LevelKind kind, int numberOfRows,
+            int numberOfColumns,
             int initialSunCount,
             List<ZombieWave> zombieWaves) {
         this(number, name, kind,
                 SpecialLevelType.NONE,
-                Collections.emptyList(),
-                Collections.emptyList(),
+                SpecialLevelConfig.none(),
                 numberOfRows, numberOfColumns,
                 initialSunCount, zombieWaves);
     }
 
-    public Level(int number, String name, LevelKind kind,
+    public Level(int number, String name,
+            LevelKind kind,
             SpecialLevelType specialLevelType,
-            List<String> specialPlantPool,
-            List<ProtectedPlantSpec> protectedPlantSpecs,
+            SpecialLevelConfig specialConfig,
             int numberOfRows, int numberOfColumns,
             int initialSunCount,
             List<ZombieWave> zombieWaves) {
-        validate(number, name, kind, specialLevelType,
-                specialPlantPool, protectedPlantSpecs,
+        validate(number, name, kind,
+                specialLevelType, specialConfig,
                 numberOfRows, numberOfColumns,
                 initialSunCount, zombieWaves);
         this.number = number;
         this.name = name;
         this.kind = kind;
         this.specialLevelType = specialLevelType;
-        this.specialPlantPool =
-                immutableCopy(specialPlantPool);
-        this.protectedPlantSpecs =
-                immutableCopy(protectedPlantSpecs);
+        this.specialConfig = specialConfig;
         this.numberOfRows = numberOfRows;
         this.numberOfColumns = numberOfColumns;
         this.initialSunCount = initialSunCount;
         this.zombieWaves =
-                immutableCopy(zombieWaves);
-    }
-
-    private static <T> List<T> immutableCopy(
-            List<T> values) {
-        return Collections.unmodifiableList(
-                new ArrayList<>(values));
+                Collections.unmodifiableList(
+                        new ArrayList<>(zombieWaves));
     }
 
     private static void validate(
             int number, String name, LevelKind kind,
             SpecialLevelType specialLevelType,
-            List<String> specialPlantPool,
-            List<ProtectedPlantSpec> protectedPlantSpecs,
+            SpecialLevelConfig specialConfig,
             int rows, int columns, int sun,
             List<ZombieWave> waves) {
         if (number <= 0 || name == null
                 || name.isBlank() || kind == null
-                || specialLevelType == null) {
+                || specialLevelType == null
+                || specialConfig == null) {
             throw new IllegalArgumentException(
                     "level identity values are invalid");
         }
-        if (rows <= 0 || columns <= 0 || sun < 0) {
+        if (rows <= 0 || columns <= 0 || sun < 0
+                || waves == null || waves.isEmpty()) {
             throw new IllegalArgumentException(
-                    "level dimensions and sun are invalid");
+                    "level board or waves are invalid");
         }
-        if (waves == null || waves.isEmpty()
-                || specialPlantPool == null
-                || protectedPlantSpecs == null) {
-            throw new IllegalArgumentException(
-                    "level collections are invalid");
-        }
-        if (requiresPlantPool(specialLevelType)
-                && specialPlantPool.isEmpty()) {
-            throw new IllegalArgumentException(
-                    specialLevelType
-                            + " requires a plant pool");
-        }
-        if (specialLevelType
-                == SpecialLevelType.SAVE_OUR_SEEDS
-                && protectedPlantSpecs.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Save Our Seeds requires protected plants");
-        }
-    }
-
-    private static boolean requiresPlantPool(
-            SpecialLevelType specialLevelType) {
-        return specialLevelType
-                == SpecialLevelType.CONVEYOR_BELT
-                || specialLevelType
-                        == SpecialLevelType.LOCKED_PLANTS;
     }
 
     public static Level createExampleLevel() {
@@ -145,26 +109,74 @@ public final class Level {
             freshWaves.add(wave.copy());
         }
 
+        boolean startWavesImmediately =
+                specialLevelType
+                        != SpecialLevelType
+                                .PLANT_WHAT_YOU_GET;
         Game game = new Game(
                 new Board(numberOfRows, numberOfColumns),
-                null, initialSunCount, freshWaves);
+                null, initialSunCount, freshWaves,
+                startWavesImmediately);
         configureSpecialRules(game);
         return game;
     }
 
     private void configureSpecialRules(Game game) {
-        if (specialLevelType
-                == SpecialLevelType.CONVEYOR_BELT) {
-            game.enableConveyorBelt(
-                    specialPlantPool);
-        } else if (specialLevelType
-                == SpecialLevelType.LOCKED_PLANTS) {
-            game.enableLockedPlantsForcedLoadout(
-                    specialPlantPool);
-        } else if (specialLevelType
-                == SpecialLevelType.SAVE_OUR_SEEDS) {
-            game.enableSaveOurSeeds(
-                    protectedPlantSpecs);
+        switch (specialLevelType) {
+            case CONVEYOR_BELT:
+                game.enableConveyorBelt(
+                        specialConfig.getPlantPool());
+                break;
+            case LOCKED_PLANTS:
+                game.enableLockedPlantsForcedLoadout(
+                        specialConfig.getPlantPool());
+                break;
+            case SAVE_OUR_SEEDS:
+                game.enableSaveOurSeeds(
+                        specialConfig
+                                .getProtectedPlants());
+                break;
+            case TIMED_WAR:
+                configureTimedWar(game);
+                break;
+            case NIGHT_OPS:
+                game.enableNightOps();
+                break;
+            case DEAD_LINE:
+                game.enableDeadLine(
+                        specialConfig
+                                .getDeadLineColumn());
+                break;
+            case LOVE_YOUR_PLANTS:
+                game.enableLoveYourPlants(
+                        specialConfig
+                                .getMaximumLostPlants());
+                break;
+            case PLANT_WHAT_YOU_GET:
+                game.enablePlantWhatYouGet();
+                break;
+            case NONE:
+                break;
+            default:
+                throw new IllegalStateException(
+                        "unknown special level type");
+        }
+    }
+
+    private void configureTimedWar(Game game) {
+        TimedWarObjective objective =
+                specialConfig.getTimedObjective();
+        if (objective
+                == TimedWarObjective.KILL_ZOMBIES) {
+            game.enableTimedWarZombieKills(
+                    specialConfig
+                            .getDurationSeconds(),
+                    specialConfig.getTarget());
+        } else {
+            game.enableTimedWarSunProduction(
+                    specialConfig
+                            .getDurationSeconds(),
+                    specialConfig.getTarget());
         }
     }
 
@@ -184,13 +196,8 @@ public final class Level {
         return specialLevelType;
     }
 
-    public List<String> getSpecialPlantPool() {
-        return specialPlantPool;
-    }
-
-    public List<ProtectedPlantSpec>
-            getProtectedPlantSpecs() {
-        return protectedPlantSpecs;
+    public SpecialLevelConfig getSpecialConfig() {
+        return specialConfig;
     }
 
     public int getNumberOfRows() {
