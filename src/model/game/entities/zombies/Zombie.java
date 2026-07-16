@@ -251,10 +251,11 @@ public class Zombie extends Entity {
         }
 
         // Check for enrage trigger (newspaper destroyed)
-        if (armor != null && armor.isDestroyed() && armor.getType() == ArmorType.NEWSPAPER) {
+        if (!dead && armor != null && armor.isDestroyed()
+                && armor.getType() == ArmorType.NEWSPAPER) {
             for (ZombieAbility ability : abilities) {
-                if (ability instanceof EnrageAbility) {
-                    ((EnrageAbility) ability).tryUse(this, null);
+                if (ability instanceof EnrageAbility
+                        && ability.tryUse(this, null)) {
                     enraged = true;
                 }
             }

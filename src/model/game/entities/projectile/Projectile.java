@@ -6,6 +6,7 @@ import java.util.List;
 
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
+import model.game.entities.projectile.effect.ChillEffect;
 import model.game.entities.projectile.effect.DamageEffect;
 import model.game.entities.projectile.effect.FireEffect;
 import model.game.entities.projectile.effect.ProjectileEffect;
@@ -162,6 +163,15 @@ public class Projectile extends Entity {
     public boolean hasFireEffect() {
         for (ProjectileEffect effect : effects) {
             if (effect instanceof FireEffect) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean hasChillEffect() {
+        for (ProjectileEffect effect : effects) {
+            if (effect instanceof ChillEffect) {
                 return true;
             }
         }

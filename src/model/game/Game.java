@@ -20,6 +20,7 @@ import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.FishingHookAbility;
 import model.game.entities.zombies.abilities.ImpThrowAbility;
 import model.game.entities.zombies.abilities.KingBuffAbility;
+import model.game.entities.zombies.abilities.LaserBeamAbility;
 import model.game.entities.zombies.abilities.OctopusThrowAbility;
 import model.game.entities.zombies.abilities.SnowballThrowAbility;
 import model.game.entities.zombies.abilities.SunStealAbility;
@@ -118,6 +119,7 @@ public class Game {
         board.update(deltaSeconds);
         activateAutomaticZombieAbilities(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
+        returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
         restoreWizardSheepFromDeadZombies(zombieSnapshot);
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
@@ -152,7 +154,37 @@ public class Game {
                 activateOctopusThrow(zombie, ability);
                 activateWizardSpell(zombie, ability);
                 activateKingBuff(zombie, ability);
+                activateCrystalSkull(zombie, ability);
             }
+        }
+    }
+
+    private void activateCrystalSkull(Zombie crystalSkull,
+            ZombieAbility ability) {
+        if (!(ability instanceof LaserBeamAbility)) {
+            return;
+        }
+
+        LaserBeamAbility laser = (LaserBeamAbility) ability;
+        boolean stateChanged = laser.tryUse(crystalSkull, board);
+        int requestedSun = laser.drainPendingSunRequest();
+        int stolenSun = Math.min(sunCount, requestedSun);
+        if (stolenSun > 0) {
+            spendSun(stolenSun);
+            laser.recordStolenSun(stolenSun);
+            pendingResults.add(crystalSkull.getName() + " stole "
+                    + stolenSun + " stored sun while charging.");
+        }
+
+        if (stateChanged && laser.didStartChargingThisUse()) {
+            pendingResults.add(crystalSkull.getName()
+                    + " started charging its skull laser.");
+        }
+        if (stateChanged && laser.didFireThisUse()) {
+            pendingResults.add(crystalSkull.getName()
+                    + " fired its laser and destroyed "
+                    + laser.getLastDestroyedPlantCount()
+                    + " plant(s).");
         }
     }
 
@@ -307,6 +339,36 @@ public class Game {
                     pendingResults.add(returnedSun + " stolen sun returned after "
                             + zombie.getName() + " died.");
                 }
+            }
+        }
+    }
+
+    private void returnCrystalSkullSunFromDeadZombies(
+            List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (!zombie.isDead()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                if (!(ability instanceof LaserBeamAbility)) {
+                    continue;
+                }
+                int droppedSun =
+                        ((LaserBeamAbility) ability)
+                                .releaseHalfStolenSun();
+                if (droppedSun <= 0) {
+                    continue;
+                }
+                EntityPosition position = new EntityPosition(
+                        zombie.getLane(),
+                        Math.max(0, Math.min(
+                                board.getNumberOfColumns() - 1,
+                                (int) Math.floor(
+                                        zombie.getColumnPosition()))));
+                board.addEntity(Sun.createPlantSun(
+                        droppedSun, position));
+                pendingResults.add(zombie.getName() + " dropped "
+                        + droppedSun + " stolen sun on death.");
             }
         }
     }
@@ -499,6 +561,7 @@ public class Game {
         }
         board.update(0.0f);
         returnStolenSunFromDeadZombies(zombieSnapshot);
+        returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
         restoreWizardSheepFromDeadZombies(zombieSnapshot);
         pendingResults.addAll(board.drainResults());
         startNextWaveIfPossible();

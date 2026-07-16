@@ -50,6 +50,8 @@ import model.game.entities.zombies.abilities.FastSwimAbility;
 import model.game.entities.zombies.abilities.FishingHookAbility;
 import model.game.entities.zombies.abilities.IceBlockPushAbility;
 import model.game.entities.zombies.abilities.JuggleAbility;
+import model.game.entities.zombies.abilities.LaunchAbility;
+import model.game.entities.zombies.abilities.PianoCrushAbility;
 import model.game.entities.zombies.abilities.SmashAbility;
 import model.game.entities.zombies.abilities.SubmergeAbility;
 import model.game.entities.zombies.abilities.SurfAbility;
@@ -755,6 +757,7 @@ public class Board {
                 return;
             }
 
+            extinguishProspectorDynamite(projectile, target);
             if (tryReflectProjectile(projectile, target)) {
                 return;
             }
@@ -935,6 +938,22 @@ public class Board {
                 || plantParameter <= zombieParameter + POSITION_EPSILON;
     }
 
+    private void extinguishProspectorDynamite(
+            Projectile projectile, Zombie target) {
+        if (projectile == null || target == null
+                || !projectile.hasChillEffect()) {
+            return;
+        }
+        for (ZombieAbility ability : target.getAbilities()) {
+            if (ability instanceof LaunchAbility
+                    && ((LaunchAbility) ability).extinguish()) {
+                pendingResults.add(target.getName()
+                        + "'s dynamite was extinguished by ice.");
+                return;
+            }
+        }
+    }
+
     private boolean tryReflectProjectile(Projectile projectile,
             Zombie target) {
         if (projectile == null || target == null
@@ -1053,6 +1072,7 @@ public class Board {
             }
             if (projectile.hasReachedTarget()) {
                 Zombie target = projectile.getLockedTarget();
+                extinguishProspectorDynamite(projectile, target);
                 if (tryReflectProjectile(projectile, target)) {
                     continue;
                 }
@@ -1084,6 +1104,7 @@ public class Board {
                 projectile.markForRemoval();
                 continue;
             }
+            extinguishProspectorDynamite(projectile, target);
             if (tryReflectProjectile(projectile, target)) {
                 continue;
             }
@@ -2246,11 +2267,103 @@ public class Board {
                 updateHypnotizedZombie(zombie, deltaSeconds);
             } else {
                 updateTroglobiteIceBlocks(zombie);
+                updatePianoMusic(zombie);
                 attractZombieToSweetPotato(zombie);
-                updateZombie(zombie, deltaSeconds);
+                if (!updateProspector(zombie, deltaSeconds)) {
+                    updateZombie(zombie, deltaSeconds);
+                }
                 updateTroglobiteIceBlocks(zombie);
             }
         }
+    }
+
+    private void updatePianoMusic(Zombie pianoZombie) {
+        for (ZombieAbility ability : pianoZombie.getAbilities()) {
+            if (!(ability instanceof PianoCrushAbility)
+                    || !ability.tryUse(pianoZombie, this)) {
+                continue;
+            }
+            PianoCrushAbility piano =
+                    (PianoCrushAbility) ability;
+            pendingResults.add(pianoZombie.getName()
+                    + " changed the lane of "
+                    + piano.getLastMovedZombieCount()
+                    + " zombie(s) with piano music.");
+        }
+    }
+
+    private boolean updateProspector(
+            Zombie prospector, float deltaSeconds) {
+        for (ZombieAbility ability : prospector.getAbilities()) {
+            if (!(ability instanceof LaunchAbility)) {
+                continue;
+            }
+
+            LaunchAbility launch = (LaunchAbility) ability;
+            launch.tryUse(prospector, this);
+            if (launch.didLaunchThisUse()) {
+                pendingResults.add(prospector.getName()
+                        + " launched to the back of the lawn.");
+            }
+            if (launch.hasLaunched()) {
+                updateReverseMovingProspector(
+                        prospector, deltaSeconds);
+                return true;
+            }
+            return false;
+        }
+        return false;
+    }
+
+    private void updateReverseMovingProspector(
+            Zombie prospector, float deltaSeconds) {
+        BasePlant target =
+                findNearestPlantToRight(prospector);
+        if (target == null) {
+            prospector.moveRight(deltaSeconds,
+                    numberOfColumns + PROJECTILE_BOARD_MARGIN);
+            if (prospector.getColumnPosition()
+                    >= numberOfColumns - POSITION_EPSILON) {
+                prospector.kill();
+                reportZombieDeath(prospector);
+            }
+            return;
+        }
+
+        double attackColumn =
+                target.getEntityPosition().getColumn()
+                        - Zombie.ATTACK_REACH;
+        if (prospector.getColumnPosition() + POSITION_EPSILON
+                >= attackColumn) {
+            attackPlant(prospector, target, deltaSeconds);
+            handleWallnutAfterAttack(
+                    prospector, target, deltaSeconds);
+            reportDestroyedPlant(target);
+        } else {
+            prospector.moveRight(deltaSeconds, attackColumn);
+        }
+    }
+
+    private BasePlant findNearestPlantToRight(Zombie zombie) {
+        BasePlant nearest = null;
+        int nearestColumn = Integer.MAX_VALUE;
+        for (BasePlant plant : getPlants()) {
+            if (plant.isRemoved()
+                    || plant.getEntityPosition() == null
+                    || plant.getEntityPosition().getRow()
+                            != zombie.getLane()) {
+                continue;
+            }
+            int column =
+                    plant.getEntityPosition().getColumn();
+            if (column + POSITION_EPSILON
+                    >= zombie.getColumnPosition()
+                    && column < nearestColumn) {
+                nearest = plant;
+                nearestColumn = column;
+            }
+        }
+        return nearest;
     }
 
     private void updateTroglobiteIceBlocks(Zombie zombie) {
@@ -2411,6 +2524,14 @@ public class Board {
                 && (blockingHypnotizedZombie == null
                 || blockingHypnotizedZombie.getColumnPosition()
                 <= blockingPlant.getEntityPosition().getColumn())
+                && tryCrushPlantWithPiano(zombie, blockingPlant)) {
+            reportDestroyedPlant(blockingPlant);
+            return;
+        }
+        if (blockingPlant != null
+                && (blockingHypnotizedZombie == null
+                || blockingHypnotizedZombie.getColumnPosition()
+                <= blockingPlant.getEntityPosition().getColumn())
                 && tryCrushPlantWithSurfboard(zombie, blockingPlant)) {
             reportDestroyedPlant(blockingPlant);
             return;
@@ -2458,6 +2579,27 @@ public class Board {
         } else {
             zombie.move(deltaSeconds, attackColumn);
         }
+    }
+
+    private boolean tryCrushPlantWithPiano(
+            Zombie zombie, BasePlant plant) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (!(ability instanceof PianoCrushAbility)) {
+                continue;
+            }
+            PianoCrushAbility piano =
+                    (PianoCrushAbility) ability;
+            if (!piano.canCrush(zombie, plant)) {
+                continue;
+            }
+            plant.takeDamage(Integer.MAX_VALUE);
+            pendingResults.add(zombie.getName()
+                    + " crushed " + plant.getName()
+                    + " with its piano at "
+                    + plant.getEntityPosition() + ".");
+            return true;
+        }
+        return false;
     }
 
     private boolean keepFishermanAtRightEdge(Zombie zombie) {
