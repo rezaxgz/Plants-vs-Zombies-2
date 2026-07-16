@@ -16,6 +16,8 @@ public final class Level {
     private final int number;
     private final String name;
     private final LevelKind kind;
+    private final SpecialLevelType specialLevelType;
+    private final List<String> specialPlantPool;
     private final int numberOfRows;
     private final int numberOfColumns;
     private final int initialSunCount;
@@ -25,6 +27,8 @@ public final class Level {
             int numberOfColumns, int initialSunCount,
             List<ZombieWave> zombieWaves) {
         this(1, name, LevelKind.NORMAL,
+                SpecialLevelType.NONE,
+                Collections.emptyList(),
                 numberOfRows, numberOfColumns,
                 initialSunCount, zombieWaves);
     }
@@ -33,24 +37,48 @@ public final class Level {
             int numberOfRows, int numberOfColumns,
             int initialSunCount,
             List<ZombieWave> zombieWaves) {
-        validate(number, name, kind, numberOfRows,
+        this(number, name, kind,
+                SpecialLevelType.NONE,
+                Collections.emptyList(),
+                numberOfRows, numberOfColumns,
+                initialSunCount, zombieWaves);
+    }
+
+    public Level(int number, String name, LevelKind kind,
+            SpecialLevelType specialLevelType,
+            List<String> specialPlantPool,
+            int numberOfRows, int numberOfColumns,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves) {
+        validate(number, name, kind, specialLevelType,
+                specialPlantPool, numberOfRows,
                 numberOfColumns, initialSunCount,
                 zombieWaves);
         this.number = number;
         this.name = name;
         this.kind = kind;
+        this.specialLevelType = specialLevelType;
+        this.specialPlantPool =
+                Collections.unmodifiableList(
+                        new ArrayList<>(
+                                specialPlantPool));
         this.numberOfRows = numberOfRows;
         this.numberOfColumns = numberOfColumns;
         this.initialSunCount = initialSunCount;
-        this.zombieWaves = Collections.unmodifiableList(
-                new ArrayList<>(zombieWaves));
+        this.zombieWaves =
+                Collections.unmodifiableList(
+                        new ArrayList<>(zombieWaves));
     }
 
-    private static void validate(int number, String name,
-            LevelKind kind, int rows, int columns,
-            int sun, List<ZombieWave> waves) {
+    private static void validate(
+            int number, String name, LevelKind kind,
+            SpecialLevelType specialLevelType,
+            List<String> specialPlantPool,
+            int rows, int columns, int sun,
+            List<ZombieWave> waves) {
         if (number <= 0 || name == null
-                || name.isBlank() || kind == null) {
+                || name.isBlank() || kind == null
+                || specialLevelType == null) {
             throw new IllegalArgumentException(
                     "level identity values are invalid");
         }
@@ -61,6 +89,16 @@ public final class Level {
         if (waves == null || waves.isEmpty()) {
             throw new IllegalArgumentException(
                     "zombieWaves cannot be empty");
+        }
+        if (specialPlantPool == null) {
+            throw new IllegalArgumentException(
+                    "special plant pool cannot be null");
+        }
+        if (specialLevelType
+                == SpecialLevelType.CONVEYOR_BELT
+                && specialPlantPool.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Conveyor Belt requires a plant pool");
         }
     }
 
@@ -82,9 +120,16 @@ public final class Level {
         for (ZombieWave wave : zombieWaves) {
             freshWaves.add(wave.copy());
         }
-        return new Game(
+
+        Game game = new Game(
                 new Board(numberOfRows, numberOfColumns),
                 null, initialSunCount, freshWaves);
+        if (specialLevelType
+                == SpecialLevelType.CONVEYOR_BELT) {
+            game.enableConveyorBelt(
+                    specialPlantPool);
+        }
+        return game;
     }
 
     public int getNumber() {
@@ -97,6 +142,14 @@ public final class Level {
 
     public LevelKind getKind() {
         return kind;
+    }
+
+    public SpecialLevelType getSpecialLevelType() {
+        return specialLevelType;
+    }
+
+    public List<String> getSpecialPlantPool() {
+        return specialPlantPool;
     }
 
     public int getNumberOfRows() {
