@@ -18,8 +18,10 @@ import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.ImpThrowAbility;
+import model.game.entities.zombies.abilities.SnowballThrowAbility;
 import model.game.entities.zombies.abilities.SunStealAbility;
 import model.game.entities.zombies.abilities.TombSummonAbility;
+import model.game.entities.zombies.abilities.WeaselReleaseAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
@@ -130,6 +132,9 @@ public class Game {
 
     private void activateAutomaticZombieAbilities(List<Zombie> zombies) {
         for (Zombie zombie : zombies) {
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                activateWeaselRelease(zombie, ability);
+            }
             if (zombie.isDead() || zombie.isHypnotized()) {
                 continue;
             }
@@ -137,8 +142,38 @@ public class Game {
                 activateImpThrow(zombie, ability);
                 activateSunSteal(zombie, ability);
                 activateTombSummon(zombie, ability);
+                activateSnowballThrow(zombie, ability);
             }
         }
+    }
+
+    private void activateSnowballThrow(Zombie hunter, ZombieAbility ability) {
+        if (!(ability instanceof SnowballThrowAbility)
+                || !ability.tryUse(hunter, board)) {
+            return;
+        }
+        SnowballThrowAbility snowball = (SnowballThrowAbility) ability;
+        BasePlant target = snowball.getLastTarget();
+        if (target == null) {
+            return;
+        }
+        pendingResults.add(hunter.getName() + " hit " + target.getName()
+                + " with " + snowball.getLastSnowballCount() + " snowball(s)."
+                + (snowball.didLastBarrageFreezeTarget()
+                        ? " The plant is now frozen." : ""));
+    }
+
+    private void activateWeaselRelease(Zombie hoarder, ZombieAbility ability) {
+        if (!(ability instanceof WeaselReleaseAbility)
+                || !ability.tryUse(hoarder, board)) {
+            return;
+        }
+        WeaselReleaseAbility release = (WeaselReleaseAbility) ability;
+        for (Zombie weasel : release.getLastSpawnedWeasels()) {
+            trackSpawnedZombie(weasel);
+        }
+        pendingResults.add(hoarder.getName() + " released "
+                + release.getLastSpawnedWeasels().size() + " weasel(s).");
     }
 
     private void activateImpThrow(Zombie gargantuar, ZombieAbility ability) {

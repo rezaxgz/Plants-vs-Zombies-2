@@ -122,6 +122,8 @@ public class Zombie extends Entity {
                 return new CamelSegmentAbility(Integer.parseInt(parts[1]));
             case "FlyAbility":
                 return new FlyAbility(Integer.parseInt(parts[1]), Double.parseDouble(parts[2]));
+            case "ChillOnHitAbility":
+                return new ChillOnHitAbility();
             case "SnowballThrowAbility":
                 return new SnowballThrowAbility(
                         Integer.parseInt(parts[1]),
@@ -129,6 +131,8 @@ public class Zombie extends Entity {
                         Double.parseDouble(parts[3]));
             case "IceBlockPushAbility":
                 return new IceBlockPushAbility(Integer.parseInt(parts[1]));
+            case "WeaselReleaseAbility":
+                return new WeaselReleaseAbility(Integer.parseInt(parts[1]));
             case "FishingHookAbility":
                 return new FishingHookAbility(
                         Double.parseDouble(parts[1]),
