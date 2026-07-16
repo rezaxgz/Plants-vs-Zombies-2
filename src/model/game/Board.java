@@ -2324,7 +2324,9 @@ public class Board {
         }
         int sourceLane = garlic.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isHypnotized() && zombie.getLane() == sourceLane) {
+            if (!zombie.isHypnotized()
+                    && !zombie.getType().isBoss()
+                    && zombie.getLane() == sourceLane) {
                 int targetLane = garlic.chooseAdjacentLane(sourceLane, numberOfRows);
                 zombie.moveToLane(targetLane);
             }
@@ -2339,6 +2341,7 @@ public class Board {
         int targetLane = sweetPotato.getEntityPosition().getRow();
         for (Zombie zombie : getZombies()) {
             if (!zombie.isHypnotized()
+                    && !zombie.getType().isBoss()
                     && Math.abs(zombie.getLane() - targetLane) == 1) {
                 zombie.moveToLane(targetLane);
             }
@@ -2354,6 +2357,9 @@ public class Board {
             Zombie zombie = (Zombie) entity;
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
+                continue;
+            }
+            if (zombie.getType().isBoss()) {
                 continue;
             }
             if (zombie.isHypnotized()) {

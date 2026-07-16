@@ -42,7 +42,8 @@ public class PianoCrushAbility extends ZombieAbility {
 
         for (Zombie zombie : board.getZombies()) {
             if (zombie == pianoZombie || zombie.isDead()
-                    || zombie.isHypnotized()) {
+                    || zombie.isHypnotized()
+                    || zombie.getType().isBoss()) {
                 continue;
             }
             int targetLane = chooseAdjacentLane(

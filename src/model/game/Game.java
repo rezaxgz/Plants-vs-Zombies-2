@@ -27,6 +27,7 @@ import model.game.entities.zombies.abilities.SunStealAbility;
 import model.game.entities.zombies.abilities.TombSummonAbility;
 import model.game.entities.zombies.abilities.WeaselReleaseAbility;
 import model.game.entities.zombies.abilities.WizardSpellAbility;
+import model.game.entities.zombies.abilities.ZombossAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
@@ -156,7 +157,39 @@ public class Game {
                 activateWizardSpell(zombie, ability);
                 activateKingBuff(zombie, ability);
                 activateCrystalSkull(zombie, ability);
+                activateZomboss(zombie, ability);
             }
+        }
+    }
+
+    private void activateZomboss(Zombie zomboss,
+            ZombieAbility ability) {
+        if (!(ability instanceof ZombossAbility)) {
+            return;
+        }
+
+        ZombossAbility bossAbility = (ZombossAbility) ability;
+        if (!bossAbility.tryUse(zomboss, board)) {
+            return;
+        }
+
+        for (Zombie spawned : bossAbility.getLastSpawnedZombies()) {
+            trackSpawnedZombie(spawned);
+        }
+        if (bossAbility.didPhaseChangeThisUse()) {
+            pendingResults.add(zomboss.getName()
+                    + " entered phase "
+                    + bossAbility.getCurrentPhase() + ".");
+        }
+        for (BasePlant plant :
+                bossAbility.getLastDestroyedPlants()) {
+            pendingResults.add("Plant " + plant.getName()
+                    + " at " + plant.getEntityPosition()
+                    + " is destroyed.");
+        }
+        if (bossAbility.didPerformActionThisUse()) {
+            pendingResults.add(zomboss.getName() + " "
+                    + bossAbility.getLastActionDescription());
         }
     }
 
@@ -532,7 +565,9 @@ public class Game {
 
     private boolean hasZombieReachedHouse() {
         for (Zombie zombie : board.getZombies()) {
-            if (!zombie.isHypnotized() && zombie.hasReachedHouse()) {
+            if (!zombie.isHypnotized()
+                    && !zombie.getType().isBoss()
+                    && zombie.hasReachedHouse()) {
                 return true;
             }
         }
