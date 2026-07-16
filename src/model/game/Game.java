@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.Random;
 
 import model.Constants;
+import model.game.defense.LawnMower;
+import model.game.defense.LawnMowerResolution;
+import model.game.defense.LawnMowerSystem;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.Sun;
 import model.game.entities.other.SunType;
@@ -37,6 +40,7 @@ public class Game {
 
     private final Board board;
     private final GameType gameType;
+    private final LawnMowerSystem lawnMowerSystem;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
@@ -78,6 +82,8 @@ public class Game {
 
         this.board = board;
         this.gameType = gameType;
+        this.lawnMowerSystem =
+                new LawnMowerSystem(board.getNumberOfRows());
         this.sunCount = initialSunCount;
         this.zombieWaves = zombieWaves == null
                 ? new ArrayList<>()
@@ -116,9 +122,22 @@ public class Game {
         }
 
         updatePlantCooldowns(deltaSeconds);
-        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
+        List<Zombie> zombieSnapshot =
+                new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+
+        LawnMowerResolution mowerResolution =
+                lawnMowerSystem.resolve(board);
+        pendingResults.addAll(mowerResolution.getMessages());
         trackBoardSpawnedZombies();
+
+        if (mowerResolution.isBrainEaten()) {
+            pendingResults.addAll(board.drainResults());
+            elapsedSeconds += deltaSeconds;
+            loseGame();
+            return;
+        }
+
         activateAutomaticZombieAbilities(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
         returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
@@ -766,6 +785,14 @@ public class Game {
 
     public GameType getGameType() {
         return gameType;
+    }
+
+    public List<LawnMower> getLawnMowers() {
+        return lawnMowerSystem.getMowers();
+    }
+
+    public LawnMower getLawnMowerAtRow(int row) {
+        return lawnMowerSystem.getMowerAtRow(row);
     }
 
     public int getSunCount() {
