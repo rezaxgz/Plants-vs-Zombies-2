@@ -71,13 +71,25 @@ public class ZombieWave {
         ZombieType[] chapterZombies = getChapterZombies(chapter);
 
         while (remaining > 0) {
-            ZombieType chosen = chapterZombies[(int)(Math.random() * chapterZombies.length)];
-            if (chosen.getWavePointCost() <= remaining) {
-                types.add(chosen);
-                remaining -= chosen.getWavePointCost();
-            } else {
+            List<ZombieType> affordable =
+                    new ArrayList<>();
+            for (ZombieType candidate :
+                    chapterZombies) {
+                if (candidate.getWavePointCost()
+                        <= remaining) {
+                    affordable.add(candidate);
+                }
+            }
+
+            if (affordable.isEmpty()) {
                 break;
             }
+
+            ZombieType chosen = affordable.get(
+                    (int) (Math.random()
+                            * affordable.size()));
+            types.add(chosen);
+            remaining -= chosen.getWavePointCost();
         }
 
         return new ZombieWave(types, difficulty, finalWave);

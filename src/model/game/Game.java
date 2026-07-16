@@ -722,16 +722,29 @@ public class Game {
         if (nextWaveIndex == 0) {
             return true;
         }
-        List<Zombie> previousWave = spawnedZombiesByWave.get(nextWaveIndex - 1);
+
+        List<Zombie> previousWave =
+                spawnedZombiesByWave.get(nextWaveIndex - 1);
+        if (previousWave.isEmpty()) {
+            return true;
+        }
+
         long maximumHealth = 0;
         long remainingHealth = 0;
         for (Zombie zombie : previousWave) {
             maximumHealth += zombie.getMaximumHitPoints();
-            if (!zombie.isHypnotized()) {
-                remainingHealth += zombie.getHitPoints();
+            if (!zombie.isDead()
+                    && !zombie.isHypnotized()
+                    && board.containsEntity(zombie)) {
+                remainingHealth +=
+                        Math.max(0, zombie.getHitPoints());
             }
         }
-        return maximumHealth > 0 && remainingHealth * 4 <= maximumHealth;
+
+        return remainingHealth == 0
+                || maximumHealth > 0
+                        && remainingHealth * 4
+                                <= maximumHealth;
     }
 
     private void spawnWave(int waveIndex) {
@@ -778,9 +791,12 @@ public class Game {
                 || nextWaveIndex < zombieWaves.size()) {
             return;
         }
-        for (List<Zombie> waveZombies : spawnedZombiesByWave) {
+        for (List<Zombie> waveZombies :
+                spawnedZombiesByWave) {
             for (Zombie zombie : waveZombies) {
-                if (!zombie.isDead() && !zombie.isHypnotized()) {
+                if (!zombie.isDead()
+                        && !zombie.isHypnotized()
+                        && board.containsEntity(zombie)) {
                     return;
                 }
             }
