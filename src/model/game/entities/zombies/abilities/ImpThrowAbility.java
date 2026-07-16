@@ -2,37 +2,65 @@ package model.game.entities.zombies.abilities;
 
 import model.game.Board;
 import model.game.entities.zombies.Zombie;
+import model.game.entities.zombies.ZombieType;
 
 /**
- * Ability to throw an Imp when damaged or near the house.
+ * Gargantuar ability that throws one Imp when its health reaches the configured
+ * threshold.
  */
 public class ImpThrowAbility extends ZombieAbility {
-    private double healthThreshold;
+    private static final double THIRD_COLUMN_INDEX = 2.0;
+
+    private final double healthThreshold;
+    private final String impType;
     private boolean thrown;
-    private String impType;
+    private Zombie spawnedImp;
 
     public ImpThrowAbility(double healthThreshold, String impType) {
-        super(0); // No cooldown, one-time use
+        super(0.0);
         this.healthThreshold = healthThreshold;
-        this.thrown = false;
         this.impType = impType;
     }
 
     @Override
     public boolean tryUse(Zombie zombie, Board board) {
-        if (thrown) return false;
-
-        double healthPercent = (double) zombie.getHitPoints() / zombie.getMaximumHitPoints();
-        if (healthPercent <= healthThreshold || zombie.getColumnPosition() <= 2.0) {
-            thrown = true;
-            // Spawn imp at current position
-            // board.spawnZombieByAlias(impType, zombie.getLane(), zombie.getColumnPosition());
-            return true;
+        if (thrown || zombie == null || board == null || zombie.isDead()) {
+            return false;
         }
-        return false;
+
+        double healthPercent = (double) zombie.getHitPoints()
+                / zombie.getMaximumHitPoints();
+        if (healthPercent > healthThreshold) {
+            return false;
+        }
+
+        ZombieType resolvedImpType = ZombieType.findByName(impType);
+        if (resolvedImpType == null) {
+            return false;
+        }
+
+        double targetColumn = Math.min(THIRD_COLUMN_INDEX,
+                board.getNumberOfColumns() - 1.0);
+        spawnedImp = new Zombie(resolvedImpType, zombie.getWaveNumber(),
+                zombie.getLane(), targetColumn);
+        board.addZombie(spawnedImp);
+        thrown = true;
+        return true;
     }
 
-    public boolean hasThrown() { return thrown; }
-    public String getImpType() { return impType; }
-    public double getHealthThreshold() { return healthThreshold; }
+    public boolean hasThrown() {
+        return thrown;
+    }
+
+    public String getImpType() {
+        return impType;
+    }
+
+    public double getHealthThreshold() {
+        return healthThreshold;
+    }
+
+    public Zombie getSpawnedImp() {
+        return spawnedImp;
+    }
 }

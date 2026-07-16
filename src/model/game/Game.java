@@ -17,6 +17,8 @@ import model.game.entities.plants.PlantFamily;
 import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
+import model.game.entities.zombies.abilities.ImpThrowAbility;
+import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
 
 public class Game {
@@ -105,6 +107,7 @@ public class Game {
 
         updatePlantCooldowns(deltaSeconds);
         board.update(deltaSeconds);
+        activateAutomaticZombieAbilities();
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
@@ -118,6 +121,48 @@ public class Game {
         checkForWin();
         if (status == GameStatus.ACTIVE) {
             updateSkySuns();
+        }
+    }
+
+    private void activateAutomaticZombieAbilities() {
+        for (Zombie zombie : new ArrayList<>(board.getZombies())) {
+            if (zombie.isDead() || zombie.isHypnotized()) {
+                continue;
+            }
+            for (ZombieAbility ability : zombie.getAbilities()) {
+                activateImpThrow(zombie, ability);
+            }
+        }
+    }
+
+    private void activateImpThrow(Zombie gargantuar, ZombieAbility ability) {
+        if (!(ability instanceof ImpThrowAbility)
+                || !ability.tryUse(gargantuar, board)) {
+            return;
+        }
+
+        ImpThrowAbility impThrow = (ImpThrowAbility) ability;
+        Zombie imp = impThrow.getSpawnedImp();
+        if (imp == null) {
+            return;
+        }
+
+        trackSpawnedZombie(imp);
+        pendingResults.add(gargantuar.getName() + " threw "
+                + imp.getName() + " into lane " + imp.getLane()
+                + " at column "
+                + String.format(Locale.ROOT, "%.0f", imp.getColumnPosition())
+                + ".");
+    }
+
+    private void trackSpawnedZombie(Zombie zombie) {
+        int waveIndex = zombie.getWaveNumber() - 1;
+        if (waveIndex < 0 || waveIndex >= spawnedZombiesByWave.size()) {
+            return;
+        }
+        List<Zombie> waveZombies = spawnedZombiesByWave.get(waveIndex);
+        if (!waveZombies.contains(zombie)) {
+            waveZombies.add(zombie);
         }
     }
 
