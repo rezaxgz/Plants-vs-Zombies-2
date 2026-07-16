@@ -44,6 +44,7 @@ import model.game.entities.projectile.effect.ProjectileEffect;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.SmashAbility;
+import model.game.entities.zombies.abilities.TackleAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
@@ -2019,6 +2020,10 @@ public class Board {
             Zombie target, float deltaSeconds) {
         double attackColumn = target.getColumnPosition() + Zombie.ATTACK_REACH;
         if (zombie.getColumnPosition() <= attackColumn + POSITION_EPSILON) {
+            if (tryTackleZombie(zombie, target)) {
+                reportZombieDeath(target);
+                return;
+            }
             zombie.attackZombie(target, deltaSeconds);
             if (target.isDead()) {
                 reportZombieDeath(target);
@@ -2049,12 +2054,50 @@ public class Board {
 
         double attackColumn = blockingPlant.getEntityPosition().getColumn() + Zombie.ATTACK_REACH;
         if (zombie.getColumnPosition() <= attackColumn + POSITION_EPSILON) {
+            if (tryTacklePlant(zombie, blockingPlant)) {
+                reportDestroyedPlant(blockingPlant);
+                return;
+            }
             attackPlant(zombie, blockingPlant, deltaSeconds);
             handleWallnutAfterAttack(zombie, blockingPlant, deltaSeconds);
             reportDestroyedPlant(blockingPlant);
         } else {
             zombie.move(deltaSeconds, attackColumn);
         }
+    }
+
+    private boolean tryTacklePlant(Zombie zombie, BasePlant plant) {
+        TackleAbility tackle = useTackle(zombie);
+        if (tackle == null) {
+            return false;
+        }
+        int lethalDamage = Math.max(tackle.getSmashDamage(), plant.getCurrentHP());
+        plant.takeDamage(lethalDamage);
+        pendingResults.add(zombie.getName() + " tackled and destroyed "
+                + plant.getName() + " at " + plant.getEntityPosition() + ".");
+        return true;
+    }
+
+    private boolean tryTackleZombie(Zombie zombie, Zombie target) {
+        TackleAbility tackle = useTackle(zombie);
+        if (tackle == null) {
+            return false;
+        }
+        int lethalDamage = Math.max(tackle.getSmashDamage(), target.getHitPoints());
+        target.takeDirectDamage(lethalDamage);
+        pendingResults.add(zombie.getName() + " tackled and destroyed hypnotized "
+                + target.getName() + ".");
+        return true;
+    }
+
+    private TackleAbility useTackle(Zombie zombie) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof TackleAbility
+                    && ability.tryUse(zombie, this)) {
+                return (TackleAbility) ability;
+            }
+        }
+        return null;
     }
 
     private void attackPlant(Zombie zombie, BasePlant plant, float deltaSeconds) {

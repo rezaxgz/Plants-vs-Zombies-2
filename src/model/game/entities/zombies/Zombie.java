@@ -156,6 +156,10 @@ public class Zombie extends Entity {
                 return new PianoCrushAbility(Double.parseDouble(parts[1]));
             case "EnrageAbility":
                 return new EnrageAbility(Double.parseDouble(parts[1]), Double.parseDouble(parts[2]));
+            case "TackleAbility":
+                return new TackleAbility(
+                        Integer.parseInt(parts[1]),
+                        Double.parseDouble(parts[2]));
             default:
                 return null;
         }
@@ -476,6 +480,11 @@ public class Zombie extends Entity {
                 if (ability instanceof EnrageAbility) {
                     speed *= ((EnrageAbility) ability).getEnragedSpeedScale();
                 }
+            }
+        }
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof TackleAbility) {
+                speed *= ((TackleAbility) ability).getSpeedMultiplier();
             }
         }
         return speed;
