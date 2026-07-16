@@ -10,6 +10,7 @@ import model.game.entities.EntityPosition;
 public abstract class BasePlant extends Entity {
     public static final int ICE_HITS_TO_FREEZE = 3;
     public static final int DEFAULT_ICE_LAYER_HITS = 3;
+    public static final int DEFAULT_OCTOPUS_HITS = 3;
 
     private final String name;
     private final PlantCategory category;
@@ -22,6 +23,8 @@ public abstract class BasePlant extends Entity {
     private int iceHitCount;
     private int iceLayerHitsRemaining;
     private boolean frozenByIce;
+    private int octopusHitsRemaining;
+    private boolean coveredByOctopus;
 
     protected BasePlant(PlantCategory category) {
         this(null, category, Collections.emptySet(), 1, 0, 0, 0, null);
@@ -136,6 +139,49 @@ public abstract class BasePlant extends Entity {
         frozenByIce = false;
         iceHitCount = 0;
         iceLayerHitsRemaining = 0;
+    }
+
+    public boolean attachOctopus() {
+        if (isDestroyed() || coveredByOctopus) {
+            return false;
+        }
+        coveredByOctopus = true;
+        octopusHitsRemaining = DEFAULT_OCTOPUS_HITS;
+        return true;
+    }
+
+    public boolean damageOctopus(int hits) {
+        if (hits < 0) {
+            throw new IllegalArgumentException(
+                    "octopus damage hits cannot be negative");
+        }
+        if (!coveredByOctopus || hits == 0) {
+            return false;
+        }
+        octopusHitsRemaining = Math.max(
+                0, octopusHitsRemaining - hits);
+        if (octopusHitsRemaining == 0) {
+            clearOctopus();
+            return true;
+        }
+        return false;
+    }
+
+    public void clearOctopus() {
+        coveredByOctopus = false;
+        octopusHitsRemaining = 0;
+    }
+
+    public boolean isCoveredByOctopus() {
+        return coveredByOctopus;
+    }
+
+    public int getOctopusHitsRemaining() {
+        return octopusHitsRemaining;
+    }
+
+    public boolean isDisabled() {
+        return frozenByIce || coveredByOctopus;
     }
 
     public boolean isFrozen() {

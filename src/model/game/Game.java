@@ -17,7 +17,9 @@ import model.game.entities.plants.PlantFamily;
 import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
+import model.game.entities.zombies.abilities.FishingHookAbility;
 import model.game.entities.zombies.abilities.ImpThrowAbility;
+import model.game.entities.zombies.abilities.OctopusThrowAbility;
 import model.game.entities.zombies.abilities.SnowballThrowAbility;
 import model.game.entities.zombies.abilities.SunStealAbility;
 import model.game.entities.zombies.abilities.TombSummonAbility;
@@ -143,7 +145,46 @@ public class Game {
                 activateSunSteal(zombie, ability);
                 activateTombSummon(zombie, ability);
                 activateSnowballThrow(zombie, ability);
+                activateFishingHook(zombie, ability);
+                activateOctopusThrow(zombie, ability);
             }
+        }
+    }
+
+    private void activateFishingHook(Zombie fisherman,
+            ZombieAbility ability) {
+        if (!(ability instanceof FishingHookAbility)
+                || !ability.tryUse(fisherman, board)) {
+            return;
+        }
+        FishingHookAbility hook = (FishingHookAbility) ability;
+        BasePlant target = hook.getLastTarget();
+        if (target == null) {
+            return;
+        }
+        if (hook.wasLastTargetDestroyed()) {
+            pendingResults.add(fisherman.getName() + " hooked and destroyed "
+                    + target.getName() + " beside the right edge.");
+        } else {
+            pendingResults.add(fisherman.getName() + " pulled "
+                    + target.getName() + " from " + hook.getLastFromPosition()
+                    + " to " + hook.getLastToPosition() + ".");
+        }
+    }
+
+    private void activateOctopusThrow(Zombie octopusZombie,
+            ZombieAbility ability) {
+        if (!(ability instanceof OctopusThrowAbility)
+                || !ability.tryUse(octopusZombie, board)) {
+            return;
+        }
+        BasePlant target =
+                ((OctopusThrowAbility) ability).getLastTarget();
+        if (target != null) {
+            pendingResults.add(octopusZombie.getName()
+                    + " covered " + target.getName()
+                    + " with an octopus at "
+                    + target.getEntityPosition() + ".");
         }
     }
 
