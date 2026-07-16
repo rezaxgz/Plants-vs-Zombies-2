@@ -2,7 +2,6 @@ package controller;
 
 import model.App;
 import model.CommandResult;
-import model.auth.UserManager;
 import model.collections.plants.PlantCollectionItem;
 import model.enums.CurrencyType;
 import model.greenHouse.GreenhouseBoard;

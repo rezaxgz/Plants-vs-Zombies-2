@@ -38,4 +38,8 @@ public class PlantCollectionItem {
     BasePlant createEntity() {
         return null;
     }
+
+    public void setUnlocked(boolean isUnlocked) {
+        this.isUnlocked = isUnlocked;
+    }
 }

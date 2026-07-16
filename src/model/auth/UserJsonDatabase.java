@@ -136,6 +136,19 @@ final class UserJsonDatabase {
         User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
                 diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts);
 
+        Object newsObj = storedUser.get("news");
+        if (newsObj != null) {
+            List<Object> newsArray = requireArray(newsObj, prefix + ".news");
+            for (int i = 0; i < newsArray.size(); i++) {
+                Map<String, Object> nMap = requireObject(newsArray.get(i), prefix + ".news[" + i + "]");
+                long ts = getLong(nMap, "timestampMillis", System.currentTimeMillis());
+                String t = requireString(nMap, "title", prefix + ".news[" + i + "]");
+                String d = requireString(nMap, "description", prefix + ".news[" + i + "]");
+                boolean r = getBoolean(nMap, "hasRead", false);
+                user.getNewsPanel().addNews(new model.news.News(ts, t, d, r));
+            }
+        }
+
         // Safely extract and assign daily offer variables
         String dailyOfferDate = storedUser.containsKey("dailyOfferDate") ? (String) storedUser.get("dailyOfferDate")
                 : "";
@@ -249,6 +262,22 @@ final class UserJsonDatabase {
             appendNumberProperty(json, indent + "  ", entry.getKey(), entry.getValue(), ++bCount < boosts.size());
         }
         json.append(indent).append("  },\n");
+
+        json.append(indent).append("  \"news\": [\n");
+        List<model.news.News> newsList = user.getNewsPanel().getAllNews();
+        for (int i = 0; i < newsList.size(); i++) {
+            model.news.News n = newsList.get(i);
+            json.append(indent).append("    {\n");
+            appendLongProperty(json, indent + "    ", "timestampMillis", n.getTimestampMillis(), true);
+            appendStringProperty(json, indent + "    ", "title", n.getTitle(), true);
+            appendStringProperty(json, indent + "    ", "description", n.getDescription(), true);
+            appendBooleanProperty(json, indent + "    ", "hasRead", n.isHasRead(), false);
+            json.append(indent).append("    }");
+            if (i + 1 < newsList.size())
+                json.append(",");
+            json.append("\n");
+        }
+        json.append(indent).append("  ],\n");
 
         appendGreenHouse(json, user.getGreenHouse(), indent);
         json.append(indent).append('}');

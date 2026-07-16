@@ -43,7 +43,15 @@ public final class MenuController {
         }
 
         app.changeMenu(destination);
-        return CommandResult.success("entered " + destination.getName() + " menu");
+
+        String successMsg = "entered " + destination.getName() + " menu";
+        if (destination instanceof MainMenu) {
+            if (app.getLoggedInUser() != null && app.getLoggedInUser().getNewsPanel().hasUnreadNews()) {
+                successMsg += "\n(!) You have [NEW] unread news! Use 'menu news show-unread' to view them.";
+            }
+        }
+
+        return CommandResult.success(successMsg);
     }
 
     public static CommandResult handleShowCurrent(Matcher matcher) {
