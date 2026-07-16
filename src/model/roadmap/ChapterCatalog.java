@@ -8,9 +8,10 @@ import model.Constants;
 import model.game.ZombieWave;
 import model.game.entities.EntityPosition;
 import model.game.special.ProtectedPlantSpec;
+import model.game.special.TimedWarObjective;
 
 /**
- * Static adventure definition for the four chapters required by the project.
+ * Static adventure definition for the four required chapters.
  */
 public final class ChapterCatalog {
     private static final List<Chapter> CHAPTERS =
@@ -70,28 +71,39 @@ public final class ChapterCatalog {
                                 + firstSpecial
                                         .getDisplayName(),
                         LevelKind.SPECIAL,
-                        firstSpecial,
-                        theme,
-                        initialSunFor(firstSpecial, 200),
+                        firstSpecial, theme,
+                        initialSunFor(
+                                firstSpecial, 200),
                         550, 850, 1200),
                 createRegularLevel(
                         3, displayName + " - "
                                 + secondSpecial
                                         .getDisplayName(),
                         LevelKind.SPECIAL,
-                        secondSpecial,
-                        theme, 250, 700, 1050, 1500),
-                createDeferredBossLevel(
-                        displayName + " - Final Challenge",
+                        secondSpecial, theme,
+                        initialSunFor(
+                                secondSpecial, 250),
+                        700, 1050, 1500),
+                createDeferredFinalLevel(
+                        displayName
+                                + " - Final Challenge",
                         theme));
         return new Chapter(
                 id, displayName, aliases, levels);
     }
 
     private static int initialSunFor(
-            SpecialLevelType type, int normalAmount) {
-        return type == SpecialLevelType.CONVEYOR_BELT
-                ? 0 : normalAmount;
+            SpecialLevelType type,
+            int normalAmount) {
+        if (type
+                == SpecialLevelType.CONVEYOR_BELT) {
+            return 0;
+        }
+        if (type
+                == SpecialLevelType.PLANT_WHAT_YOU_GET) {
+            return 800;
+        }
+        return normalAmount;
     }
 
     private static Level createRegularLevel(
@@ -111,41 +123,64 @@ public final class ChapterCatalog {
         return new Level(
                 number, name, kind,
                 specialLevelType,
-                plantPoolFor(specialLevelType),
-                protectedPlantsFor(specialLevelType),
+                configFor(specialLevelType),
                 Constants.DEFAULT_BOARD_ROWS,
                 Constants.DEFAULT_BOARD_COLUMNS,
                 sun, waves);
     }
 
-    private static List<String> plantPoolFor(
+    private static SpecialLevelConfig configFor(
             SpecialLevelType type) {
-        if (type == SpecialLevelType.CONVEYOR_BELT) {
-            return List.of(
-                    "Peashooter",
-                    "Sunflower",
-                    "Wall-nut",
-                    "Potato Mine",
-                    "Cabbage-pult");
+        switch (type) {
+            case CONVEYOR_BELT:
+                return SpecialLevelConfig.plantPool(
+                        conveyorPlantPool());
+            case LOCKED_PLANTS:
+                return SpecialLevelConfig.plantPool(
+                        lockedPlantPool());
+            case SAVE_OUR_SEEDS:
+                return SpecialLevelConfig.saveOurSeeds(
+                        protectedPlants());
+            case TIMED_WAR:
+                return SpecialLevelConfig.timedWar(
+                        TimedWarObjective.KILL_ZOMBIES,
+                        30.0, 10);
+            case NIGHT_OPS:
+            case PLANT_WHAT_YOU_GET:
+                return SpecialLevelConfig.none();
+            case DEAD_LINE:
+                return SpecialLevelConfig.deadLine(3.0);
+            case LOVE_YOUR_PLANTS:
+                return SpecialLevelConfig
+                        .loveYourPlants(5);
+            case NONE:
+                return SpecialLevelConfig.none();
+            default:
+                throw new IllegalStateException(
+                        "unknown special level type");
         }
-        if (type == SpecialLevelType.LOCKED_PLANTS) {
-            return List.of(
-                    "Sunflower",
-                    "Peashooter",
-                    "Cabbage-pult",
-                    "Wall-nut",
-                    "Potato Mine");
-        }
-        return Collections.emptyList();
+    }
+
+    private static List<String> conveyorPlantPool() {
+        return List.of(
+                "Peashooter",
+                "Sunflower",
+                "Wall-nut",
+                "Potato Mine",
+                "Cabbage-pult");
+    }
+
+    private static List<String> lockedPlantPool() {
+        return List.of(
+                "Sunflower",
+                "Peashooter",
+                "Cabbage-pult",
+                "Wall-nut",
+                "Potato Mine");
     }
 
     private static List<ProtectedPlantSpec>
-            protectedPlantsFor(
-                    SpecialLevelType type) {
-        if (type
-                != SpecialLevelType.SAVE_OUR_SEEDS) {
-            return Collections.emptyList();
-        }
+            protectedPlants() {
         return List.of(
                 new ProtectedPlantSpec(
                         "Sunflower",
@@ -158,10 +193,8 @@ public final class ChapterCatalog {
                         new EntityPosition(3, 4)));
     }
 
-    private static Level createDeferredBossLevel(
+    private static Level createDeferredFinalLevel(
             String name, String theme) {
-        // Boss mechanics belong to a later project phase.
-        // This placeholder deliberately contains no Zomboss zombie.
         List<ZombieWave> waves = List.of(
                 ZombieWave.themedWave(
                         theme, 800, false),
@@ -172,8 +205,7 @@ public final class ChapterCatalog {
         return new Level(
                 4, name, LevelKind.BOSS,
                 SpecialLevelType.NONE,
-                Collections.emptyList(),
-                Collections.emptyList(),
+                SpecialLevelConfig.none(),
                 Constants.DEFAULT_BOARD_ROWS,
                 Constants.DEFAULT_BOARD_COLUMNS,
                 250, waves);

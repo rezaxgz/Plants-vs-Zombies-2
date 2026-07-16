@@ -2,6 +2,7 @@ package commands;
 
 import controller.GameMenuController;
 import controller.GameStatusCommandController;
+import controller.SpecialLevelCommandController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
@@ -39,6 +40,13 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handleShowForcedPlants),
     SHOW_PROTECTED_PLANTS("^show\\s+protected\\s+plants$",
             GameMenuController::handleShowProtectedPlants),
+    SHOW_SPECIAL_LEVEL_STATUS(
+            "^show\\s+special\\s+level\\s+status$",
+            SpecialLevelCommandController
+                    ::handleShowSpecialLevelStatus),
+    START_ZOMBIE_WAVES("^start\\s+zombie\\s+waves$",
+            SpecialLevelCommandController
+                    ::handleStartZombieWaves),
     SHOW_CONVEYOR_BELT("^show\\s+conveyor\\s+belt$",
             GameMenuController::handleShowConveyorBelt),
     PLANT_FROM_CONVEYOR(

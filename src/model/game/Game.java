@@ -37,11 +37,17 @@ import model.game.gameTypes.GameType;
 import model.game.special.ConveyorBeltSystem;
 import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
+import model.game.special.DeadLineSystem;
 import model.game.special.LockedPlantsMode;
 import model.game.special.LockedPlantsSystem;
+import model.game.special.LoveYourPlantsSystem;
+import model.game.special.PlantWhatYouGetSystem;
 import model.game.special.ProtectedPlantSpec;
 import model.game.special.ProtectedPlantStatus;
 import model.game.special.SaveOurSeedsSystem;
+import model.game.special.TimedWarObjective;
+import model.game.special.TimedWarState;
+import model.game.special.TimedWarSystem;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
@@ -53,6 +59,13 @@ public class Game {
     private ConveyorBeltSystem conveyorBeltSystem;
     private LockedPlantsSystem lockedPlantsSystem;
     private SaveOurSeedsSystem saveOurSeedsSystem;
+    private TimedWarSystem timedWarSystem;
+    private DeadLineSystem deadLineSystem;
+    private LoveYourPlantsSystem loveYourPlantsSystem;
+    private PlantWhatYouGetSystem plantWhatYouGetSystem;
+    private boolean skySunsDisabled;
+    private String skySunDisabledReason = "";
+    private boolean zombieWavesStarted;
     private final List<ZombieWave> zombieWaves;
     private final List<List<Zombie>> spawnedZombiesByWave;
     private final List<String> pendingResults = new ArrayList<>();
@@ -76,12 +89,35 @@ public class Game {
         this(board, null, initialSunCount, Collections.emptyList());
     }
 
-    public Game(Board board, GameType gameType, int initialSunCount, List<ZombieWave> zombieWaves) {
-        this(board, gameType, initialSunCount, zombieWaves, new Random());
+    public Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves) {
+        this(board, gameType, initialSunCount,
+                zombieWaves, true);
     }
 
-    Game(Board board, GameType gameType, int initialSunCount,
-            List<ZombieWave> zombieWaves, Random random) {
+    public Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves,
+            boolean startWavesImmediately) {
+        this(board, gameType, initialSunCount,
+                zombieWaves, new Random(),
+                startWavesImmediately);
+    }
+
+    Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves,
+            Random random) {
+        this(board, gameType, initialSunCount,
+                zombieWaves, random, true);
+    }
+
+    Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves,
+            Random random,
+            boolean startWavesImmediately) {
         if (board == null) {
             throw new IllegalArgumentException("board cannot be null");
         }
@@ -102,7 +138,10 @@ public class Game {
                 : new ArrayList<>(zombieWaves);
         this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
         this.random = random;
-        this.nextSkySunDropAtSeconds = getSkySunDropIntervalSeconds(0.0);
+        this.zombieWavesStarted =
+                startWavesImmediately;
+        this.nextSkySunDropAtSeconds =
+                getSkySunDropIntervalSeconds(0.0);
         startNextWaveIfPossible();
     }
 
@@ -135,9 +174,14 @@ public class Game {
 
         updateConveyorBelt(deltaSeconds);
         updatePlantCooldowns(deltaSeconds);
+        prepareLoveYourPlants();
         List<Zombie> zombieSnapshot =
                 new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+
+        if (resolveDeadLineFailure(deltaSeconds)) {
+            return;
+        }
 
         LawnMowerResolution mowerResolution =
                 lawnMowerSystem.resolve(board);
@@ -159,10 +203,9 @@ public class Game {
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
 
-        ProtectedPlantStatus failedPlant =
-                getFailedProtectedPlant();
-        if (failedPlant != null) {
-            loseSaveOurSeeds(failedPlant);
+        if (resolveSaveOurSeedsFailure()
+                || resolveTimedWar(deltaSeconds)
+                || resolveLoveYourPlantsFailure()) {
             return;
         }
 
@@ -186,6 +229,105 @@ public class Game {
         conveyorBeltSystem.update(deltaSeconds);
         pendingResults.addAll(
                 conveyorBeltSystem.drainMessages());
+    }
+
+    private boolean resolveDeadLineFailure(
+            float deltaSeconds) {
+        if (deadLineSystem == null) {
+            return false;
+        }
+        Zombie breacher = deadLineSystem.findBreacher(
+                board.getZombies());
+        if (breacher == null) {
+            return false;
+        }
+
+        pendingResults.addAll(board.drainResults());
+        elapsedSeconds += deltaSeconds;
+        status = GameStatus.LOST;
+        pendingResults.add(
+                breacher.getName()
+                        + " crossed the Dead Line at column "
+                        + String.format(
+                                Locale.ROOT, "%.1f",
+                                deadLineSystem.getLineColumn())
+                        + "; game lost!");
+        return true;
+    }
+
+    private void prepareLoveYourPlants() {
+        if (loveYourPlantsSystem != null) {
+            loveYourPlantsSystem.observePlants(board);
+        }
+    }
+
+    private boolean resolveSaveOurSeedsFailure() {
+        ProtectedPlantStatus failedPlant =
+                getFailedProtectedPlant();
+        if (failedPlant == null) {
+            return false;
+        }
+        loseSaveOurSeeds(failedPlant);
+        return true;
+    }
+
+    private boolean resolveTimedWar(
+            float deltaSeconds) {
+        if (timedWarSystem == null) {
+            return false;
+        }
+
+        TimedWarState timedState =
+                timedWarSystem.update(
+                        deltaSeconds,
+                        getTrackedZombies(),
+                        board.getSuns());
+        if (timedState == TimedWarState.SUCCEEDED) {
+            status = GameStatus.WON;
+            pendingResults.add(
+                    "Timed War objective completed: "
+                            + timedWarSystem.describeProgress()
+                            + ".");
+            return true;
+        }
+        if (timedState == TimedWarState.FAILED) {
+            status = GameStatus.LOST;
+            pendingResults.add(
+                    "Timed War timer expired: "
+                            + timedWarSystem.describeProgress()
+                            + ".");
+            return true;
+        }
+        return false;
+    }
+
+    private boolean resolveLoveYourPlantsFailure() {
+        if (loveYourPlantsSystem == null) {
+            return false;
+        }
+        loveYourPlantsSystem.updateLosses(board);
+        if (!loveYourPlantsSystem.hasFailed()) {
+            return false;
+        }
+
+        status = GameStatus.LOST;
+        pendingResults.add(
+                "Love Your Plants failed: "
+                        + loveYourPlantsSystem.getLostPlantCount()
+                        + " plants were lost; limit was "
+                        + loveYourPlantsSystem
+                                .getMaximumLostPlants()
+                        + ".");
+        return true;
+    }
+
+    private List<Zombie> getTrackedZombies() {
+        List<Zombie> zombies = new ArrayList<>();
+        for (List<Zombie> wave :
+                spawnedZombiesByWave) {
+            zombies.addAll(wave);
+        }
+        return zombies;
     }
 
     private void activateAutomaticZombieAbilities(List<Zombie> zombies) {
@@ -552,7 +694,8 @@ public class Game {
     }
 
     private void updateSkySuns() {
-        if (hasConveyorBelt()) {
+        if (hasConveyorBelt()
+                || skySunsDisabled) {
             return;
         }
         if (gameType != null && !gameType.spawnsSuns()) {
@@ -565,6 +708,9 @@ public class Game {
     }
 
     private void startNextWaveIfPossible() {
+        if (!zombieWavesStarted) {
+            return;
+        }
         while (status == GameStatus.ACTIVE && nextWaveIndex < zombieWaves.size()
                 && isPreviousWaveDamagedEnough()) {
             spawnWave(nextWaveIndex);
@@ -627,7 +773,9 @@ public class Game {
     }
 
     private void checkForWin() {
-        if (zombieWaves.isEmpty() || nextWaveIndex < zombieWaves.size()) {
+        if (timedWarSystem != null
+                || zombieWaves.isEmpty()
+                || nextWaveIndex < zombieWaves.size()) {
             return;
         }
         for (List<Zombie> waveZombies : spawnedZombiesByWave) {
@@ -668,6 +816,9 @@ public class Game {
         returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
         restoreWizardSheepFromDeadZombies(zombieSnapshot);
         pendingResults.addAll(board.drainResults());
+        if (resolveTimedWar(0.0f)) {
+            return;
+        }
         startNextWaveIfPossible();
         checkForWin();
     }
@@ -945,11 +1096,177 @@ public class Game {
                 .findFailedPlant(board);
     }
 
+    public void enableTimedWarZombieKills(
+            double durationSeconds,
+            int requiredKills) {
+        timedWarSystem = TimedWarSystem.forZombieKills(
+                durationSeconds, requiredKills);
+        pendingResults.add(
+                "Timed War started: "
+                        + timedWarSystem.describeObjective()
+                        + ".");
+    }
+
+    public void enableTimedWarSunProduction(
+            double durationSeconds,
+            int requiredSun) {
+        timedWarSystem =
+                TimedWarSystem.forSunProduction(
+                        durationSeconds, requiredSun);
+        pendingResults.add(
+                "Timed War started: "
+                        + timedWarSystem.describeObjective()
+                        + ".");
+    }
+
+    public boolean hasTimedWar() {
+        return timedWarSystem != null;
+    }
+
+    public TimedWarObjective getTimedWarObjective() {
+        return timedWarSystem == null
+                ? null : timedWarSystem.getObjective();
+    }
+
+    public int getTimedWarProgress() {
+        return timedWarSystem == null
+                ? 0 : timedWarSystem.getProgress();
+    }
+
+    public int getTimedWarTarget() {
+        return timedWarSystem == null
+                ? 0 : timedWarSystem.getTarget();
+    }
+
+    public double getTimedWarRemainingSeconds() {
+        return timedWarSystem == null
+                ? 0.0
+                : timedWarSystem.getRemainingSeconds();
+    }
+
+    public void enableNightOps() {
+        disableSkySuns("Night Ops");
+        pendingResults.add(
+                "Night Ops started: no sun will fall from the sky.");
+    }
+
+    public void disableSkySuns(String reason) {
+        skySunsDisabled = true;
+        skySunDisabledReason =
+                reason == null ? "" : reason;
+    }
+
+    public boolean areSkySunsDisabled() {
+        return skySunsDisabled;
+    }
+
+    public String getSkySunDisabledReason() {
+        return skySunDisabledReason;
+    }
+
+    public void enableDeadLine(double lineColumn) {
+        deadLineSystem =
+                new DeadLineSystem(lineColumn);
+        pendingResults.add(
+                "Dead Line active at column "
+                        + String.format(
+                                Locale.ROOT, "%.1f",
+                                lineColumn)
+                        + ".");
+    }
+
+    public boolean hasDeadLine() {
+        return deadLineSystem != null;
+    }
+
+    public double getDeadLineColumn() {
+        return deadLineSystem == null
+                ? -1.0
+                : deadLineSystem.getLineColumn();
+    }
+
+    public void enableLoveYourPlants(
+            int maximumLostPlants) {
+        loveYourPlantsSystem =
+                new LoveYourPlantsSystem(
+                        maximumLostPlants);
+        loveYourPlantsSystem.observePlants(board);
+        pendingResults.add(
+                "Love Your Plants started: lose the level "
+                        + "after losing "
+                        + maximumLostPlants + " plants.");
+    }
+
+    public boolean hasLoveYourPlants() {
+        return loveYourPlantsSystem != null;
+    }
+
+    public int getLostPlantCount() {
+        return loveYourPlantsSystem == null
+                ? 0
+                : loveYourPlantsSystem
+                        .getLostPlantCount();
+    }
+
+    public int getMaximumLostPlants() {
+        return loveYourPlantsSystem == null
+                ? 0
+                : loveYourPlantsSystem
+                        .getMaximumLostPlants();
+    }
+
+    public void enablePlantWhatYouGet() {
+        plantWhatYouGetSystem =
+                new PlantWhatYouGetSystem();
+        disableSkySuns("Plant What You Get");
+        pendingResults.add(
+                "Plant What You Get setup started: "
+                        + "sun-producing plants are locked, "
+                        + "cooldowns are ignored until "
+                        + "start zombie waves.");
+    }
+
+    public boolean hasPlantWhatYouGet() {
+        return plantWhatYouGetSystem != null;
+    }
+
+    public boolean startZombieWaves() {
+        if (plantWhatYouGetSystem == null
+                || !plantWhatYouGetSystem
+                        .startZombieWaves()) {
+            return false;
+        }
+        zombieWavesStarted = true;
+        startNextWaveIfPossible();
+        pendingResults.add(
+                "Zombie waves started; recharge cooldowns "
+                        + "are active now.");
+        return true;
+    }
+
+    public boolean haveZombieWavesStarted() {
+        return zombieWavesStarted;
+    }
+
+    private boolean isPlantAllowedByPlantWhatYouGet(
+            BasePlant plant) {
+        return plantWhatYouGetSystem == null
+                || plantWhatYouGetSystem
+                        .isPlantAllowed(plant);
+    }
+
+    private boolean ignoresPlantCooldown() {
+        return plantWhatYouGetSystem != null
+                && plantWhatYouGetSystem
+                        .isSetupActive();
+    }
+
     public PlantPlacementResult plant(BasePlant plant) {
         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
             return PlantPlacementResult.INVALID_POSITION;
         }
-        if (!isPlantAllowed(plant)) {
+        if (!isPlantAllowed(plant)
+                || !isPlantAllowedByPlantWhatYouGet(plant)) {
             return PlantPlacementResult.PLANT_LOCKED;
         }
         if (!board.canAddPlant(plant)) {
@@ -958,7 +1275,9 @@ public class Game {
         if (sunCount < plant.getCost()) {
             return PlantPlacementResult.NOT_ENOUGH_SUN;
         }
-        if (getPlantCooldownRemaining(plant) > TIME_EPSILON) {
+        if (!ignoresPlantCooldown()
+                && getPlantCooldownRemaining(plant)
+                        > TIME_EPSILON) {
             return PlantPlacementResult.COOLDOWN_ACTIVE;
         }
         if (!board.addPlant(plant)) {
@@ -966,7 +1285,12 @@ public class Game {
         }
 
         sunCount -= plant.getCost();
-        startPlantCooldown(plant);
+        if (!ignoresPlantCooldown()) {
+            startPlantCooldown(plant);
+        }
+        if (loveYourPlantsSystem != null) {
+            loveYourPlantsSystem.observePlants(board);
+        }
         return PlantPlacementResult.SUCCESS;
     }
 
@@ -975,7 +1299,13 @@ public class Game {
                 || isProtectedSeedAt(position)) {
             return null;
         }
-        return board.removePlantAt(position);
+        prepareLoveYourPlants();
+        BasePlant removed =
+                board.removePlantAt(position);
+        if (removed != null) {
+            resolveLoveYourPlantsFailure();
+        }
+        return removed;
     }
 
     public double getPlantCooldownRemainingSeconds(BasePlant plant) {
