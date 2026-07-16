@@ -107,6 +107,8 @@ public class Zombie extends Entity {
                 return new SmashAbility(Integer.parseInt(parts[1]));
             case "ImpThrowAbility":
                 return new ImpThrowAbility(Double.parseDouble(parts[1]), parts[2]);
+            case "PharaohSpeedAbility":
+                return new PharaohSpeedAbility(Double.parseDouble(parts[1]));
             case "SunStealAbility":
                 return new SunStealAbility(Integer.parseInt(parts[1]));
             case "TorchAbility":
@@ -195,6 +197,9 @@ public class Zombie extends Entity {
         // Update abilities
         for (ZombieAbility ability : abilities) {
             ability.update(deltaSeconds);
+            if (ability instanceof PharaohSpeedAbility) {
+                ability.tryUse(this, null);
+            }
         }
     }
 
@@ -471,6 +476,11 @@ public class Zombie extends Entity {
      */
     public double getEffectiveSpeed() {
         double speed = type.getSpeed();
+        for (ZombieAbility ability : abilities) {
+            if (ability instanceof PharaohSpeedAbility) {
+                speed = ((PharaohSpeedAbility) ability).getEffectiveSpeed(speed);
+            }
+        }
         if (frozen || stunned)
             return 0;
         if (chilled)
