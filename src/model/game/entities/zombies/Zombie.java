@@ -561,6 +561,8 @@ public class Zombie extends Entity {
                 speed = ((SurfAbility) ability).getEffectiveSpeed(speed);
             } else if (ability instanceof FastSwimAbility) {
                 speed = ((FastSwimAbility) ability).getEffectiveSpeed(speed);
+            } else if (ability instanceof JuggleAbility) {
+                speed *= ((JuggleAbility) ability).getSpeedMultiplier();
             }
         }
         if (frozen || stunned)
@@ -695,8 +697,7 @@ public class Zombie extends Entity {
     }
 
     public boolean hasMagnetizableArmor() {
-        return armor != null && !armor.isDestroyed()
-                && armor.getType().isMagnetizable();
+        return armor != null && armor.isMagnetizable();
     }
 
     public boolean removeMagnetizableArmor() {

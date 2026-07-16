@@ -199,7 +199,7 @@ public class Game {
                 ((WizardSpellAbility) ability).getLastTarget();
         if (target != null) {
             pendingResults.add(wizard.getName() + " transformed "
-                    + target.getName() + " into a sheep at "
+                    + target.getName() + " into a cat at "
                     + target.getEntityPosition() + ".");
         }
     }
@@ -214,7 +214,8 @@ public class Game {
                 ((KingBuffAbility) ability).getLastKnightedZombie();
         if (target != null) {
             pendingResults.add(king.getName() + " knighted "
-                    + target.getName() + " with crown armor.");
+                    + target.getName()
+                    + " with helmet and shoulder armor.");
         }
     }
 
@@ -389,7 +390,7 @@ public class Game {
                                 .restoreTransformedPlants();
                 if (restored > 0) {
                     pendingResults.add(restored
-                            + " sheep plant(s) returned to normal after "
+                            + " cat-transformed plant(s) returned to normal after "
                             + zombie.getName() + " died.");
                 }
             }

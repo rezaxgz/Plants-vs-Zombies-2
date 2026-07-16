@@ -101,7 +101,7 @@ public enum ZombieType {
     DARK_BUCKETHEAD("ZombieDarkArmor2Default", 190, 0.185, 100, 400, 4000,
             ArmorType.BUCKET, null, false),
     DARK_SHOULDER_ARMOR("ZombieDarkArmor3Default", 190, 0.185, 100, 550, 4500,
-            ArmorType.SHOULDER_ARMOR, new String[] { "CrownArmorAbility:1600" }, false),
+            ArmorType.KNIGHT, null, false),
     DARK_BRICKHEAD("ZombieDarkArmor4Default", 190, 0.185, 100, 700, 3000,
             ArmorType.BRICK, null, false),
     WIZARD("ZombieWizardDefault", 490, 0.12, 100, 800, 3500,

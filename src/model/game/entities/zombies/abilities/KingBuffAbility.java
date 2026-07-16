@@ -6,8 +6,9 @@ import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.armor.ArmorType;
 
 /**
- * Dark King periodically grants crown armor to the nearest eligible Dark Ages
- * peasant inside its configured rectangular buff area.
+ * Dark King remains at the right edge and periodically turns a nearby basic
+ * Dark Ages zombie into a Knight with a 1600-HP helmet and 1600-HP shoulder
+ * armor.
  */
 public class KingBuffAbility extends ZombieAbility {
     private final double buffAreaX;
@@ -22,7 +23,8 @@ public class KingBuffAbility extends ZombieAbility {
         super(delayBetweenKnightings);
         if (!Double.isFinite(buffAreaX)
                 || !Double.isFinite(buffAreaY)
-                || !Double.isFinite(delayBetweenKnightings)
+                || !Double.isFinite(
+                        delayBetweenKnightings)
                 || buffAreaX < 0.0
                 || buffAreaY < 0.0
                 || delayBetweenKnightings < 0.0) {
@@ -44,9 +46,10 @@ public class KingBuffAbility extends ZombieAbility {
             return false;
         }
 
-        Zombie target = findNearestKnightTarget(king, board);
+        Zombie target =
+                findNearestKnightTarget(king, board);
         if (target == null
-                || !target.equipArmor(ArmorType.CROWN)) {
+                || !target.equipArmor(ArmorType.KNIGHT)) {
             return false;
         }
 
@@ -58,7 +61,8 @@ public class KingBuffAbility extends ZombieAbility {
     private Zombie findNearestKnightTarget(
             Zombie king, Board board) {
         Zombie nearest = null;
-        double nearestDistance = Double.POSITIVE_INFINITY;
+        double nearestDistance =
+                Double.POSITIVE_INFINITY;
         for (Zombie candidate : board.getZombies()) {
             if (!isValidKnightTarget(king, candidate)) {
                 continue;
@@ -86,19 +90,12 @@ public class KingBuffAbility extends ZombieAbility {
 
     private boolean isValidKnightTarget(
             Zombie king, Zombie candidate) {
-        if (candidate == null || candidate == king
-                || candidate.isDead()
-                || candidate.isHypnotized()
-                || !candidate.canReceiveArmor()) {
-            return false;
-        }
-
-        ZombieType type = candidate.getType();
-        return type == ZombieType.DARK
-                || type == ZombieType.DARK_CONEHEAD
-                || type == ZombieType.DARK_BUCKETHEAD
-                || type == ZombieType.DARK_SHOULDER_ARMOR
-                || type == ZombieType.DARK_BRICKHEAD;
+        return candidate != null
+                && candidate != king
+                && !candidate.isDead()
+                && !candidate.isHypnotized()
+                && candidate.getType() == ZombieType.DARK
+                && candidate.canReceiveArmor();
     }
 
     public Zombie getLastKnightedZombie() {
