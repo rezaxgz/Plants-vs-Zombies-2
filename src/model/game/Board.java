@@ -46,8 +46,11 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.abilities.ChillOnHitAbility;
 import model.game.entities.zombies.abilities.FlyAbility;
+import model.game.entities.zombies.abilities.FastSwimAbility;
 import model.game.entities.zombies.abilities.IceBlockPushAbility;
 import model.game.entities.zombies.abilities.SmashAbility;
+import model.game.entities.zombies.abilities.SubmergeAbility;
+import model.game.entities.zombies.abilities.SurfAbility;
 import model.game.entities.zombies.abilities.TackleAbility;
 import model.game.entities.zombies.abilities.TorchAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
@@ -1262,6 +1265,7 @@ public class Board {
         double column = explosive.getEntityPosition().getColumn();
         for (Zombie zombie : getZombies()) {
             if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.isSubmerged()
                     || zombie.getLane() != lane) {
                 continue;
             }
@@ -1462,7 +1466,7 @@ public class Board {
     private void damageArea(EntityPosition center, int rowRadius,
             double columnRadius, int damage, boolean fireDamage) {
         for (Zombie zombie : getZombies()) {
-            if (zombie.isHypnotized()
+            if (zombie.isHypnotized() || zombie.isSubmerged()
                     || Math.abs(zombie.getLane() - center.getRow()) > rowRadius
                     || Math.abs(zombie.getColumnPosition() - center.getColumn()) > columnRadius) {
                 continue;
@@ -1480,7 +1484,8 @@ public class Board {
 
     private void damageLaneWithFire(int lane, int damage) {
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isHypnotized() && zombie.getLane() == lane) {
+            if (!zombie.isHypnotized() && !zombie.isSubmerged()
+                    && zombie.getLane() == lane) {
                 zombie.applyFireDamage(damage);
                 if (zombie.isDead()) {
                     reportZombieDeath(zombie);
@@ -1494,7 +1499,7 @@ public class Board {
             return;
         }
         for (Zombie zombie : getZombies()) {
-            if (zombie.isHypnotized()) {
+            if (zombie.isHypnotized() || zombie.isSubmerged()) {
                 continue;
             }
             zombie.takeDamage(damage);
@@ -1506,7 +1511,7 @@ public class Board {
 
     private void freezeAllZombies(double durationSeconds) {
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isHypnotized()) {
+            if (!zombie.isHypnotized() && !zombie.isSubmerged()) {
                 zombie.applyFreeze(durationSeconds);
             }
         }
@@ -2255,7 +2260,16 @@ public class Board {
     private void updateZombie(Zombie zombie, float deltaSeconds) {
         finishDodoFlight(zombie);
         BasePlant blockingPlant = findNearestPlantAhead(zombie);
+        updateBeachMovementStates(zombie, blockingPlant);
         Zombie blockingHypnotizedZombie = findNearestHypnotizedZombieAhead(zombie);
+        if (blockingPlant != null
+                && (blockingHypnotizedZombie == null
+                || blockingHypnotizedZombie.getColumnPosition()
+                <= blockingPlant.getEntityPosition().getColumn())
+                && tryCrushPlantWithSurfboard(zombie, blockingPlant)) {
+            reportDestroyedPlant(blockingPlant);
+            return;
+        }
         if (blockingPlant != null
                 && (blockingHypnotizedZombie == null
                 || blockingHypnotizedZombie.getColumnPosition()
@@ -2299,6 +2313,39 @@ public class Board {
         } else {
             zombie.move(deltaSeconds, attackColumn);
         }
+    }
+
+    private void updateBeachMovementStates(Zombie zombie,
+            BasePlant blockingPlant) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof SubmergeAbility) {
+                ((SubmergeAbility) ability).updateState(
+                        zombie, this, blockingPlant);
+            } else if (ability instanceof FastSwimAbility) {
+                ability.tryUse(zombie, this);
+            } else if (ability instanceof SurfAbility) {
+                ability.tryUse(zombie, this);
+            }
+        }
+    }
+
+    private boolean tryCrushPlantWithSurfboard(Zombie zombie,
+            BasePlant plant) {
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (!(ability instanceof SurfAbility)) {
+                continue;
+            }
+            SurfAbility surf = (SurfAbility) ability;
+            if (!surf.tryCrush(zombie, plant, this)) {
+                continue;
+            }
+            plant.takeDamage(Integer.MAX_VALUE);
+            pendingResults.add(zombie.getName() + " crushed "
+                    + plant.getName() + " with its surfboard at "
+                    + plant.getEntityPosition() + ".");
+            return true;
+        }
+        return false;
     }
 
     private boolean tryFlyOverPlant(Zombie zombie, BasePlant plant) {

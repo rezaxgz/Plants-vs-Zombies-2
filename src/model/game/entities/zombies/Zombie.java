@@ -133,6 +133,12 @@ public class Zombie extends Entity {
                 return new IceBlockPushAbility(Integer.parseInt(parts[1]));
             case "WeaselReleaseAbility":
                 return new WeaselReleaseAbility(Integer.parseInt(parts[1]));
+            case "SubmergeAbility":
+                return new SubmergeAbility();
+            case "SurfAbility":
+                return new SurfAbility(Double.parseDouble(parts[1]));
+            case "FastSwimAbility":
+                return new FastSwimAbility();
             case "FishingHookAbility":
                 return new FishingHookAbility(
                         Double.parseDouble(parts[1]),
@@ -530,6 +536,10 @@ public class Zombie extends Entity {
         for (ZombieAbility ability : abilities) {
             if (ability instanceof PharaohSpeedAbility) {
                 speed = ((PharaohSpeedAbility) ability).getEffectiveSpeed(speed);
+            } else if (ability instanceof SurfAbility) {
+                speed = ((SurfAbility) ability).getEffectiveSpeed(speed);
+            } else if (ability instanceof FastSwimAbility) {
+                speed = ((FastSwimAbility) ability).getEffectiveSpeed(speed);
             }
         }
         if (frozen || stunned)
@@ -622,6 +632,7 @@ public class Zombie extends Entity {
         hypnotizedDamageMultiplier = Math.max(
                 hypnotizedDamageMultiplier, damageMultiplier);
         reachedHouse = false;
+        submerged = false;
     }
 
     public void transformIntoAlliedGargantuar(double healthMultiplier,
