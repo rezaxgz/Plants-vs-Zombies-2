@@ -22,6 +22,7 @@ public final class Level {
     private final int numberOfRows;
     private final int numberOfColumns;
     private final int initialSunCount;
+    private final int plantSlotCount;
     private final List<ZombieWave> zombieWaves;
 
     public Level(String name, int numberOfRows,
@@ -53,10 +54,23 @@ public final class Level {
             int numberOfRows, int numberOfColumns,
             int initialSunCount,
             List<ZombieWave> zombieWaves) {
+        this(number, name, kind, specialLevelType,
+                specialConfig, numberOfRows, numberOfColumns,
+                initialSunCount, Constants.DEFAULT_PLANT_SLOTS,
+                zombieWaves);
+    }
+
+    public Level(int number, String name,
+            LevelKind kind,
+            SpecialLevelType specialLevelType,
+            SpecialLevelConfig specialConfig,
+            int numberOfRows, int numberOfColumns,
+            int initialSunCount, int plantSlotCount,
+            List<ZombieWave> zombieWaves) {
         validate(number, name, kind,
                 specialLevelType, specialConfig,
                 numberOfRows, numberOfColumns,
-                initialSunCount, zombieWaves);
+                initialSunCount, plantSlotCount, zombieWaves);
         this.number = number;
         this.name = name;
         this.kind = kind;
@@ -65,6 +79,7 @@ public final class Level {
         this.numberOfRows = numberOfRows;
         this.numberOfColumns = numberOfColumns;
         this.initialSunCount = initialSunCount;
+        this.plantSlotCount = plantSlotCount;
         this.zombieWaves =
                 Collections.unmodifiableList(
                         new ArrayList<>(zombieWaves));
@@ -75,7 +90,7 @@ public final class Level {
             SpecialLevelType specialLevelType,
             SpecialLevelConfig specialConfig,
             int rows, int columns, int sun,
-            List<ZombieWave> waves) {
+            int plantSlots, List<ZombieWave> waves) {
         if (number <= 0 || name == null
                 || name.isBlank() || kind == null
                 || specialLevelType == null
@@ -84,6 +99,7 @@ public final class Level {
                     "level identity values are invalid");
         }
         if (rows <= 0 || columns <= 0 || sun < 0
+                || plantSlots <= 0
                 || waves == null || waves.isEmpty()) {
             throw new IllegalArgumentException(
                     "level board or waves are invalid");
@@ -210,6 +226,10 @@ public final class Level {
 
     public int getInitialSunCount() {
         return initialSunCount;
+    }
+
+    public int getPlantSlotCount() {
+        return plantSlotCount;
     }
 
     public List<ZombieWave> getZombieWaves() {

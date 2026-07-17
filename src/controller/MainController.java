@@ -1,18 +1,25 @@
 package controller;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 
 import model.App;
 import model.CommandResult;
 import model.auth.UserManager;
+import model.collections.plants.PlantCollectionItem;
 import model.game.Game;
+import model.game.plantSelector.PlantSelection;
 import model.menu.GameMenu;
+import model.menu.PlantSelectionMenu;
 import model.roadmap.AdventureProgress;
 import model.roadmap.AdventureSession;
 import model.roadmap.Chapter;
 import model.roadmap.ChapterCatalog;
 import model.roadmap.Level;
+import model.roadmap.SpecialLevelType;
+import model.user.User;
 
 /**
  * Main-menu adventure navigation and level launching.
@@ -194,13 +201,73 @@ public final class MainController {
 
     private static CommandResult startAdventureLevel(
             Chapter chapter, Level level) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return withNotifications(
+                    CommandResult.error("login is required to start a level!"));
+        }
+
+        if (level.getSpecialLevelType()
+                == SpecialLevelType.CONVEYOR_BELT) {
+            return launchAdventureGame(chapter, level,
+                    Map.of(), List.of(),
+                    "Conveyor Belt levels skip plant selection.");
+        }
+        if (level.getSpecialLevelType()
+                == SpecialLevelType.LOCKED_PLANTS) {
+            return launchAdventureGame(chapter, level,
+                    createForcedLoadout(user, level), List.of(),
+                    "Locked Plants uses its fixed plant loadout.");
+        }
+
+        PlantSelection selection = new PlantSelection(
+                user.getPlantCollection(), level);
+        PlantSelectionMenu menu = new PlantSelectionMenu(
+                selection, chapter.getId(), level.getNumber(), level);
+        if (selection.shouldStartAutomatically()) {
+            selection.selectAllAvailable();
+            return PlantSelectionController.startGame(menu, true);
+        }
+
+        App.getInstance().changeMenu(menu);
+        String message = "plant selection started for "
+                + chapter.getDisplayName() + " level "
+                + level.getNumber() + " - " + level.getName()
+                + System.lineSeparator()
+                + "selected: 0/" + selection.getSlotCount()
+                + System.lineSeparator()
+                + "use show available plants, add plant -t <type>, "
+                + "boost plant -t <type>, and start game";
+        return withNotifications(CommandResult.success(message));
+    }
+
+    private static Map<String, Integer> createForcedLoadout(
+            User user, Level level) {
+        Map<String, Integer> loadout = new LinkedHashMap<>();
+        for (String plantName : level.getSpecialConfig().getPlantPool()) {
+            PlantCollectionItem plant = user.getPlantCollection()
+                    .findPlant(plantName);
+            loadout.put(plantName, plant == null
+                    ? PlantCollectionItem.MIN_LEVEL
+                    : plant.getCurrentLevel());
+        }
+        return loadout;
+    }
+
+    static CommandResult launchAdventureGame(
+            Chapter chapter, Level level,
+            Map<String, Integer> selectedPlantLevels,
+            List<String> boostedPlantNames,
+            String preface) {
         Game game = level.createGame();
+        if (selectedPlantLevels != null
+                && !selectedPlantLevels.isEmpty()) {
+            game.configurePlantLoadout(
+                    selectedPlantLevels, boostedPlantNames);
+        }
         App.getInstance().changeMenu(
-                new GameMenu(
-                        game,
-                        chapter.getId(),
-                        level.getNumber(),
-                        level));
+                new GameMenu(game, chapter.getId(),
+                        level.getNumber(), level));
 
         String message = "game started: "
                 + chapter.getDisplayName()
@@ -209,10 +276,12 @@ public final class MainController {
                 + " [" + level.getKind() + "]"
                 + System.lineSeparator()
                 + "entered game menu";
-        return withNotifications(
-                CommandResult.success(message)
-                        .addPostCommandResults(
-                                game.drainResults()));
+        CommandResult result = CommandResult.success(message)
+                .addPostCommandResults(game.drainResults());
+        if (preface != null && !preface.isBlank()) {
+            result.addPreCommandResult(preface);
+        }
+        return withNotifications(result);
     }
 
     private static String formatLevels(

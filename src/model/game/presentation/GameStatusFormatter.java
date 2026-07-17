@@ -80,7 +80,9 @@ public final class GameStatusFormatter {
     }
     public static String formatPlantStatuses(Game game) {
         requireGame(game);
-        List<BasePlant> plants = createPlantCatalog();
+        List<BasePlant> plants = game.hasConfiguredPlantLoadout()
+                ? new ArrayList<>(game.getPlantLoadoutPrototypes())
+                : createPlantCatalog();
         plants.sort(Comparator.comparing(
                 BasePlant::getName,
                 String.CASE_INSENSITIVE_ORDER));

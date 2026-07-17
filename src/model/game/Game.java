@@ -3,10 +3,13 @@ package model.game;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 import model.Constants;
 import model.game.defense.LawnMower;
@@ -71,6 +74,10 @@ public class Game {
     private final List<String> pendingResults = new ArrayList<>();
     private final Map<String, Double> plantCooldowns = new HashMap<>();
     private final Map<String, PlantFamily> plantCooldownFamilies = new HashMap<>();
+    private final Map<String, Integer> plantLoadoutLevels = new LinkedHashMap<>();
+    private final Map<String, String> plantLoadoutNames = new LinkedHashMap<>();
+    private final Set<String> boostedPlantTypes = new LinkedHashSet<>();
+    private boolean plantLoadoutConfigured;
     private final Random random;
 
     private int sunCount;
@@ -1071,6 +1078,115 @@ public class Game {
         return lockedPlantsSystem.describeRule();
     }
 
+
+    public void configurePlantLoadout(
+            Map<String, Integer> selectedPlantLevels,
+            List<String> boostedPlantNames) {
+        if (selectedPlantLevels == null
+                || selectedPlantLevels.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "at least one selected plant is required");
+        }
+        plantLoadoutLevels.clear();
+        plantLoadoutNames.clear();
+        boostedPlantTypes.clear();
+        for (Map.Entry<String, Integer> entry
+                : selectedPlantLevels.entrySet()) {
+            addPlantToLoadout(entry.getKey(), entry.getValue());
+        }
+        if (boostedPlantNames != null) {
+            for (String plantName : boostedPlantNames) {
+                String key = requestedPlantKey(plantName);
+                if (plantLoadoutLevels.containsKey(key)) {
+                    boostedPlantTypes.add(key);
+                }
+            }
+        }
+        plantLoadoutConfigured = true;
+    }
+
+    private void addPlantToLoadout(String plantName, int level) {
+        BasePlant plant = PlantFactory.createPlant(
+                plantName, level, new EntityPosition(0, 0));
+        if (plant == null) {
+            throw new IllegalArgumentException(
+                    "unknown plant in loadout: " + plantName);
+        }
+        String key = getLoadoutKey(plant);
+        plantLoadoutLevels.put(key, Math.max(1, level));
+        plantLoadoutNames.put(key, plant.getName());
+    }
+
+    public BasePlant createPlantFromLoadout(
+            String requestedType, EntityPosition position) {
+        if (!plantLoadoutConfigured) {
+            return PlantFactory.createPlant(requestedType, position);
+        }
+        Integer level = plantLoadoutLevels.get(
+                requestedPlantKey(requestedType));
+        if (level == null) {
+            return null;
+        }
+        return PlantFactory.createPlant(requestedType, level, position);
+    }
+
+    public boolean isPlantInLoadout(BasePlant plant) {
+        return !plantLoadoutConfigured
+                || plantLoadoutLevels.containsKey(getLoadoutKey(plant));
+    }
+
+    public boolean hasConfiguredPlantLoadout() {
+        return plantLoadoutConfigured;
+    }
+
+    public List<BasePlant> getPlantLoadoutPrototypes() {
+        if (!plantLoadoutConfigured) {
+            return Collections.emptyList();
+        }
+        List<BasePlant> plants = new ArrayList<>();
+        for (Map.Entry<String, String> entry : plantLoadoutNames.entrySet()) {
+            BasePlant plant = PlantFactory.createPlant(
+                    entry.getValue(), plantLoadoutLevels.get(entry.getKey()),
+                    new EntityPosition(0, 0));
+            if (plant != null) {
+                plants.add(plant);
+            }
+        }
+        return Collections.unmodifiableList(plants);
+    }
+
+    private static String requestedPlantKey(String requestedType) {
+        String normalized = normalizePlantName(requestedType);
+        if (normalized.startsWith("imitater")) {
+            return "imitater";
+        }
+        return normalized;
+    }
+
+    private static String getLoadoutKey(BasePlant plant) {
+        if (plant instanceof Modifier
+                && ((Modifier) plant).isImitater()) {
+            return "imitater";
+        }
+        return normalizePlantName(plant == null ? null : plant.getName());
+    }
+
+    private static String normalizePlantName(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]", "");
+    }
+
+    private void applyLoadoutBoost(BasePlant plant) {
+        if (!boostedPlantTypes.contains(getLoadoutKey(plant))) {
+            return;
+        }
+        board.usePlantFoodAt(plant.getEntityPosition());
+        pendingResults.addAll(board.drainResults());
+    }
+
     public void enableSaveOurSeeds(
             List<ProtectedPlantSpec> protectedPlants) {
         if (saveOurSeedsSystem != null) {
@@ -1281,6 +1397,9 @@ public class Game {
         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
             return PlantPlacementResult.INVALID_POSITION;
         }
+        if (!isPlantInLoadout(plant)) {
+            return PlantPlacementResult.PLANT_NOT_SELECTED;
+        }
         if (!isPlantAllowed(plant)
                 || !isPlantAllowedByPlantWhatYouGet(plant)) {
             return PlantPlacementResult.PLANT_LOCKED;
@@ -1304,6 +1423,7 @@ public class Game {
         if (!ignoresPlantCooldown()) {
             startPlantCooldown(plant);
         }
+        applyLoadoutBoost(plant);
         if (loveYourPlantsSystem != null) {
             loveYourPlantsSystem.observePlants(board);
         }

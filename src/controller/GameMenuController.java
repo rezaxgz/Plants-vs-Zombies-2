@@ -218,10 +218,18 @@ public final class GameMenuController {
 
         EntityPosition position = new EntityPosition(x, y);
         String requestedType = matcher.group("type").trim();
-        BasePlant plant = PlantFactory.createPlant(requestedType, position);
+        if (PlantFactory.createPlant(requestedType, position) == null) {
+            return CommandResult.error(
+                    "plant type '" + requestedType
+                            + "' does not exist or is not implemented!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        BasePlant plant = game.createPlantFromLoadout(
+                requestedType, position);
         if (plant == null) {
             return CommandResult.error(
-                    "plant type '" + requestedType + "' does not exist or is not implemented!")
+                    "plant type '" + requestedType
+                            + "' was not selected for this level!")
                     .addPreCommandResults(preCommandResults);
         }
 
@@ -240,8 +248,12 @@ public final class GameMenuController {
             case PLANT_LOCKED:
                 return CommandResult.error(
                         plant.getName()
-                                + " is locked in this level! "
-                                + "Use show available plants.")
+                                + " is locked in this level!")
+                        .addPreCommandResults(preCommandResults);
+            case PLANT_NOT_SELECTED:
+                return CommandResult.error(
+                        plant.getName()
+                                + " was not selected for this level!")
                         .addPreCommandResults(preCommandResults);
             case POSITION_OCCUPIED:
                 return CommandResult.error("there is already a plant at " + position + "!")
