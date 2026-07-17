@@ -6,5 +6,6 @@ public enum PlantPlacementResult {
     POSITION_OCCUPIED,
     NOT_ENOUGH_SUN,
     COOLDOWN_ACTIVE,
-    PLANT_LOCKED
+    PLANT_LOCKED,
+    PLANT_NOT_SELECTED
 }

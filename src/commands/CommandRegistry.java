@@ -17,6 +17,7 @@ public class CommandRegistry {
 
         registerMenu("main", MainMenuCommand.class);
         registerMenu("game", GameMenuCommand.class);
+        registerMenu("plantselection", PlantSelectionMenuCommand.class);
         registerMenu("collection", CollectionMenuCommand.class);
         registerMenu("login", LoginMenuCommand.class);
         registerMenu("signup", SignUpMenuCommand.class);

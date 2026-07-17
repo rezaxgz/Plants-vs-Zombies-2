@@ -7,10 +7,23 @@ import java.util.Locale;
 import model.App;
 
 public class PlantCollection {
+    private static final List<String> STARTER_PLANTS = List.of(
+            "Sunflower", "Peashooter", "Wall-nut");
+
     private final List<PlantCollectionItem> allPlants;
 
     public PlantCollection() {
         allPlants = PlantCatalog.createItems();
+        unlockStarterPlants();
+    }
+
+    private void unlockStarterPlants() {
+        for (String plantName : STARTER_PLANTS) {
+            PlantCollectionItem plant = findPlant(plantName);
+            if (plant != null) {
+                plant.setUnlocked(true);
+            }
+        }
     }
 
     public List<PlantCollectionItem> getAllPlants() {

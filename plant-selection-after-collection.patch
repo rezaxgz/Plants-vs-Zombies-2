@@ -1,0 +1,952 @@
+diff --git a/commands/CommandRegistry.java b/commands/CommandRegistry.java
+index 0786d17..8b740c9 100644
+--- a/commands/CommandRegistry.java
++++ b/commands/CommandRegistry.java
+@@ -17,6 +17,7 @@ public class CommandRegistry {
+ 
+         registerMenu("main", MainMenuCommand.class);
+         registerMenu("game", GameMenuCommand.class);
++        registerMenu("plantselection", PlantSelectionMenuCommand.class);
+         registerMenu("collection", CollectionMenuCommand.class);
+         registerMenu("login", LoginMenuCommand.class);
+         registerMenu("signup", SignUpMenuCommand.class);
+diff --git a/commands/PlantSelectionMenuCommand.java b/commands/PlantSelectionMenuCommand.java
+new file mode 100644
+index 0000000..13b66fe
+--- /dev/null
++++ b/commands/PlantSelectionMenuCommand.java
+@@ -0,0 +1,38 @@
++package commands;
++
++import controller.PlantSelectionController;
++import model.CommandResult;
++
++public enum PlantSelectionMenuCommand implements Command<CommandResult> {
++    SHOW_ALL_PLANTS("^show\\s+all\\s+plants$",
++            PlantSelectionController::handleShowAllPlants),
++    SHOW_AVAILABLE_PLANTS("^show\\s+available\\s+plants$",
++            PlantSelectionController::handleShowAvailablePlants),
++    ADD_PLANT("^add\\s+plant\\s+-t\\s+(?<type>.+?)$",
++            PlantSelectionController::handleAddPlant),
++    REMOVE_PLANT("^remove\\s+plant\\s+-t\\s+(?<type>.+?)$",
++            PlantSelectionController::handleRemovePlant),
++    BOOST_PLANT("^boost\\s+plant\\s+-t\\s+(?<type>.+?)$",
++            PlantSelectionController::handleBoostPlant),
++    START_GAME("^start\\s+game$",
++            PlantSelectionController::handleStartGame);
++
++    private final String pattern;
++    private final CommandAction<CommandResult> action;
++
++    PlantSelectionMenuCommand(String pattern,
++            CommandAction<CommandResult> action) {
++        this.pattern = pattern;
++        this.action = action;
++    }
++
++    @Override
++    public String getPattern() {
++        return pattern;
++    }
++
++    @Override
++    public CommandAction<CommandResult> getAction() {
++        return action;
++    }
++}
+diff --git a/controller/GameMenuController.java b/controller/GameMenuController.java
+index 706d051..5c20514 100644
+--- a/controller/GameMenuController.java
++++ b/controller/GameMenuController.java
+@@ -218,10 +218,18 @@ public final class GameMenuController {
+ 
+         EntityPosition position = new EntityPosition(x, y);
+         String requestedType = matcher.group("type").trim();
+-        BasePlant plant = PlantFactory.createPlant(requestedType, position);
++        if (PlantFactory.createPlant(requestedType, position) == null) {
++            return CommandResult.error(
++                    "plant type '" + requestedType
++                            + "' does not exist or is not implemented!")
++                    .addPreCommandResults(preCommandResults);
++        }
++        BasePlant plant = game.createPlantFromLoadout(
++                requestedType, position);
+         if (plant == null) {
+             return CommandResult.error(
+-                    "plant type '" + requestedType + "' does not exist or is not implemented!")
++                    "plant type '" + requestedType
++                            + "' was not selected for this level!")
+                     .addPreCommandResults(preCommandResults);
+         }
+ 
+@@ -240,8 +248,12 @@ public final class GameMenuController {
+             case PLANT_LOCKED:
+                 return CommandResult.error(
+                         plant.getName()
+-                                + " is locked in this level! "
+-                                + "Use show available plants.")
++                                + " is locked in this level!")
++                        .addPreCommandResults(preCommandResults);
++            case PLANT_NOT_SELECTED:
++                return CommandResult.error(
++                        plant.getName()
++                                + " was not selected for this level!")
+                         .addPreCommandResults(preCommandResults);
+             case POSITION_OCCUPIED:
+                 return CommandResult.error("there is already a plant at " + position + "!")
+diff --git a/controller/MainController.java b/controller/MainController.java
+index dbb6f8d..b750cb5 100644
+--- a/controller/MainController.java
++++ b/controller/MainController.java
+@@ -1,18 +1,25 @@
+ package controller;
+ 
++import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Map;
+ import java.util.regex.Matcher;
+ 
+ import model.App;
+ import model.CommandResult;
+ import model.auth.UserManager;
++import model.collections.plants.PlantCollectionItem;
+ import model.game.Game;
++import model.game.plantSelector.PlantSelection;
+ import model.menu.GameMenu;
++import model.menu.PlantSelectionMenu;
+ import model.roadmap.AdventureProgress;
+ import model.roadmap.AdventureSession;
+ import model.roadmap.Chapter;
+ import model.roadmap.ChapterCatalog;
+ import model.roadmap.Level;
++import model.roadmap.SpecialLevelType;
++import model.user.User;
+ 
+ /**
+  * Main-menu adventure navigation and level launching.
+@@ -194,13 +201,73 @@ public final class MainController {
+ 
+     private static CommandResult startAdventureLevel(
+             Chapter chapter, Level level) {
++        User user = App.getInstance().getLoggedInUser();
++        if (user == null) {
++            return withNotifications(
++                    CommandResult.error("login is required to start a level!"));
++        }
++
++        if (level.getSpecialLevelType()
++                == SpecialLevelType.CONVEYOR_BELT) {
++            return launchAdventureGame(chapter, level,
++                    Map.of(), List.of(),
++                    "Conveyor Belt levels skip plant selection.");
++        }
++        if (level.getSpecialLevelType()
++                == SpecialLevelType.LOCKED_PLANTS) {
++            return launchAdventureGame(chapter, level,
++                    createForcedLoadout(user, level), List.of(),
++                    "Locked Plants uses its fixed plant loadout.");
++        }
++
++        PlantSelection selection = new PlantSelection(
++                user.getPlantCollection(), level);
++        PlantSelectionMenu menu = new PlantSelectionMenu(
++                selection, chapter.getId(), level.getNumber(), level);
++        if (selection.shouldStartAutomatically()) {
++            selection.selectAllAvailable();
++            return PlantSelectionController.startGame(menu, true);
++        }
++
++        App.getInstance().changeMenu(menu);
++        String message = "plant selection started for "
++                + chapter.getDisplayName() + " level "
++                + level.getNumber() + " - " + level.getName()
++                + System.lineSeparator()
++                + "selected: 0/" + selection.getSlotCount()
++                + System.lineSeparator()
++                + "use show available plants, add plant -t <type>, "
++                + "boost plant -t <type>, and start game";
++        return withNotifications(CommandResult.success(message));
++    }
++
++    private static Map<String, Integer> createForcedLoadout(
++            User user, Level level) {
++        Map<String, Integer> loadout = new LinkedHashMap<>();
++        for (String plantName : level.getSpecialConfig().getPlantPool()) {
++            PlantCollectionItem plant = user.getPlantCollection()
++                    .findPlant(plantName);
++            loadout.put(plantName, plant == null
++                    ? PlantCollectionItem.MIN_LEVEL
++                    : plant.getCurrentLevel());
++        }
++        return loadout;
++    }
++
++    static CommandResult launchAdventureGame(
++            Chapter chapter, Level level,
++            Map<String, Integer> selectedPlantLevels,
++            List<String> boostedPlantNames,
++            String preface) {
+         Game game = level.createGame();
++        if (selectedPlantLevels != null
++                && !selectedPlantLevels.isEmpty()) {
++            game.configurePlantLoadout(
++                    selectedPlantLevels, boostedPlantNames);
++        }
+         App.getInstance().changeMenu(
+-                new GameMenu(
+-                        game,
+-                        chapter.getId(),
+-                        level.getNumber(),
+-                        level));
++                new GameMenu(game, chapter.getId(),
++                        level.getNumber(), level));
+ 
+         String message = "game started: "
+                 + chapter.getDisplayName()
+@@ -209,10 +276,12 @@ public final class MainController {
+                 + " [" + level.getKind() + "]"
+                 + System.lineSeparator()
+                 + "entered game menu";
+-        return withNotifications(
+-                CommandResult.success(message)
+-                        .addPostCommandResults(
+-                                game.drainResults()));
++        CommandResult result = CommandResult.success(message)
++                .addPostCommandResults(game.drainResults());
++        if (preface != null && !preface.isBlank()) {
++            result.addPreCommandResult(preface);
++        }
++        return withNotifications(result);
+     }
+ 
+     private static String formatLevels(
+diff --git a/controller/PlantSelectionController.java b/controller/PlantSelectionController.java
+new file mode 100644
+index 0000000..5034550
+--- /dev/null
++++ b/controller/PlantSelectionController.java
+@@ -0,0 +1,196 @@
++package controller;
++
++import java.util.List;
++import java.util.regex.Matcher;
++
++import model.App;
++import model.CommandResult;
++import model.auth.UserManager;
++import model.collections.plants.PlantCollectionItem;
++import model.game.plantSelector.PlantSelection;
++import model.menu.Menu;
++import model.menu.PlantSelectionMenu;
++import model.roadmap.Chapter;
++import model.roadmap.ChapterCatalog;
++import model.user.User;
++
++public final class PlantSelectionController {
++    private static final int BOOST_DIAMOND_COST = 2;
++
++    private PlantSelectionController() {
++    }
++
++    public static CommandResult handleShowAllPlants(Matcher matcher) {
++        PlantSelectionMenu menu = getCurrentMenu();
++        if (menu == null) {
++            return selectionRequired();
++        }
++        PlantSelection selection = menu.getSelection();
++        return formatPlants("all plants", selection,
++                selection.getAllPlants(), true);
++    }
++
++    public static CommandResult handleShowAvailablePlants(Matcher matcher) {
++        PlantSelectionMenu menu = getCurrentMenu();
++        if (menu == null) {
++            return selectionRequired();
++        }
++        PlantSelection selection = menu.getSelection();
++        return formatPlants("available plants", selection,
++                selection.getAvailablePlants(), false);
++    }
++
++    public static CommandResult handleAddPlant(Matcher matcher) {
++        PlantSelectionMenu menu = getCurrentMenu();
++        if (menu == null) {
++            return selectionRequired();
++        }
++        PlantSelection selection = menu.getSelection();
++        PlantCollectionItem plant = selection.findPlant(matcher.group("type"));
++        CommandResult error = validatePlantForAdd(selection, plant);
++        if (error != null) {
++            return error;
++        }
++        selection.addPlant(plant);
++        return CommandResult.success(plant.getName() + " added; selected "
++                + selection.getSelectedPlants().size() + "/"
++                + selection.getSlotCount() + " plants.");
++    }
++
++    private static CommandResult validatePlantForAdd(
++            PlantSelection selection, PlantCollectionItem plant) {
++        if (plant == null) {
++            return CommandResult.error("plant does not exist!");
++        }
++        if (!plant.isUnlocked()) {
++            return CommandResult.error("plant is locked!");
++        }
++        if (!selection.isAvailable(plant)) {
++            return CommandResult.error(
++                    "plant is not available in this level!");
++        }
++        if (selection.isSelected(plant)) {
++            return CommandResult.error("plant is already selected!");
++        }
++        if (selection.getSelectedPlants().size()
++                >= selection.getSlotCount()) {
++            return CommandResult.error("all plant slots are full!");
++        }
++        return null;
++    }
++
++    public static CommandResult handleRemovePlant(Matcher matcher) {
++        PlantSelectionMenu menu = getCurrentMenu();
++        if (menu == null) {
++            return selectionRequired();
++        }
++        PlantSelection selection = menu.getSelection();
++        PlantCollectionItem plant = selection.findPlant(matcher.group("type"));
++        if (plant == null) {
++            return CommandResult.error("plant does not exist!");
++        }
++        if (!selection.isSelected(plant)) {
++            return CommandResult.error("plant is not selected!");
++        }
++        selection.removePlant(plant);
++        return CommandResult.success(plant.getName() + " removed; selected "
++                + selection.getSelectedPlants().size() + "/"
++                + selection.getSlotCount() + " plants.");
++    }
++
++    public static CommandResult handleBoostPlant(Matcher matcher) {
++        PlantSelectionMenu menu = getCurrentMenu();
++        User user = App.getInstance().getLoggedInUser();
++        if (menu == null || user == null) {
++            return selectionRequired();
++        }
++        PlantSelection selection = menu.getSelection();
++        PlantCollectionItem plant = selection.findPlant(matcher.group("type"));
++        if (plant == null) {
++            return CommandResult.error("plant does not exist!");
++        }
++        if (!selection.isSelected(plant)) {
++            return CommandResult.error("plant must be selected before it can be boosted!");
++        }
++        if (selection.isBoosted(plant)) {
++            return CommandResult.error("plant is already boosted for this level!");
++        }
++        if (user.getDiamonds() < BOOST_DIAMOND_COST) {
++            return CommandResult.error("not enough diamonds! required: 2, available: "
++                    + user.getDiamonds());
++        }
++        user.deductDiamonds(BOOST_DIAMOND_COST);
++        selection.boostPlant(plant);
++        UserManager.saveAllUsers();
++        return CommandResult.success(plant.getName()
++                + " boosted for this level; 2 diamonds spent.");
++    }
++
++    public static CommandResult handleStartGame(Matcher matcher) {
++        PlantSelectionMenu menu = getCurrentMenu();
++        if (menu == null) {
++            return selectionRequired();
++        }
++        if (menu.getSelection().getSelectedPlants().isEmpty()) {
++            return CommandResult.error("select at least one plant before starting the game!");
++        }
++        return startGame(menu, false);
++    }
++
++    static CommandResult startGame(
++            PlantSelectionMenu menu, boolean automatic) {
++        Chapter chapter = ChapterCatalog.findById(menu.getChapterId());
++        if (chapter == null) {
++            return CommandResult.error("chapter does not exist!");
++        }
++        String prefix = automatic
++                ? "fewer plants are available than the level's "
++                        + menu.getSelection().getSlotCount()
++                        + " slots; all available plants were selected automatically."
++                : null;
++        return MainController.launchAdventureGame(
++                chapter, menu.getLevel(),
++                menu.getSelection().getSelectedPlantLevels(),
++                menu.getSelection().getBoostedPlantNames(), prefix);
++    }
++
++    private static CommandResult formatPlants(String title,
++            PlantSelection selection, List<PlantCollectionItem> plants,
++            boolean showUnavailable) {
++        StringBuilder output = new StringBuilder(title)
++                .append(" (").append(plants.size()).append(")")
++                .append(System.lineSeparator())
++                .append("selected: ")
++                .append(selection.getSelectedPlants().size())
++                .append('/').append(selection.getSlotCount());
++        for (PlantCollectionItem plant : plants) {
++            output.append(System.lineSeparator()).append("- ")
++                    .append(plant.getName()).append(" | ")
++                    .append(plant.isUnlocked() ? "unlocked" : "locked");
++            if (showUnavailable) {
++                output.append(" | ")
++                        .append(selection.isAvailable(plant)
++                                ? "available" : "unavailable");
++            }
++            if (selection.isSelected(plant)) {
++                output.append(" | selected");
++            }
++            if (selection.isBoosted(plant)) {
++                output.append(" | boosted");
++            }
++        }
++        return CommandResult.success(output.toString());
++    }
++
++    private static PlantSelectionMenu getCurrentMenu() {
++        Menu menu = App.getInstance().getCurrentMenu();
++        if (!(menu instanceof PlantSelectionMenu)) {
++            return null;
++        }
++        return (PlantSelectionMenu) menu;
++    }
++
++    private static CommandResult selectionRequired() {
++        return CommandResult.error("plant selection is not active!");
++    }
++}
+diff --git a/model/Constants.java b/model/Constants.java
+index feb948e..e956d88 100644
+--- a/model/Constants.java
++++ b/model/Constants.java
+@@ -5,6 +5,7 @@ public final class Constants {
+ 
+     public static final int DEFAULT_BOARD_ROWS = 5;
+     public static final int DEFAULT_BOARD_COLUMNS = 9;
++    public static final int DEFAULT_PLANT_SLOTS = 8;
+ 
+     public static final float DEFAULT_SUN_LIFESPAN_SECONDS = 10.0f;
+     public static final float SUN_DESPAWN_WARNING_SECONDS = 3.0f;
+diff --git a/model/collections/plants/PlantCollection.java b/model/collections/plants/PlantCollection.java
+index 569993f..abf86e3 100644
+--- a/model/collections/plants/PlantCollection.java
++++ b/model/collections/plants/PlantCollection.java
+@@ -7,10 +7,23 @@ import java.util.Locale;
+ import model.App;
+ 
+ public class PlantCollection {
++    private static final List<String> STARTER_PLANTS = List.of(
++            "Sunflower", "Peashooter", "Wall-nut");
++
+     private final List<PlantCollectionItem> allPlants;
+ 
+     public PlantCollection() {
+         allPlants = PlantCatalog.createItems();
++        unlockStarterPlants();
++    }
++
++    private void unlockStarterPlants() {
++        for (String plantName : STARTER_PLANTS) {
++            PlantCollectionItem plant = findPlant(plantName);
++            if (plant != null) {
++                plant.setUnlocked(true);
++            }
++        }
+     }
+ 
+     public List<PlantCollectionItem> getAllPlants() {
+diff --git a/model/game/Game.java b/model/game/Game.java
+index bc615de..c08d68f 100644
+--- a/model/game/Game.java
++++ b/model/game/Game.java
+@@ -3,10 +3,13 @@ package model.game;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.HashMap;
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Random;
++import java.util.Set;
+ 
+ import model.Constants;
+ import model.game.defense.LawnMower;
+@@ -71,6 +74,10 @@ public class Game {
+     private final List<String> pendingResults = new ArrayList<>();
+     private final Map<String, Double> plantCooldowns = new HashMap<>();
+     private final Map<String, PlantFamily> plantCooldownFamilies = new HashMap<>();
++    private final Map<String, Integer> plantLoadoutLevels = new LinkedHashMap<>();
++    private final Map<String, String> plantLoadoutNames = new LinkedHashMap<>();
++    private final Set<String> boostedPlantTypes = new LinkedHashSet<>();
++    private boolean plantLoadoutConfigured;
+     private final Random random;
+ 
+     private int sunCount;
+@@ -1071,6 +1078,115 @@ public class Game {
+         return lockedPlantsSystem.describeRule();
+     }
+ 
++
++    public void configurePlantLoadout(
++            Map<String, Integer> selectedPlantLevels,
++            List<String> boostedPlantNames) {
++        if (selectedPlantLevels == null
++                || selectedPlantLevels.isEmpty()) {
++            throw new IllegalArgumentException(
++                    "at least one selected plant is required");
++        }
++        plantLoadoutLevels.clear();
++        plantLoadoutNames.clear();
++        boostedPlantTypes.clear();
++        for (Map.Entry<String, Integer> entry
++                : selectedPlantLevels.entrySet()) {
++            addPlantToLoadout(entry.getKey(), entry.getValue());
++        }
++        if (boostedPlantNames != null) {
++            for (String plantName : boostedPlantNames) {
++                String key = requestedPlantKey(plantName);
++                if (plantLoadoutLevels.containsKey(key)) {
++                    boostedPlantTypes.add(key);
++                }
++            }
++        }
++        plantLoadoutConfigured = true;
++    }
++
++    private void addPlantToLoadout(String plantName, int level) {
++        BasePlant plant = PlantFactory.createPlant(
++                plantName, level, new EntityPosition(0, 0));
++        if (plant == null) {
++            throw new IllegalArgumentException(
++                    "unknown plant in loadout: " + plantName);
++        }
++        String key = getLoadoutKey(plant);
++        plantLoadoutLevels.put(key, Math.max(1, level));
++        plantLoadoutNames.put(key, plant.getName());
++    }
++
++    public BasePlant createPlantFromLoadout(
++            String requestedType, EntityPosition position) {
++        if (!plantLoadoutConfigured) {
++            return PlantFactory.createPlant(requestedType, position);
++        }
++        Integer level = plantLoadoutLevels.get(
++                requestedPlantKey(requestedType));
++        if (level == null) {
++            return null;
++        }
++        return PlantFactory.createPlant(requestedType, level, position);
++    }
++
++    public boolean isPlantInLoadout(BasePlant plant) {
++        return !plantLoadoutConfigured
++                || plantLoadoutLevels.containsKey(getLoadoutKey(plant));
++    }
++
++    public boolean hasConfiguredPlantLoadout() {
++        return plantLoadoutConfigured;
++    }
++
++    public List<BasePlant> getPlantLoadoutPrototypes() {
++        if (!plantLoadoutConfigured) {
++            return Collections.emptyList();
++        }
++        List<BasePlant> plants = new ArrayList<>();
++        for (Map.Entry<String, String> entry : plantLoadoutNames.entrySet()) {
++            BasePlant plant = PlantFactory.createPlant(
++                    entry.getValue(), plantLoadoutLevels.get(entry.getKey()),
++                    new EntityPosition(0, 0));
++            if (plant != null) {
++                plants.add(plant);
++            }
++        }
++        return Collections.unmodifiableList(plants);
++    }
++
++    private static String requestedPlantKey(String requestedType) {
++        String normalized = normalizePlantName(requestedType);
++        if (normalized.startsWith("imitater")) {
++            return "imitater";
++        }
++        return normalized;
++    }
++
++    private static String getLoadoutKey(BasePlant plant) {
++        if (plant instanceof Modifier
++                && ((Modifier) plant).isImitater()) {
++            return "imitater";
++        }
++        return normalizePlantName(plant == null ? null : plant.getName());
++    }
++
++    private static String normalizePlantName(String name) {
++        if (name == null) {
++            return "";
++        }
++        return name.toLowerCase(Locale.ROOT)
++                .replaceAll("[^a-z0-9]", "");
++    }
++
++    private void applyLoadoutBoost(BasePlant plant) {
++        if (!boostedPlantTypes.contains(getLoadoutKey(plant))) {
++            return;
++        }
++        board.usePlantFoodAt(plant.getEntityPosition());
++        pendingResults.addAll(board.drainResults());
++    }
++
+     public void enableSaveOurSeeds(
+             List<ProtectedPlantSpec> protectedPlants) {
+         if (saveOurSeedsSystem != null) {
+@@ -1281,6 +1397,9 @@ public class Game {
+         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
+             return PlantPlacementResult.INVALID_POSITION;
+         }
++        if (!isPlantInLoadout(plant)) {
++            return PlantPlacementResult.PLANT_NOT_SELECTED;
++        }
+         if (!isPlantAllowed(plant)
+                 || !isPlantAllowedByPlantWhatYouGet(plant)) {
+             return PlantPlacementResult.PLANT_LOCKED;
+@@ -1304,6 +1423,7 @@ public class Game {
+         if (!ignoresPlantCooldown()) {
+             startPlantCooldown(plant);
+         }
++        applyLoadoutBoost(plant);
+         if (loveYourPlantsSystem != null) {
+             loveYourPlantsSystem.observePlants(board);
+         }
+diff --git a/model/game/PlantPlacementResult.java b/model/game/PlantPlacementResult.java
+index e86680a..865b8de 100644
+--- a/model/game/PlantPlacementResult.java
++++ b/model/game/PlantPlacementResult.java
+@@ -6,5 +6,6 @@ public enum PlantPlacementResult {
+     POSITION_OCCUPIED,
+     NOT_ENOUGH_SUN,
+     COOLDOWN_ACTIVE,
+-    PLANT_LOCKED
++    PLANT_LOCKED,
++    PLANT_NOT_SELECTED
+ }
+diff --git a/model/game/plantSelector/PlantSelection.java b/model/game/plantSelector/PlantSelection.java
+new file mode 100644
+index 0000000..c5a68d4
+--- /dev/null
++++ b/model/game/plantSelector/PlantSelection.java
+@@ -0,0 +1,158 @@
++package model.game.plantSelector;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++import java.util.Set;
++
++import model.collections.plants.PlantCollection;
++import model.collections.plants.PlantCollectionItem;
++import model.game.entities.plants.PlantCategory;
++import model.roadmap.Level;
++import model.roadmap.SpecialLevelType;
++
++/**
++ * Mutable loadout being prepared before an adventure level starts.
++ */
++public final class PlantSelection {
++    private final PlantCollection collection;
++    private final Level level;
++    private final int slotCount;
++    private final List<PlantCollectionItem> availablePlants;
++    private final List<PlantCollectionItem> selectedPlants = new ArrayList<>();
++    private final Set<String> boostedPlantKeys = new LinkedHashSet<>();
++
++    public PlantSelection(PlantCollection collection, Level level) {
++        if (collection == null || level == null) {
++            throw new IllegalArgumentException(
++                    "plant collection and level are required");
++        }
++        this.collection = collection;
++        this.level = level;
++        this.slotCount = level.getPlantSlotCount();
++        this.availablePlants = Collections.unmodifiableList(
++                findAvailablePlants(collection, level));
++    }
++
++    private static List<PlantCollectionItem> findAvailablePlants(
++            PlantCollection collection, Level level) {
++        List<PlantCollectionItem> available = new ArrayList<>();
++        for (PlantCollectionItem plant : collection.getUnlockedPlants()) {
++            if (isAllowedForLevel(plant, level)) {
++                available.add(plant);
++            }
++        }
++        return available;
++    }
++
++    private static boolean isAllowedForLevel(
++            PlantCollectionItem plant, Level level) {
++        if (level.getSpecialLevelType()
++                == SpecialLevelType.PLANT_WHAT_YOU_GET) {
++            return plant.getCategory() != PlantCategory.SUN_PRODUCER;
++        }
++        if (level.getSpecialLevelType()
++                == SpecialLevelType.LOCKED_PLANTS) {
++            for (String allowed : level.getSpecialConfig().getPlantPool()) {
++                if (normalize(allowed).equals(normalize(plant.getName()))) {
++                    return true;
++                }
++            }
++            return false;
++        }
++        return true;
++    }
++
++    public PlantCollectionItem findPlant(String name) {
++        return collection.findPlant(name);
++    }
++
++    public List<PlantCollectionItem> getAllPlants() {
++        return collection.getAllPlants();
++    }
++
++    public List<PlantCollectionItem> getAvailablePlants() {
++        return availablePlants;
++    }
++
++    public List<PlantCollectionItem> getSelectedPlants() {
++        return List.copyOf(selectedPlants);
++    }
++
++    public int getSlotCount() {
++        return slotCount;
++    }
++
++    public boolean isAvailable(PlantCollectionItem plant) {
++        return plant != null && availablePlants.contains(plant);
++    }
++
++    public boolean isSelected(PlantCollectionItem plant) {
++        return plant != null && selectedPlants.contains(plant);
++    }
++
++    public boolean addPlant(PlantCollectionItem plant) {
++        if (!isAvailable(plant) || isSelected(plant)
++                || selectedPlants.size() >= slotCount) {
++            return false;
++        }
++        selectedPlants.add(plant);
++        return true;
++    }
++
++    public boolean removePlant(PlantCollectionItem plant) {
++        return plant != null && selectedPlants.remove(plant);
++    }
++
++    public boolean boostPlant(PlantCollectionItem plant) {
++        if (!isSelected(plant)) {
++            return false;
++        }
++        return boostedPlantKeys.add(normalize(plant.getName()));
++    }
++
++    public boolean isBoosted(PlantCollectionItem plant) {
++        return plant != null
++                && boostedPlantKeys.contains(normalize(plant.getName()));
++    }
++
++    public void selectAllAvailable() {
++        selectedPlants.clear();
++        int count = Math.min(slotCount, availablePlants.size());
++        selectedPlants.addAll(availablePlants.subList(0, count));
++    }
++
++    public boolean shouldStartAutomatically() {
++        return availablePlants.size() < slotCount;
++    }
++
++    public Map<String, Integer> getSelectedPlantLevels() {
++        Map<String, Integer> levels = new LinkedHashMap<>();
++        for (PlantCollectionItem plant : selectedPlants) {
++            levels.put(plant.getName(), plant.getCurrentLevel());
++        }
++        return Collections.unmodifiableMap(levels);
++    }
++
++    public List<String> getBoostedPlantNames() {
++        List<String> names = new ArrayList<>();
++        for (PlantCollectionItem plant : selectedPlants) {
++            if (isBoosted(plant)) {
++                names.add(plant.getName());
++            }
++        }
++        return Collections.unmodifiableList(names);
++    }
++
++    private static String normalize(String value) {
++        if (value == null) {
++            return "";
++        }
++        return value.toLowerCase(Locale.ROOT)
++                .replaceAll("[^a-z0-9]", "");
++    }
++}
+diff --git a/model/game/presentation/GameStatusFormatter.java b/model/game/presentation/GameStatusFormatter.java
+index cf0494d..5071158 100644
+--- a/model/game/presentation/GameStatusFormatter.java
++++ b/model/game/presentation/GameStatusFormatter.java
+@@ -80,7 +80,9 @@ public final class GameStatusFormatter {
+     }
+     public static String formatPlantStatuses(Game game) {
+         requireGame(game);
+-        List<BasePlant> plants = createPlantCatalog();
++        List<BasePlant> plants = game.hasConfiguredPlantLoadout()
++                ? new ArrayList<>(game.getPlantLoadoutPrototypes())
++                : createPlantCatalog();
+         plants.sort(Comparator.comparing(
+                 BasePlant::getName,
+                 String.CASE_INSENSITIVE_ORDER));
+diff --git a/model/menu/PlantSelectionMenu.java b/model/menu/PlantSelectionMenu.java
+new file mode 100644
+index 0000000..f60b98a
+--- /dev/null
++++ b/model/menu/PlantSelectionMenu.java
+@@ -0,0 +1,55 @@
++package model.menu;
++
++import model.App;
++import model.game.plantSelector.PlantSelection;
++import model.roadmap.Level;
++
++/**
++ * Pre-game menu used to build the plant card loadout for one level.
++ */
++public final class PlantSelectionMenu extends Menu {
++    private final PlantSelection selection;
++    private final String chapterId;
++    private final int levelNumber;
++    private final Level level;
++
++    public PlantSelectionMenu(PlantSelection selection,
++            String chapterId, int levelNumber, Level level) {
++        if (selection == null || chapterId == null
++                || chapterId.isBlank() || levelNumber <= 0
++                || level == null) {
++            throw new IllegalArgumentException(
++                    "plant selection metadata is incomplete");
++        }
++        this.selection = selection;
++        this.chapterId = chapterId;
++        this.levelNumber = levelNumber;
++        this.level = level;
++    }
++
++    public PlantSelection getSelection() {
++        return selection;
++    }
++
++    public String getChapterId() {
++        return chapterId;
++    }
++
++    public int getLevelNumber() {
++        return levelNumber;
++    }
++
++    public Level getLevel() {
++        return level;
++    }
++
++    @Override
++    public void exit() {
++        App.getInstance().changeMenu(new MainMenu());
++    }
++
++    @Override
++    public String getName() {
++        return "plantselection";
++    }
++}
+diff --git a/model/roadmap/Level.java b/model/roadmap/Level.java
+index af9224d..23a1163 100644
+--- a/model/roadmap/Level.java
++++ b/model/roadmap/Level.java
+@@ -22,6 +22,7 @@ public final class Level {
+     private final int numberOfRows;
+     private final int numberOfColumns;
+     private final int initialSunCount;
++    private final int plantSlotCount;
+     private final List<ZombieWave> zombieWaves;
+ 
+     public Level(String name, int numberOfRows,
+@@ -53,10 +54,23 @@ public final class Level {
+             int numberOfRows, int numberOfColumns,
+             int initialSunCount,
+             List<ZombieWave> zombieWaves) {
++        this(number, name, kind, specialLevelType,
++                specialConfig, numberOfRows, numberOfColumns,
++                initialSunCount, Constants.DEFAULT_PLANT_SLOTS,
++                zombieWaves);
++    }
++
++    public Level(int number, String name,
++            LevelKind kind,
++            SpecialLevelType specialLevelType,
++            SpecialLevelConfig specialConfig,
++            int numberOfRows, int numberOfColumns,
++            int initialSunCount, int plantSlotCount,
++            List<ZombieWave> zombieWaves) {
+         validate(number, name, kind,
+                 specialLevelType, specialConfig,
+                 numberOfRows, numberOfColumns,
+-                initialSunCount, zombieWaves);
++                initialSunCount, plantSlotCount, zombieWaves);
+         this.number = number;
+         this.name = name;
+         this.kind = kind;
+@@ -65,6 +79,7 @@ public final class Level {
+         this.numberOfRows = numberOfRows;
+         this.numberOfColumns = numberOfColumns;
+         this.initialSunCount = initialSunCount;
++        this.plantSlotCount = plantSlotCount;
+         this.zombieWaves =
+                 Collections.unmodifiableList(
+                         new ArrayList<>(zombieWaves));
+@@ -75,7 +90,7 @@ public final class Level {
+             SpecialLevelType specialLevelType,
+             SpecialLevelConfig specialConfig,
+             int rows, int columns, int sun,
+-            List<ZombieWave> waves) {
++            int plantSlots, List<ZombieWave> waves) {
+         if (number <= 0 || name == null
+                 || name.isBlank() || kind == null
+                 || specialLevelType == null
+@@ -84,6 +99,7 @@ public final class Level {
+                     "level identity values are invalid");
+         }
+         if (rows <= 0 || columns <= 0 || sun < 0
++                || plantSlots <= 0
+                 || waves == null || waves.isEmpty()) {
+             throw new IllegalArgumentException(
+                     "level board or waves are invalid");
+@@ -212,6 +228,10 @@ public final class Level {
+         return initialSunCount;
+     }
+ 
++    public int getPlantSlotCount() {
++        return plantSlotCount;
++    }
++
+     public List<ZombieWave> getZombieWaves() {
+         return zombieWaves;
+     }
