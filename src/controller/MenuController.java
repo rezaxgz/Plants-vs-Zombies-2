@@ -102,7 +102,6 @@ public final class MenuController {
         return null;
     }
 
-    // Inside your existing createMainChild method in MenuController:
     private static Menu createMainChild(String requestedName) {
         if ("game".equals(requestedName))
             return new GameMenu();
@@ -116,17 +115,19 @@ public final class MenuController {
             return new ProfileMenu();
         if ("greenhouse".equals(requestedName))
             return new GreenhouseMenu();
-        if ("leaderboard".equals(requestedName)) // NEW
-            return new LeaderboardMenu(); // NEW
-        if ("travellog".equals(requestedName)) // NEW
-            return new TravelLogMenu(); // NEW
+        if ("leaderboard".equals(requestedName)) 
+            return new LeaderboardMenu(); 
+        if ("travellog".equals(requestedName)) 
+            return new TravelLogMenu(); 
+        if ("collection".equals(requestedName)) 
+            return new CollectionMenu(); 
         return null;
     }
 
     private static boolean isMainChild(Menu menu) {
         return menu instanceof SettingsMenu || menu instanceof NetworkMenu || menu instanceof NewsMenu
                 || menu instanceof ProfileMenu || menu instanceof GreenhouseMenu
-                || menu instanceof LeaderboardMenu || menu instanceof TravelLogMenu;
+                || menu instanceof LeaderboardMenu || menu instanceof TravelLogMenu ||  menu instanceof CollectionMenu;
     }
 
     private static boolean isKnownMenu(String menuName) {
