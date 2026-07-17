@@ -12,6 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 
+import model.collections.plants.PlantCollection;
+import model.collections.plants.PlantCollectionItem;
+import model.collections.zombies.ZombieCollection;
+import model.collections.zombies.ZombieCollectionItem;
 import model.enums.Gender;
 import model.security.SecurityQuestion;
 import model.user.User;
@@ -133,8 +137,12 @@ final class UserJsonDatabase {
             }
         }
 
+        PlantCollection plantCollection = readPlantCollection(storedUser.get("plantCollection"), prefix);
+        ZombieCollection zombieCollection = readZombieCollection(storedUser.get("zombieCollection"), prefix);
+
         User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
-                diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts);
+                diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts,
+                plantCollection, zombieCollection);
 
         Object newsObj = storedUser.get("news");
         if (newsObj != null) {
@@ -162,6 +170,46 @@ final class UserJsonDatabase {
         user.setDailyOfferPurchased(dailyOfferPurchased);
 
         return user;
+    }
+
+    private static PlantCollection readPlantCollection(Object value, String prefix) {
+        PlantCollection collection = new PlantCollection();
+        if (value == null) {
+            return collection;
+        }
+        List<Object> storedPlants = requireArray(value, prefix + ".plantCollection");
+        for (int i = 0; i < storedPlants.size(); i++) {
+            Map<String, Object> plant = requireObject(
+                    storedPlants.get(i), prefix + ".plantCollection[" + i + "]");
+            String context = prefix + ".plantCollection[" + i + "]";
+            String name = requireString(plant, "name", context);
+            boolean unlocked = getBoolean(plant, "unlocked", false);
+            int level = getInt(plant, "level", PlantCollectionItem.MIN_LEVEL);
+            int cards = getInt(plant, "cards", 0);
+            collection.restorePlantState(name, unlocked, level, cards);
+        }
+        return collection;
+    }
+
+    private static ZombieCollection readZombieCollection(Object value, String prefix) {
+        ZombieCollection collection = new ZombieCollection();
+        if (value == null) {
+            return collection;
+        }
+        List<Object> storedZombies = requireArray(value, prefix + ".zombieCollection");
+        for (int i = 0; i < storedZombies.size(); i++) {
+            Object storedZombie = storedZombies.get(i);
+            if (storedZombie instanceof String zombieName) {
+                collection.restoreZombieState(zombieName, true);
+                continue;
+            }
+            String context = prefix + ".zombieCollection[" + i + "]";
+            Map<String, Object> zombie = requireObject(storedZombie, context);
+            String name = requireString(zombie, "name", context);
+            boolean unlocked = getBoolean(zombie, "unlocked", false);
+            collection.restoreZombieState(name, unlocked);
+        }
+        return collection;
     }
 
     private static GreenHouse readGreenHouse(Map<String, Object> map, String prefix) {
@@ -263,6 +311,9 @@ final class UserJsonDatabase {
         }
         json.append(indent).append("  },\n");
 
+        appendPlantCollection(json, user.getPlantCollection(), indent);
+        appendZombieCollection(json, user.getZombieCollection(), indent);
+
         json.append(indent).append("  \"news\": [\n");
         List<model.news.News> newsList = user.getNewsPanel().getAllNews();
         for (int i = 0; i < newsList.size(); i++) {
@@ -281,6 +332,44 @@ final class UserJsonDatabase {
 
         appendGreenHouse(json, user.getGreenHouse(), indent);
         json.append(indent).append('}');
+    }
+
+    private static void appendPlantCollection(StringBuilder json,
+            PlantCollection collection, String indent) {
+        json.append(indent).append("  \"plantCollection\": [\n");
+        List<PlantCollectionItem> plants = collection.getAllPlants();
+        for (int i = 0; i < plants.size(); i++) {
+            PlantCollectionItem plant = plants.get(i);
+            json.append(indent).append("    {\n");
+            appendStringProperty(json, indent + "    ", "name", plant.getName(), true);
+            appendBooleanProperty(json, indent + "    ", "unlocked", plant.isUnlocked(), true);
+            appendNumberProperty(json, indent + "    ", "level", plant.getCurrentLevel(), true);
+            appendNumberProperty(json, indent + "    ", "cards", plant.getTotalCardsCollected(), false);
+            json.append(indent).append("    }");
+            if (i + 1 < plants.size()) {
+                json.append(',');
+            }
+            json.append('\n');
+        }
+        json.append(indent).append("  ],\n");
+    }
+
+    private static void appendZombieCollection(StringBuilder json,
+            ZombieCollection collection, String indent) {
+        json.append(indent).append("  \"zombieCollection\": [\n");
+        List<ZombieCollectionItem> zombies = collection.getAllZombies();
+        for (int i = 0; i < zombies.size(); i++) {
+            ZombieCollectionItem zombie = zombies.get(i);
+            json.append(indent).append("    {\n");
+            appendStringProperty(json, indent + "    ", "name", zombie.getName(), true);
+            appendBooleanProperty(json, indent + "    ", "unlocked", zombie.isUnlocked(), false);
+            json.append(indent).append("    }");
+            if (i + 1 < zombies.size()) {
+                json.append(',');
+            }
+            json.append('\n');
+        }
+        json.append(indent).append("  ],\n");
     }
 
     private static void appendGreenHouse(StringBuilder json, GreenHouse gh, String indent) {

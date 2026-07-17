@@ -4,8 +4,9 @@ import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
-public enum ExplosivePlantType {
+public enum ExplosivePlantType implements PlantDefinition {
     POTATO_MINE(
             30, "Potato Mine", tags(PlantTag.TRAP, PlantTag.CHARGE),
             25, 300, 1800,

@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum MeleePlantType {
+public enum MeleePlantType implements PlantDefinition {
     BONK_CHOY(
             39, "Bonk Choy", Collections.emptySet(), 150, 300, 15,
             "Punches the first zombie in the tile in front and behind it.",

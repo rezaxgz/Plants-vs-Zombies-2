@@ -7,6 +7,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 
+import model.App;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
@@ -3173,6 +3174,9 @@ public class Board {
 
     public void addZombie(Zombie zombie) {
         addEntity(zombie);
+        if (App.getInstance().getLoggedInUser() != null) {
+            App.getInstance().getLoggedInUser().unlockZombie(zombie.getType().getAlias());
+        }
     }
 
     public boolean canAddPlant(BasePlant requestedPlant) {

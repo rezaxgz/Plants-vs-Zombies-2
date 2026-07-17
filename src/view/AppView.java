@@ -5,6 +5,7 @@ import java.util.Scanner;
 import commands.CommandRegistry;
 import model.App;
 import model.CommandResult;
+import model.auth.UserManager;
 
 public class AppView {
     private static final AppView instance = new AppView();
@@ -26,8 +27,12 @@ public class AppView {
 
     public void run() {
         App app = App.getInstance();
-        while (app.isRunning() && hasNext()) {
-            parseCommand(getInput());
+        try {
+            while (app.isRunning() && hasNext()) {
+                parseCommand(getInput());
+            }
+        } finally {
+            UserManager.saveAllUsers();
         }
     }
 

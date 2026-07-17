@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum ModifierPlantType {
+public enum ModifierPlantType implements PlantDefinition {
     TORCHWOOD(
             52, "Torchwood", tags(PlantTag.FIRE), 175, 300, 0,
             "Turns pea projectiles that pass through it into fire projectiles.",

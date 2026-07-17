@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum SunProducerPlantType {
+public enum SunProducerPlantType implements PlantDefinition {
     SUNFLOWER(
             1, "Sunflower", EnumSet.of(PlantTag.DAY), 50, 300, 0,
             "Produces 50 sun every 24 seconds.",

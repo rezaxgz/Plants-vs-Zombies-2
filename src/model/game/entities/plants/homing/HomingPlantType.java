@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum HomingPlantType {
+public enum HomingPlantType implements PlantDefinition {
     CAULIPOWER(
             14, "Caulipower", tags(PlantTag.MAGIC, PlantTag.CHARGE),
             250, 300, 0,
