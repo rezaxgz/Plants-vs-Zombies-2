@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum WallnutPlantType {
+public enum WallnutPlantType implements PlantDefinition {
     WALL_NUT(
             44, "Wall-nut", Collections.emptySet(), 50, 4000, 0,
             "A durable defensive barrier that stops zombies.",

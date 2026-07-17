@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum ShooterPlantType {
+public enum ShooterPlantType implements PlantDefinition {
     PEASHOOTER(
             6, "Peashooter", EnumSet.of(PlantTag.PEA), 100, 300, 20,
             1.5f, 5.0f, ShooterBehavior.FORWARD, ShooterProjectileType.NORMAL,

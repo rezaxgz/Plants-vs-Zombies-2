@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum LobberPlantType {
+public enum LobberPlantType implements PlantDefinition {
     CABBAGE_PULT(
             25, "Cabbage-pult", Collections.emptySet(), 100, 300, 40,
             "Lobs a cabbage over obstacles onto the first zombie in its lane.",

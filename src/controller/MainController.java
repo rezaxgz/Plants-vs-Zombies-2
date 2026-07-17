@@ -5,6 +5,7 @@ import java.util.regex.Matcher;
 
 import model.App;
 import model.CommandResult;
+import model.auth.UserManager;
 import model.game.Game;
 import model.menu.GameMenu;
 import model.roadmap.AdventureProgress;
@@ -255,6 +256,7 @@ public final class MainController {
     public static CommandResult handleLogout(
             Matcher matcher) {
         AdventureSession.getInstance().reset();
+        UserManager.saveAllUsers();
         App.getInstance().logout();
         return CommandResult.success(
                 "logged out successfully"

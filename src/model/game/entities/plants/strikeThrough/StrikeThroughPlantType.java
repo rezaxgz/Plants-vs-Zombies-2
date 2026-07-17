@@ -6,9 +6,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
+import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantTag;
 
-public enum StrikeThroughPlantType {
+public enum StrikeThroughPlantType implements PlantDefinition {
     CACTUS(
             17, "Cactus", Collections.emptySet(), 175, 300, 30,
             "Shoots a spike that passes through the first three zombies in its lane.",

@@ -72,21 +72,40 @@ public class User {
         this.greenHouse = new GreenHouse();
         this.plantBoosts = new HashMap<>();
         this.plantCollection = new PlantCollection();
+        this.zombieCollection = new ZombieCollection();
         this.gameProgerss = new GameProgerss();
-        this.questProgress = new AllQuestsProgress();
         this.questProgress = new AllQuestsProgress();
         this.newsPanel = new NewsPanel();
     }
 
     public static User fromStoredData(String username, String passwordHash, String nickname, String email,
             Gender gender, SecurityQuestion securityQuestion, int coins, int diamonds,
-            int greenhousePotsUnlocked, int plantFoodCount, GreenHouse greenHouse, Map<String, Integer> plantBoosts) {
+            int greenhousePotsUnlocked, int plantFoodCount, GreenHouse greenHouse,
+            Map<String, Integer> plantBoosts) {
+        return fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion,
+                coins, diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse,
+                plantBoosts, null, null);
+    }
+
+    public static User fromStoredData(String username, String passwordHash, String nickname, String email,
+            Gender gender, SecurityQuestion securityQuestion, int coins, int diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount, GreenHouse greenHouse,
+            Map<String, Integer> plantBoosts, PlantCollection plantCollection,
+            ZombieCollection zombieCollection) {
         User user = new User(username, passwordHash, nickname, email, gender, securityQuestion, coins, diamonds,
                 greenhousePotsUnlocked, plantFoodCount);
-        if (greenHouse != null)
+        if (greenHouse != null) {
             user.greenHouse = greenHouse;
-        if (plantBoosts != null)
+        }
+        if (plantBoosts != null) {
             user.plantBoosts = plantBoosts;
+        }
+        if (plantCollection != null) {
+            user.plantCollection = plantCollection;
+        }
+        if (zombieCollection != null) {
+            user.zombieCollection = zombieCollection;
+        }
         return user;
     }
 
@@ -164,6 +183,22 @@ public class User {
 
     public PlantCollection getPlantCollection() {
         return plantCollection;
+    }
+
+    public ZombieCollection getZombieCollection() {
+        return zombieCollection;
+    }
+
+    public boolean unlockPlant(String plantName) {
+        return plantCollection.unlockPlant(plantName);
+    }
+
+    public boolean addPlantCards(String plantName, int amount) {
+        return plantCollection.addCards(plantName, amount);
+    }
+
+    public boolean unlockZombie(String zombieName) {
+        return zombieCollection.unlockZombie(zombieName);
     }
 
     public String getDailyOfferDate() {
