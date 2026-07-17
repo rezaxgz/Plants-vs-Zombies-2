@@ -6,8 +6,9 @@ import model.game.entities.other.Sun;
 import model.game.entities.zombies.Zombie;
 
 /**
- * Ra periodically pulls the nearest collectable sun from the lawn and stores
- * it. All stored sun is returned to the player's reserve when Ra dies.
+ * Ra periodically pulls the nearest sun that is resting on the lawn.
+ * Falling sky suns cannot be stolen. All stored sun is returned to the
+ * player's reserve when Ra dies.
  */
 public class SunStealAbility extends ZombieAbility {
     private final int maxClaimedSun;
@@ -53,7 +54,9 @@ public class SunStealAbility extends ZombieAbility {
         double nearestDistance = Double.POSITIVE_INFINITY;
         int remainingCapacity = maxClaimedSun - sunStolen;
         for (Sun sun : board.getSuns()) {
-            if (!sun.isCollectable() || sun.getSunAmount() > remainingCapacity) {
+            if (!sun.isStealableFromGround()
+                    || sun.getSunAmount()
+                            > remainingCapacity) {
                 continue;
             }
             double distance = distanceSquared(zombie, sun.getEntityPosition());

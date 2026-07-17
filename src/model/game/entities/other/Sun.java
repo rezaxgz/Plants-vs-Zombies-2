@@ -105,6 +105,20 @@ public class Sun extends Entity {
         return !isDropping() && !collected && !isRemoved();
     }
 
+    /**
+     * Ra may steal a sun only after it has actually rested on the lawn.
+     * This prevents a sun that lands during the current update from being
+     * stolen while it is still visually falling.
+     */
+    public boolean isStealableFromGround() {
+        return isCollectable()
+                && elapsedGroundSeconds > 0.0;
+    }
+
+    public double getElapsedGroundSeconds() {
+        return Math.max(0.0, elapsedGroundSeconds);
+    }
+
     public int getSunAmount() {
         return sunAmount;
     }
