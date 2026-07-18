@@ -8,14 +8,15 @@ import model.collections.plants.PlantCollection;
 import model.collections.zombies.ZombieCollection;
 import model.enums.Gender;
 import model.greenHouse.GreenHouse;
+import model.news.News;
+import model.news.NewsPanel;
 import model.quest.AllQuestsProgress;
+import model.roadmap.AdventureProgress;
 import model.security.Question;
 import model.security.SecurityQuestion;
 import model.security.Sha256;
 import model.shop.item.ItemPrice;
 import model.shop.item.ShopItem;
-import model.news.NewsPanel;
-import model.news.News;
 
 public class User {
     // profile info
@@ -31,6 +32,7 @@ public class User {
     private int diamonds;
     private PlantCollection plantCollection;
     private ZombieCollection zombieCollection;
+    private AdventureProgress adventureProgress;
 
     // preferences
     private Settings settings;
@@ -44,21 +46,23 @@ public class User {
     // Daily offer state tracking variables
     private String dailyOfferDate = "";
     private String dailyOfferPlant = "";
-    private boolean dailyOfferPurchased = false;
+    private boolean dailyOfferPurchased;
 
     private Inventory inventory;
     private GameProgerss gameProgerss;
     private AllQuestsProgress questProgress;
-
     private NewsPanel newsPanel;
 
-    public User(String username, String password, String nickname, String email, Gender gender) {
-        this(username, Sha256.hash(password), nickname, email, gender, null, 0, 0, 0, 0);
+    public User(String username, String password, String nickname,
+            String email, Gender gender) {
+        this(username, Sha256.hash(password), nickname, email,
+                gender, null, 0, 0, 0, 0);
     }
 
-    private User(String username, String passwordHash, String nickname, String email, Gender gender,
-            SecurityQuestion securityQuestion, int coins, int diamonds, int greenhousePotsUnlocked,
-            int plantFoodCount) {
+    private User(String username, String passwordHash, String nickname,
+            String email, Gender gender,
+            SecurityQuestion securityQuestion, int coins, int diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.nickName = nickname;
@@ -73,26 +77,49 @@ public class User {
         this.plantBoosts = new HashMap<>();
         this.plantCollection = new PlantCollection();
         this.zombieCollection = new ZombieCollection();
+        this.adventureProgress = new AdventureProgress();
+        this.settings = new Settings();
         this.gameProgerss = new GameProgerss();
         this.questProgress = new AllQuestsProgress();
         this.newsPanel = new NewsPanel();
     }
 
-    public static User fromStoredData(String username, String passwordHash, String nickname, String email,
-            Gender gender, SecurityQuestion securityQuestion, int coins, int diamonds,
-            int greenhousePotsUnlocked, int plantFoodCount, GreenHouse greenHouse,
-            Map<String, Integer> plantBoosts) {
-        return fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion,
-                coins, diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse,
-                plantBoosts, null, null);
+    public static User fromStoredData(String username, String passwordHash,
+            String nickname, String email, Gender gender,
+            SecurityQuestion securityQuestion, int coins, int diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount,
+            GreenHouse greenHouse, Map<String, Integer> plantBoosts) {
+        return fromStoredData(username, passwordHash, nickname, email,
+                gender, securityQuestion, coins, diamonds,
+                greenhousePotsUnlocked, plantFoodCount, greenHouse,
+                plantBoosts, null, null, null, null, null);
     }
 
-    public static User fromStoredData(String username, String passwordHash, String nickname, String email,
-            Gender gender, SecurityQuestion securityQuestion, int coins, int diamonds,
-            int greenhousePotsUnlocked, int plantFoodCount, GreenHouse greenHouse,
-            Map<String, Integer> plantBoosts, PlantCollection plantCollection,
+    public static User fromStoredData(String username, String passwordHash,
+            String nickname, String email, Gender gender,
+            SecurityQuestion securityQuestion, int coins, int diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount,
+            GreenHouse greenHouse, Map<String, Integer> plantBoosts,
+            PlantCollection plantCollection,
             ZombieCollection zombieCollection) {
-        User user = new User(username, passwordHash, nickname, email, gender, securityQuestion, coins, diamonds,
+        return fromStoredData(username, passwordHash, nickname, email,
+                gender, securityQuestion, coins, diamonds,
+                greenhousePotsUnlocked, plantFoodCount, greenHouse,
+                plantBoosts, plantCollection, zombieCollection,
+                null, null, null);
+    }
+
+    public static User fromStoredData(String username, String passwordHash,
+            String nickname, String email, Gender gender,
+            SecurityQuestion securityQuestion, int coins, int diamonds,
+            int greenhousePotsUnlocked, int plantFoodCount,
+            GreenHouse greenHouse, Map<String, Integer> plantBoosts,
+            PlantCollection plantCollection,
+            ZombieCollection zombieCollection, Settings settings,
+            AdventureProgress adventureProgress,
+            GameProgerss gameProgerss) {
+        User user = new User(username, passwordHash, nickname, email,
+                gender, securityQuestion, coins, diamonds,
                 greenhousePotsUnlocked, plantFoodCount);
         if (greenHouse != null) {
             user.greenHouse = greenHouse;
@@ -106,11 +133,27 @@ public class User {
         if (zombieCollection != null) {
             user.zombieCollection = zombieCollection;
         }
+        if (settings != null) {
+            user.settings = settings;
+        }
+        if (adventureProgress != null) {
+            user.adventureProgress = adventureProgress;
+        }
+        if (gameProgerss != null) {
+            user.gameProgerss = gameProgerss;
+        }
         return user;
     }
 
     public String getUsername() {
         return username;
+    }
+
+    public void changeUsername(String username) {
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("username cannot be blank");
+        }
+        this.username = username;
     }
 
     public String getPasswordHashForStorage() {
@@ -121,8 +164,22 @@ public class User {
         return nickName;
     }
 
+    public void changeNickname(String nickname) {
+        if (nickname == null) {
+            throw new IllegalArgumentException("nickname cannot be null");
+        }
+        this.nickName = nickname;
+    }
+
     public String getEmail() {
         return email;
+    }
+
+    public void changeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("email cannot be blank");
+        }
+        this.email = email;
     }
 
     public Gender getGender() {
@@ -138,11 +195,11 @@ public class User {
     }
 
     public void addCoins(int amount) {
-        this.coins += amount;
+        coins += amount;
     }
 
     public void deductCoins(int amount) {
-        this.coins -= amount;
+        coins -= amount;
     }
 
     public int getDiamonds() {
@@ -150,11 +207,11 @@ public class User {
     }
 
     public void addDiamonds(int amount) {
-        this.diamonds += amount;
+        diamonds += amount;
     }
 
     public void deductDiamonds(int amount) {
-        this.diamonds -= amount;
+        diamonds -= amount;
     }
 
     public int getGreenhousePotsUnlocked() {
@@ -187,6 +244,14 @@ public class User {
 
     public ZombieCollection getZombieCollection() {
         return zombieCollection;
+    }
+
+    public AdventureProgress getAdventureProgress() {
+        return adventureProgress;
+    }
+
+    public Settings getSettings() {
+        return settings;
     }
 
     public boolean unlockPlant(String plantName) {
@@ -226,30 +291,37 @@ public class User {
     }
 
     public void addPlantBoost(String plantName, int amount) {
-        plantBoosts.put(plantName, Math.min(1, plantBoosts.getOrDefault(plantName, 0) + amount));
+        plantBoosts.put(plantName,
+                Math.min(1, plantBoosts.getOrDefault(plantName, 0) + amount));
     }
 
-    public void setSecurityQuestion(int n, String answer) {
-        Question question = Question.getByNumber(n);
+    public void setSecurityQuestion(int number, String answer) {
+        Question question = Question.getByNumber(number);
         if (question == null) {
-            throw new IllegalArgumentException("invalid security question number: " + n);
+            throw new IllegalArgumentException(
+                    "invalid security question number: " + number);
         }
-        this.securityQuestion = new SecurityQuestion(question.getText(), answer);
+        if (answer == null || answer.isBlank()) {
+            throw new IllegalArgumentException(
+                    "security question answer cannot be blank");
+        }
+        securityQuestion = new SecurityQuestion(question.getText(), answer);
     }
 
     public boolean canAfford(ItemPrice price) {
-        if (price == null)
+        if (price == null) {
             return false;
-        if (price.getType() == model.enums.CurrencyType.COIN) {
-            return this.coins >= price.getAmount();
-        } else {
-            return this.diamonds >= price.getAmount();
         }
+        if (price.getType() == model.enums.CurrencyType.COIN) {
+            return coins >= price.getAmount();
+        }
+        return diamonds >= price.getAmount();
     }
 
     public void payForItem(ShopItem item) {
-        if (item == null || item.getPrice() == null)
+        if (item == null || item.getPrice() == null) {
             return;
+        }
         ItemPrice price = item.getPrice();
         if (price.getType() == model.enums.CurrencyType.COIN) {
             deductCoins(price.getAmount());
@@ -259,20 +331,20 @@ public class User {
     }
 
     public boolean doesMatchPassword(String password) {
-        String hashPassword = Sha256.hash(password);
-        return hashPassword.equals(this.passwordHash);
+        return password != null && Sha256.hash(password).equals(passwordHash);
     }
 
-    public boolean doesMatchEmail(String email) {
-        return email.equals(this.email);
+    public boolean doesMatchEmail(String candidateEmail) {
+        return candidateEmail != null && candidateEmail.equals(email);
     }
 
     public String getSecurityQuestion() {
-        return securityQuestion.getQuestion();
+        return securityQuestion == null ? null : securityQuestion.getQuestion();
     }
 
     public boolean isCorrectSecurityAnswer(String answer) {
-        return securityQuestion.isAnswerCorrect(answer);
+        return securityQuestion != null
+                && securityQuestion.isAnswerCorrect(answer);
     }
 
     public void changePassword(String password) {
@@ -292,6 +364,7 @@ public class User {
     }
 
     public void addNews(String title, String description) {
-        newsPanel.addNews(new News(System.currentTimeMillis(), title, description, false));
+        newsPanel.addNews(new News(System.currentTimeMillis(),
+                title, description, false));
     }
 }

@@ -5,14 +5,19 @@ import java.util.regex.Matcher;
 
 import model.App;
 import model.CommandResult;
+import model.auth.SessionManager;
 import model.auth.UserManager;
 import model.menu.LoginMenu;
 import model.menu.MainMenu;
+import model.roadmap.AdventureSession;
 import model.user.User;
 import model.user.UserDataValidator;
 import view.AppView;
 
-public class LoginMenuController {
+public final class LoginMenuController {
+    private LoginMenuController() {
+    }
+
     public static CommandResult handleLogin(Matcher matcher) {
         LoginMenu menu = (LoginMenu) App.getInstance().getCurrentMenu();
         String username = matcher.group("username");
@@ -23,13 +28,23 @@ public class LoginMenuController {
         if (!menu.isCorrectPassword(username, password)) {
             return CommandResult.error("Incorrect password!");
         }
+
         boolean stayLoggedIn = matcher.group("stayLoggedIn") != null;
         menu.setStayLoggedIn(stayLoggedIn);
-
         menu.login(username);
+        User loggedInUser = App.getInstance().getLoggedInUser();
+        if (stayLoggedIn) {
+            SessionManager.persist(loggedInUser);
+        } else {
+            SessionManager.clearPersistentSession();
+        }
+        AdventureSession.getInstance().reset();
         App.getInstance().changeMenu(new MainMenu());
 
-        return CommandResult.success("Logged in successfully.\nyou're now in main menu");
+        return CommandResult.success(
+                "Logged in successfully."
+                        + System.lineSeparator()
+                        + "you're now in main menu");
     }
 
     public static CommandResult handleForgetPassword(Matcher matcher) {
@@ -39,47 +54,65 @@ public class LoginMenuController {
             return CommandResult.error("username does not exist!");
         }
         String email = matcher.group("email");
+        String emailError = UserDataValidator.validateEmail(email);
+        if (emailError != null) {
+            return CommandResult.error(emailError);
+        }
         if (!menu.isCorrectEmail(username, email)) {
             return CommandResult.error("Incorrect email!");
         }
 
         menu.setTempUserByName(username);
-        return CommandResult.success("Answer the security question:" + menu.getTempUser().getSecurityQuestion());
+        String question = menu.getTempUser().getSecurityQuestion();
+        if (question == null) {
+            menu.setTempUser(null);
+            return CommandResult.error(
+                    "this account does not have a security question");
+        }
+        return CommandResult.success(
+                "Answer the security question: " + question);
     }
 
     public static CommandResult handleAnswer(Matcher matcher) {
         LoginMenu menu = (LoginMenu) App.getInstance().getCurrentMenu();
         User user = menu.getTempUser();
+        if (user == null) {
+            return CommandResult.error(
+                    "use forget password before answering a security question");
+        }
         String answer = matcher.group("answer");
         if (!menu.isCorrectAnswer(answer, user)) {
+            menu.setTempUser(null);
             return CommandResult.error("Incorrect answer!");
         }
 
         AppView.printOutput("Enter new password: ");
+        if (!AppView.getInstance().hasNext()) {
+            return CommandResult.error("new password was not provided");
+        }
         String password = AppView.getInstance().getInput();
-        List<String> passwordErrors = UserDataValidator.validatePassword(password);
+        List<String> passwordErrors =
+                UserDataValidator.validatePassword(password);
         if (!passwordErrors.isEmpty()) {
             return CommandResult.error(passwordErrors.get(0));
         }
+        if (user.doesMatchPassword(password)) {
+            return CommandResult.error(
+                    "new password must be different from the current password");
+        }
 
         AppView.printOutput("confirm password: ");
+        if (!AppView.getInstance().hasNext()) {
+            return CommandResult.error("password confirmation was not provided");
+        }
         String confirmedPassword = AppView.getInstance().getInput();
         if (!confirmedPassword.equals(password)) {
-            String passwordDontMatchError = "passwords don't match. please confirm the password or type 'back' to go to login menu";
-            AppView.printOutput(passwordDontMatchError);
-            while (AppView.getInstance().hasNext()) {
-                String input = AppView.getInstance().getInput();
-
-                if (input.equals("back"))
-                    return CommandResult.error("you're now in login menu");
-
-                if (input.equals(password))
-                    break;
-
-                AppView.printOutput(passwordDontMatchError);
-            }
+            return CommandResult.error(
+                    "password and confirmation do not match");
         }
-        user.changePassword(confirmedPassword);
+
+        user.changePassword(password);
+        menu.setTempUser(null);
         UserManager.saveAllUsers();
         return CommandResult.success("password changed successfully.");
     }

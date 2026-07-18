@@ -4,40 +4,41 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import model.App;
+import model.auth.UserManager;
+import model.user.User;
+
 /**
- * Current in-memory adventure selection and unlock notifications.
+ * Current adventure selection and unlock notifications.
+ * Progress itself belongs to the logged-in user.
  */
 public final class AdventureSession {
-    private static final AdventureSession INSTANCE =
-            new AdventureSession();
+    private static final AdventureSession INSTANCE = new AdventureSession();
 
-    private final AdventureProgress progress;
+    private final AdventureProgress guestProgress;
     private final List<String> pendingNotifications;
     private String selectedChapterId;
 
     private AdventureSession() {
-        progress = new AdventureProgress();
-        pendingNotifications =
-                new ArrayList<>();
-        selectedChapterId =
-                ChapterCatalog.getFirstChapter()
-                        .getId();
+        guestProgress = new AdventureProgress();
+        pendingNotifications = new ArrayList<>();
+        selectedChapterId = ChapterCatalog.getFirstChapter().getId();
     }
 
     public static AdventureSession getInstance() {
         return INSTANCE;
     }
 
+    /**
+     * Clears transient menu state without deleting any user's saved progress.
+     */
     public void reset() {
-        progress.reset();
         pendingNotifications.clear();
-        selectedChapterId =
-                ChapterCatalog.getFirstChapter()
-                        .getId();
+        selectedChapterId = ChapterCatalog.getFirstChapter().getId();
     }
 
     public boolean selectChapter(Chapter chapter) {
-        if (!progress.isChapterUnlocked(chapter)) {
+        if (!getProgress().isChapterUnlocked(chapter)) {
             return false;
         }
         selectedChapterId = chapter.getId();
@@ -45,55 +46,51 @@ public final class AdventureSession {
     }
 
     public Chapter getSelectedChapter() {
-        Chapter selected =
-                ChapterCatalog.findById(
-                        selectedChapterId);
-        return selected == null
-                ? ChapterCatalog.getFirstChapter()
-                : selected;
+        Chapter selected = ChapterCatalog.findById(selectedChapterId);
+        if (selected == null || !getProgress().isChapterUnlocked(selected)) {
+            return ChapterCatalog.getFirstChapter();
+        }
+        return selected;
     }
 
-    public boolean completeLevel(
-            String chapterId, int levelNumber) {
-        Chapter chapter =
-                ChapterCatalog.findById(chapterId);
-        if (!progress.completeLevel(
-                chapter, levelNumber)) {
+    public boolean completeLevel(String chapterId, int levelNumber) {
+        Chapter chapter = ChapterCatalog.findById(chapterId);
+        if (!getProgress().completeLevel(chapter, levelNumber)) {
             return false;
         }
 
-        addCompletionNotifications(
-                chapter, levelNumber);
+        updateUserStatistics(chapter, levelNumber);
+        addCompletionNotifications(chapter, levelNumber);
+        UserManager.saveAllUsers();
         return true;
     }
 
-    private void addCompletionNotifications(
+    private static void updateUserStatistics(
             Chapter chapter, int levelNumber) {
-        pendingNotifications.add(
-                "completed " + chapter.getDisplayName()
-                        + " level " + levelNumber + ".");
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null || chapter == null) {
+            return;
+        }
+        int chapterNumber = ChapterCatalog.getChapters().indexOf(chapter) + 1;
+        user.getGameProgerss().recordCompletedLevel(chapterNumber, levelNumber);
+    }
 
-        if (levelNumber
-                < chapter.getLevelCount()) {
-            pendingNotifications.add(
-                    "unlocked "
-                            + chapter.getDisplayName()
-                            + " level "
-                            + (levelNumber + 1) + ".");
+    private void addCompletionNotifications(Chapter chapter, int levelNumber) {
+        pendingNotifications.add("completed " + chapter.getDisplayName()
+                + " level " + levelNumber + ".");
+
+        if (levelNumber < chapter.getLevelCount()) {
+            pendingNotifications.add("unlocked " + chapter.getDisplayName()
+                    + " level " + (levelNumber + 1) + ".");
             return;
         }
 
-        Chapter next =
-                ChapterCatalog.getNextChapter(
-                        chapter);
+        Chapter next = ChapterCatalog.getNextChapter(chapter);
         if (next == null) {
-            pendingNotifications.add(
-                    "all adventure chapters are complete.");
+            pendingNotifications.add("all adventure chapters are complete.");
         } else {
             pendingNotifications.add(
-                    "unlocked chapter "
-                            + next.getDisplayName()
-                            + ".");
+                    "unlocked chapter " + next.getDisplayName() + ".");
         }
     }
 
@@ -101,14 +98,13 @@ public final class AdventureSession {
         if (pendingNotifications.isEmpty()) {
             return Collections.emptyList();
         }
-        List<String> result =
-                new ArrayList<>(
-                        pendingNotifications);
+        List<String> result = new ArrayList<>(pendingNotifications);
         pendingNotifications.clear();
         return Collections.unmodifiableList(result);
     }
 
     public AdventureProgress getProgress() {
-        return progress;
+        User user = App.getInstance().getLoggedInUser();
+        return user == null ? guestProgress : user.getAdventureProgress();
     }
 }

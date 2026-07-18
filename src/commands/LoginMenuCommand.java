@@ -9,7 +9,7 @@ public enum LoginMenuCommand implements Command<CommandResult> {
             "^forget\\s+password\\s+-u\\s+(?<username>\\S+)\\s+-e\\s+(?<email>\\S+)$",
             LoginMenuController::handleForgetPassword),
     LOGIN(
-            "^login\\s+-u\\s+(?<username>\\S+)\\s+-p\\s+(?<password>\\S+)(?<stayLoggedIn>\\s+-stay-logged-in)?$",
+            "^login\\s+-u\\s+(?<username>\\S+)\\s+-p\\s+(?<password>\\S+)(?<stayLoggedIn>\\s+--stay-logged-in)?$",
             LoginMenuController::handleLogin);
 
     private final String pattern;

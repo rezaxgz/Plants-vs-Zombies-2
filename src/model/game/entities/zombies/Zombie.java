@@ -1,7 +1,5 @@
 package model.game.entities.zombies;
 
-import model.game.Board;
-import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.PushedObstacle;

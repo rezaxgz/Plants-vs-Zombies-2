@@ -12,66 +12,61 @@ import model.menu.SignUpMenu;
 import model.security.Question;
 import model.user.User;
 import model.user.UserDataValidator;
-import view.AppView;
 
-public class SignupMenuController {
+public final class SignupMenuController {
+    private SignupMenuController() {
+    }
+
     public static CommandResult handleRegister(Matcher matcher) {
         SignUpMenu menu = (SignUpMenu) App.getInstance().getCurrentMenu();
         if (menu.getTempUser() != null) {
-            return CommandResult.error("you must pick a question for the previous signup command.");
+            return CommandResult.error(
+                    "you must pick a question for the previous signup command.");
         }
 
         String username = matcher.group("username");
         if (!UserDataValidator.isValidUsername(username)) {
-            return CommandResult.error("username can only contain letters numbers and hyphen");
+            return CommandResult.error(
+                    "username can only contain English letters, numbers and hyphen");
         }
         if (UserManager.usernameExists(username)) {
             return CommandResult.error("username already exists!");
         }
 
         String password = matcher.group("password");
-        List<String> passwordErrors = UserDataValidator.validatePassword(password);
+        List<String> passwordErrors =
+                UserDataValidator.validatePassword(password);
         if (!passwordErrors.isEmpty()) {
             return CommandResult.error(passwordErrors.get(0));
         }
-
         if (!password.equals(matcher.group("passwordConfirm"))) {
-            String passwordDontMatchError = "passwords don't match. please confirm the password or type 'back' to go to signup menu";
-            AppView.printOutput(passwordDontMatchError);
-            while (AppView.getInstance().hasNext()) {
-                String input = AppView.getInstance().getInput();
-
-                if (input.equals("back"))
-                    return CommandResult.error("you're now in signup menu");
-
-                if (input.equals(password))
-                    break;
-
-                AppView.printOutput(passwordDontMatchError);
-            }
+            return CommandResult.error("password and confirmation do not match");
         }
 
-        String nickname = matcher.group("nickname");
+        String nickname = matcher.group("nickname").trim();
         if (!UserDataValidator.isValidNickname(nickname)) {
-            return CommandResult.error("invalid nickname lenght");
+            return CommandResult.error(
+                    "nickname length must be between 3 and 30 characters");
         }
 
         String email = matcher.group("email");
-        String emailErr = UserDataValidator.validateEmail(email);
-        if (emailErr != null) {
-            return CommandResult.error(emailErr);
+        String emailError = UserDataValidator.validateEmail(email);
+        if (emailError != null) {
+            return CommandResult.error(emailError);
         }
 
         Gender gender = Gender.getByName(matcher.group("gender"));
         if (gender == null) {
-            return CommandResult.error("invalid gender. put either male or female!");
+            return CommandResult.error(
+                    "invalid gender. put either male or female!");
         }
 
-        User user = new User(username, password, nickname, email, gender);
-        menu.setTempUser(user);
-
-        return CommandResult
-                .success("user data saved! pick a security quesion and answer it.\n" + Question.getAllQuestions());
+        menu.setTempUser(new User(
+                username, password, nickname, email, gender));
+        return CommandResult.success(
+                "user data saved! pick a security question and answer it."
+                        + System.lineSeparator()
+                        + Question.getAllQuestions());
     }
 
     public static CommandResult handlePickQuestion(Matcher matcher) {
@@ -80,23 +75,34 @@ public class SignupMenuController {
             return CommandResult.error("try signup command first.");
         }
 
-        int n = Integer.parseInt(matcher.group("questionNumber"));
-        Question q = Question.getByNumber(n);
-        if (q == null) {
+        int number;
+        try {
+            number = Integer.parseInt(matcher.group("questionNumber"));
+        } catch (NumberFormatException exception) {
+            return CommandResult.error("invalid question number.");
+        }
+        if (Question.getByNumber(number) == null) {
             return CommandResult.error("invalid question number.");
         }
 
         String answer = matcher.group("answer");
-        String answerC = matcher.group("answerConfirm");
-
-        if (!answer.equals(answerC)) {
-            return CommandResult.error("answer confirm must match answer exactly");
+        String answerConfirmation = matcher.group("answerConfirm");
+        if (answer.isBlank()) {
+            return CommandResult.error("security answer cannot be empty");
+        }
+        if (!answer.equals(answerConfirmation)) {
+            return CommandResult.error(
+                    "answer confirmation must match the answer exactly");
         }
 
-        menu.getTempUser().setSecurityQuestion(n, answer);
-        UserManager.addUserToDatabase(menu.getTempUser());
+        User user = menu.getTempUser();
+        user.setSecurityQuestion(number, answer);
+        UserManager.addUserToDatabase(user);
+        menu.setTempUser(null);
         App.getInstance().changeMenu(new LoginMenu());
-
-        return CommandResult.success("user registered successfully\nyou're now in login menu");
+        return CommandResult.success(
+                "user registered successfully"
+                        + System.lineSeparator()
+                        + "you're now in login menu");
     }
 }

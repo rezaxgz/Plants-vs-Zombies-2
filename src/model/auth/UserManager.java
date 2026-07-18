@@ -19,6 +19,10 @@ public final class UserManager {
     private UserManager() {
     }
 
+    public static Path getDatabasePath() {
+        return databasePath;
+    }
+
     public static synchronized List<User> loadAllUsers() {
         return new ArrayList<>(users);
     }
@@ -56,6 +60,33 @@ public final class UserManager {
         } catch (RuntimeException e) {
             users.remove(user);
             throw e;
+        }
+    }
+
+    public static synchronized void renameUser(User user, String newUsername) {
+        if (user == null || !users.contains(user)) {
+            throw new IllegalArgumentException("user is not managed by the database");
+        }
+        User existing = getUserByUsername(newUsername);
+        if (existing != null && existing != user) {
+            throw new IllegalArgumentException("username already exists: " + newUsername);
+        }
+
+        String oldUsername = user.getUsername();
+        boolean persistent = SessionManager.isPersistentUser(oldUsername);
+        user.changeUsername(newUsername);
+        try {
+            saveAllUsers();
+            if (persistent) {
+                SessionManager.replacePersistentUsername(oldUsername, newUsername);
+            }
+        } catch (RuntimeException exception) {
+            user.changeUsername(oldUsername);
+            saveAllUsers();
+            if (persistent) {
+                SessionManager.persist(user);
+            }
+            throw exception;
         }
     }
 

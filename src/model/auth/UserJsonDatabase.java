@@ -11,13 +11,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
+import model.Settings;
 import model.collections.plants.PlantCollection;
 import model.collections.plants.PlantCollectionItem;
 import model.collections.zombies.ZombieCollection;
 import model.collections.zombies.ZombieCollectionItem;
 import model.enums.Gender;
+import model.roadmap.AdventureProgress;
 import model.security.SecurityQuestion;
+import model.user.GameProgerss;
 import model.user.User;
 import model.greenHouse.GreenHouse;
 import model.greenHouse.PlantedPlant;
@@ -139,10 +144,15 @@ final class UserJsonDatabase {
 
         PlantCollection plantCollection = readPlantCollection(storedUser.get("plantCollection"), prefix);
         ZombieCollection zombieCollection = readZombieCollection(storedUser.get("zombieCollection"), prefix);
+        Settings settings = readSettings(storedUser.get("settings"), prefix);
+        AdventureProgress adventureProgress = readAdventureProgress(
+                storedUser.get("adventureProgress"), prefix);
+        GameProgerss gameProgress = readGameProgress(
+                storedUser.get("gameProgress"), prefix);
 
         User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
                 diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts,
-                plantCollection, zombieCollection);
+                plantCollection, zombieCollection, settings, adventureProgress, gameProgress);
 
         Object newsObj = storedUser.get("news");
         if (newsObj != null) {
@@ -210,6 +220,76 @@ final class UserJsonDatabase {
             collection.restoreZombieState(name, unlocked);
         }
         return collection;
+    }
+
+    private static Settings readSettings(Object value, String prefix) {
+        if (value == null) {
+            return new Settings();
+        }
+        Map<String, Object> storedSettings = requireObject(
+                value, prefix + ".settings");
+        int difficulty = getInt(storedSettings, "difficultyLevel",
+                Settings.DEFAULT_DIFFICULTY);
+        try {
+            return new Settings(difficulty);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(prefix
+                    + ".settings.difficultyLevel must be between 1 and 5");
+        }
+    }
+
+    private static AdventureProgress readAdventureProgress(
+            Object value, String prefix) {
+        if (value == null) {
+            return new AdventureProgress();
+        }
+        Map<String, Object> storedProgress = requireObject(
+                value, prefix + ".adventureProgress");
+        Map<String, Integer> unlockedLevels = new HashMap<>();
+        Object unlockedValue = storedProgress.get("highestUnlockedLevels");
+        if (unlockedValue != null) {
+            Map<String, Object> unlockedMap = requireObject(unlockedValue,
+                    prefix + ".adventureProgress.highestUnlockedLevels");
+            for (Map.Entry<String, Object> entry : unlockedMap.entrySet()) {
+                if (!(entry.getValue() instanceof Number number)) {
+                    throw new IllegalArgumentException(prefix
+                            + ".adventureProgress.highestUnlockedLevels."
+                            + entry.getKey() + " must be a number");
+                }
+                unlockedLevels.put(entry.getKey(), number.intValue());
+            }
+        }
+
+        Set<String> completedLevels = new HashSet<>();
+        Object completedValue = storedProgress.get("completedLevels");
+        if (completedValue != null) {
+            List<Object> completedArray = requireArray(completedValue,
+                    prefix + ".adventureProgress.completedLevels");
+            for (int i = 0; i < completedArray.size(); i++) {
+                Object storedLevel = completedArray.get(i);
+                if (!(storedLevel instanceof String levelKey)) {
+                    throw new IllegalArgumentException(prefix
+                            + ".adventureProgress.completedLevels[" + i
+                            + "] must be a string");
+                }
+                completedLevels.add(levelKey);
+            }
+        }
+        return AdventureProgress.fromStoredData(unlockedLevels, completedLevels);
+    }
+
+    private static GameProgerss readGameProgress(Object value, String prefix) {
+        if (value == null) {
+            return new GameProgerss();
+        }
+        Map<String, Object> storedProgress = requireObject(
+                value, prefix + ".gameProgress");
+        return GameProgerss.fromStoredData(
+                getInt(storedProgress, "lastCompletedChapter", 0),
+                getInt(storedProgress, "lastCompletedLevel", 0),
+                getInt(storedProgress, "completedMinigames", 0),
+                getInt(storedProgress, "highestScore", 0),
+                getInt(storedProgress, "gamesPlayed", 0));
     }
 
     private static GreenHouse readGreenHouse(Map<String, Object> map, String prefix) {
@@ -297,6 +377,9 @@ final class UserJsonDatabase {
         appendNumberProperty(json, indent, "diamonds", user.getDiamonds(), true);
         appendNumberProperty(json, indent, "greenhousePotsUnlocked", user.getGreenhousePotsUnlocked(), true);
         appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), true);
+        appendSettings(json, user.getSettings(), indent);
+        appendAdventureProgress(json, user.getAdventureProgress(), indent);
+        appendGameProgress(json, user.getGameProgerss(), indent);
 
         // Serialize daily offer properties
         appendStringProperty(json, indent, "dailyOfferDate", user.getDailyOfferDate(), true);
@@ -332,6 +415,54 @@ final class UserJsonDatabase {
 
         appendGreenHouse(json, user.getGreenHouse(), indent);
         json.append(indent).append('}');
+    }
+
+    private static void appendSettings(StringBuilder json,
+            Settings settings, String indent) {
+        json.append(indent).append("  \"settings\": {\n");
+        appendNumberProperty(json, indent + "  ", "difficultyLevel",
+                settings.getDifficultyLevel(), false);
+        json.append(indent).append("  },\n");
+    }
+
+    private static void appendAdventureProgress(StringBuilder json,
+            AdventureProgress progress, String indent) {
+        json.append(indent).append("  \"adventureProgress\": {\n");
+        json.append(indent).append("    \"highestUnlockedLevels\": {\n");
+        Map<String, Integer> unlocked = progress
+                .getHighestUnlockedLevelsForStorage();
+        int index = 0;
+        for (Map.Entry<String, Integer> entry : unlocked.entrySet()) {
+            appendNumberProperty(json, indent + "    ", entry.getKey(),
+                    entry.getValue(), ++index < unlocked.size());
+        }
+        json.append(indent).append("    },\n");
+        json.append(indent).append("    \"completedLevels\": [");
+        List<String> completed = progress.getCompletedLevelsForStorage();
+        for (int i = 0; i < completed.size(); i++) {
+            if (i > 0) {
+                json.append(", ");
+            }
+            appendQuoted(json, completed.get(i));
+        }
+        json.append("]\n");
+        json.append(indent).append("  },\n");
+    }
+
+    private static void appendGameProgress(StringBuilder json,
+            GameProgerss progress, String indent) {
+        json.append(indent).append("  \"gameProgress\": {\n");
+        appendNumberProperty(json, indent + "  ", "lastCompletedChapter",
+                progress.getLastCompletedChapter(), true);
+        appendNumberProperty(json, indent + "  ", "lastCompletedLevel",
+                progress.getLastCompletedLevel(), true);
+        appendNumberProperty(json, indent + "  ", "completedMinigames",
+                progress.getCompletedMinigames(), true);
+        appendNumberProperty(json, indent + "  ", "highestScore",
+                progress.getHighestScore(), true);
+        appendNumberProperty(json, indent + "  ", "gamesPlayed",
+                progress.getGamesPlayed(), false);
+        json.append(indent).append("  },\n");
     }
 
     private static void appendPlantCollection(StringBuilder json,

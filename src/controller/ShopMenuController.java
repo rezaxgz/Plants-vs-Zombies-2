@@ -142,6 +142,8 @@ public class ShopMenuController {
             case CURRENCY_EXCHANGE:
                 user.addCoins(count * item.getUnit());
                 break;
+            default:
+                break;
         }
 
         // 4. Financial Settlements Processing Execution Stage

@@ -3,149 +3,173 @@ package model.user;
 import java.util.ArrayList;
 import java.util.List;
 
-public class UserDataValidator {
+public final class UserDataValidator {
+    private static final String PASSWORD_SPECIALS =
+            "!#$%^&*()=+{}[]|/\\:;'\",<>?";
+
+    private UserDataValidator() {
+    }
+
     public static boolean isValidUsername(String username) {
-        return username.matches("[-a-zA-Z0-9]+");
+        return username != null && username.matches("[-a-zA-Z0-9]+");
     }
 
     public static List<String> validatePassword(String password) {
         List<String> errors = new ArrayList<>();
+        if (password == null) {
+            errors.add("Password cannot be empty.");
+            return errors;
+        }
 
         boolean hasLower = false;
         boolean hasUpper = false;
         boolean hasDigit = false;
         boolean hasSpecial = false;
+        boolean hasInvalidCharacter = false;
 
-        String specials = "!#$%^&*()=+{}[]|/\\\\:;'\",<>?";
-
-        for (char c : password.toCharArray()) {
-            if (Character.isLowerCase(c))
+        for (char character : password.toCharArray()) {
+            if (isAsciiLower(character)) {
                 hasLower = true;
-            else if (Character.isUpperCase(c))
+            } else if (isAsciiUpper(character)) {
                 hasUpper = true;
-            else if (Character.isDigit(c))
+            } else if (isAsciiDigit(character)) {
                 hasDigit = true;
-            else if (specials.indexOf(c) >= 0)
+            } else if (PASSWORD_SPECIALS.indexOf(character) >= 0) {
                 hasSpecial = true;
+            } else {
+                hasInvalidCharacter = true;
+            }
         }
 
-        if (password.length() < 8)
+        if (password.length() < 8) {
             errors.add("Length must be at least 8.");
-
-        if (!hasLower)
+        }
+        if (!hasLower) {
             errors.add("Missing lowercase letter.");
-
-        if (!hasUpper)
+        }
+        if (!hasUpper) {
             errors.add("Missing uppercase letter.");
-
-        if (!hasDigit)
+        }
+        if (!hasDigit) {
             errors.add("Missing digit.");
-
-        if (!hasSpecial)
+        }
+        if (!hasSpecial) {
             errors.add("Missing special character.");
-
+        }
+        if (hasInvalidCharacter) {
+            errors.add("Password contains an invalid character.");
+        }
         return errors;
     }
 
     public static boolean isValidNickname(String nickname) {
-        return nickname.length() <= 30 && nickname.length() > 2;
+        return nickname != null
+                && nickname.length() >= 3
+                && nickname.length() <= 30;
     }
 
     public static String validateEmail(String email) {
-        int atIndex = email.indexOf('@');
-        if (atIndex == -1 || email.indexOf('@', atIndex + 1) != -1) {
+        if (email == null || email.isEmpty()) {
+            return "email cannot be empty";
+        }
+
+        int firstAt = email.indexOf('@');
+        int lastAt = email.lastIndexOf('@');
+        if (firstAt <= 0 || firstAt != lastAt
+                || firstAt == email.length() - 1) {
             return "email must contain one and only one @";
         }
 
-        String username = email.substring(0, atIndex);
-        String usernameErr = validateUsernameInEmail(username);
-        if (usernameErr != null) {
-            return usernameErr;
+        String localPart = email.substring(0, firstAt);
+        String localError = validateLocalPart(localPart);
+        if (localError != null) {
+            return localError;
         }
 
-        String domain = email.substring(atIndex + 1);
-        String domainErr = validateDomainInEmail(domain);
-        if (domainErr != null) {
-            return domainErr;
-        }
+        String domain = email.substring(firstAt + 1);
+        return validateDomain(domain);
+    }
 
-        String invalidChars = ":!#$%^&*()=+}{[]|/\\:;'\",><";
-        for (char c : invalidChars.toCharArray()) {
-            if (email.indexOf(c) != -1) {
-                return "email cannot contain the charachter '" + c + "'";
+    private static String validateLocalPart(String localPart) {
+        if (!isAsciiLetterOrDigit(localPart.charAt(0))
+                || !isAsciiLetterOrDigit(
+                        localPart.charAt(localPart.length() - 1))) {
+            return "email username must start and end with a letter or digit";
+        }
+        if (localPart.contains("..")) {
+            return "email username cannot contain consecutive dots";
+        }
+        for (char character : localPart.toCharArray()) {
+            boolean allowed = isAsciiLetterOrDigit(character)
+                    || character == '.' || character == '-'
+                    || character == '_';
+            if (!allowed) {
+                return "email username contains an invalid character";
             }
         }
         return null;
     }
 
-    private static String validateUsernameInEmail(String s) {
-        if (s == null || s.isEmpty()) {
-            return "username in email cannot be empty";
+    private static String validateDomain(String domain) {
+        if (domain.contains("..")) {
+            return "email domain cannot contain consecutive dots";
         }
-        int n = s.length();
-        if (!Character.isLetterOrDigit(s.charAt(0)) || !Character.isLetterOrDigit(s.charAt(n - 1))) {
-            return "username in email must start and end with a digit or number";
+        String[] labels = domain.split("\\.", -1);
+        if (labels.length < 2) {
+            return "email domain must contain at least one dot";
         }
-        boolean prevDot = false;
-        for (int i = 0; i < n; i++) {
-            char c = s.charAt(i);
-            if (!Character.isLetterOrDigit(c) && c != '.' && c != '-' && c != '_') {
-                return "username in email must only contain letters, digits, dots, -, _";
+        for (String label : labels) {
+            String error = validateDomainLabel(label);
+            if (error != null) {
+                return error;
             }
-            if (c == '.') {
-                if (prevDot) {
-                    return "username in email cannot have consecutive dots";
-                }
-                prevDot = true;
-            } else {
-                prevDot = false;
+        }
+
+        String topLevelDomain = labels[labels.length - 1];
+        if (topLevelDomain.length() < 2) {
+            return "domain extension must be at least 2 characters long";
+        }
+        for (char character : topLevelDomain.toCharArray()) {
+            if (!isAsciiLetter(character)) {
+                return "domain extension can only contain English letters";
             }
         }
         return null;
     }
 
-    private static String validateDomainInEmail(String s) {
-        if (s == null || s.isEmpty()) {
-            return "domain in email cannot be empty";
+    private static String validateDomainLabel(String label) {
+        if (label.isEmpty()) {
+            return "email domain cannot contain empty sections";
         }
-
-        int n = s.length();
-
-        if (!Character.isLetterOrDigit(s.charAt(0)) || !Character.isLetterOrDigit(s.charAt(n - 1))) {
-            return "domain in email must start and end with a digit or number";
+        if (!isAsciiLetterOrDigit(label.charAt(0))
+                || !isAsciiLetterOrDigit(label.charAt(label.length() - 1))) {
+            return "each email domain section must start and end with a letter or digit";
         }
-
-        boolean hasDot = false;
-        int lastDotIndex = -1;
-
-        for (int i = 0; i < n; i++) {
-            char c = s.charAt(i);
-
-            if (!Character.isLetterOrDigit(c) && c != '-' && c != '.') {
-                return "domain in email can only contain letters, digits and hyphen";
-            }
-
-            if (c == '.') {
-                hasDot = true;
-                lastDotIndex = i;
+        for (char character : label.toCharArray()) {
+            if (!isAsciiLetterOrDigit(character) && character != '-') {
+                return "email domain contains an invalid character";
             }
         }
-
-        if (!hasDot) {
-            return "domain in email must contain at least one dot";
-        }
-
-        String tld = s.substring(lastDotIndex + 1);
-
-        if (tld.length() < 2) {
-            return "domain extension must be at least 2 charachters long";
-        }
-        for (char c : tld.toCharArray()) {
-            if (!Character.isLetter(c)) {
-                return "domain extenstion ca only contain letters";
-            }
-        }
-
         return null;
+    }
+
+    private static boolean isAsciiLetterOrDigit(char character) {
+        return isAsciiLetter(character) || isAsciiDigit(character);
+    }
+
+    private static boolean isAsciiLetter(char character) {
+        return isAsciiLower(character) || isAsciiUpper(character);
+    }
+
+    private static boolean isAsciiLower(char character) {
+        return character >= 'a' && character <= 'z';
+    }
+
+    private static boolean isAsciiUpper(char character) {
+        return character >= 'A' && character <= 'Z';
+    }
+
+    private static boolean isAsciiDigit(char character) {
+        return character >= '0' && character <= '9';
     }
 }
