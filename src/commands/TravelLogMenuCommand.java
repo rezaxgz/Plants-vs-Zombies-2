@@ -13,11 +13,20 @@ public enum TravelLogMenuCommand implements Command<CommandResult> {
     SHOW_VASE_BREAKER_LEVELS(
             "^show\\s+vase(?:-|\\s*)breaker\\s+levels$",
             TravelLogMenuController::handleShowVaseBreakerLevels),
+    SHOW_WALLNUT_BOWLING_LEVELS(
+            "^show\\s+wall(?:-|\\s*)nut\\s+bowling\\s+levels$",
+            TravelLogMenuController::handleShowWallnutBowlingLevels),
     START_VASE_BREAKER(
             "^(?:start\\s+vase(?:-|\\s*)breaker|"
                     + "start\\s+minigame\\s+-m\\s+vase(?:-|\\s*)breaker)"
                     + "\\s+-l\\s+(?<level>\\d+)$",
             TravelLogMenuController::handleStartVaseBreaker),
+    START_WALLNUT_BOWLING(
+            "^(?:start\\s+wall(?:-|\\s*)nut\\s+bowling|"
+                    + "start\\s+minigame\\s+-m\\s+"
+                    + "wall(?:-|\\s*)nut(?:-|\\s*)bowling)"
+                    + "\\s+-l\\s+(?<level>\\d+)$",
+            TravelLogMenuController::handleStartWallnutBowling),
     PAGE(
             "^travel\\s+log\\s+page\\s+(?<page>\\d+)$",
             TravelLogMenuController::handlePage);

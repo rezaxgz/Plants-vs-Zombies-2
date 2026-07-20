@@ -318,8 +318,7 @@ public final class GameMenuController {
         String requestedType = matcher.group("type").trim();
         if (!game.allowsDirectPlanting()) {
             return CommandResult.error(
-                    "ordinary planting is disabled in this minigame; "
-                            + "use a vase seed packet instead!")
+                    game.getDirectPlantingDisabledMessage())
                     .addPreCommandResults(preCommandResults);
         }
         if (PlantFactory.createPlant(requestedType, position) == null) {
@@ -622,6 +621,11 @@ public final class GameMenuController {
             case INVALID_POSITION:
                 return CommandResult.error(
                         "plant location is outside the board!")
+                        .addPreCommandResults(pending);
+            case OUTSIDE_BOWLING_ZONE:
+                return CommandResult.error(
+                        "the Wall-nut must be launched on the house side "
+                                + "of the red bowling line!")
                         .addPreCommandResults(pending);
             case POSITION_OCCUPIED:
                 return CommandResult.error(

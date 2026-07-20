@@ -8,6 +8,7 @@ public enum ConveyorPlacementResult {
     NOT_CONVEYOR_LEVEL,
     INVALID_PACKET,
     INVALID_POSITION,
+    OUTSIDE_BOWLING_ZONE,
     POSITION_OCCUPIED,
     UNKNOWN_PLANT
 }

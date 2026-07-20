@@ -68,6 +68,12 @@ public final class VaseBreaker extends Game {
     }
 
     @Override
+    public String getDirectPlantingDisabledMessage() {
+        return "ordinary planting is disabled in Vase Breaker; "
+                + "use a vase seed packet instead!";
+    }
+
+    @Override
     protected boolean shouldProcessZombieDeathDrops() {
         return false;
     }

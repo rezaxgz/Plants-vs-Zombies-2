@@ -4,6 +4,7 @@ import controller.GameMenuController;
 import controller.GameStatusCommandController;
 import controller.SpecialLevelCommandController;
 import controller.VaseBreakerCommandController;
+import controller.WallnutBowlingCommandController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
@@ -13,6 +14,9 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handleOpenTravelLog),
     SHOW_VASES("^show\\s+vases$",
             VaseBreakerCommandController::handleShowVases),
+    SHOW_BOWLING_WALLNUTS(
+            "^show\\s+(?:bowling|rolling)\\s+wall(?:-|\\s*)nuts$",
+            WallnutBowlingCommandController::handleShowRollingWallnuts),
     SHOW_VASE_SEEDS("^show\\s+vase(?:-|\\s+)seeds$",
             VaseBreakerCommandController::handleShowSeeds),
     BREAK_VASE(

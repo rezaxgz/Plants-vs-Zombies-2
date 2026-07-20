@@ -1439,6 +1439,14 @@ public class Game {
         return conveyorBeltSystem.getPacket(index);
     }
 
+    protected final ConveyorPlantPacket consumeConveyorPacket(
+            int index) {
+        if (conveyorBeltSystem == null) {
+            return null;
+        }
+        return conveyorBeltSystem.consumePacket(index);
+    }
+
     public double
             getConveyorSecondsUntilNextPacket() {
         if (conveyorBeltSystem == null) {
@@ -1988,6 +1996,10 @@ public class Game {
      */
     public boolean allowsDirectPlanting() {
         return true;
+    }
+
+    public String getDirectPlantingDisabledMessage() {
+        return "ordinary planting is disabled in this minigame!";
     }
 
     /**
