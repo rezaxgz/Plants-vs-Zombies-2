@@ -1,6 +1,5 @@
 package model.game.entities.zombies;
 
-import model.game.Board;
 import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
@@ -16,6 +15,7 @@ import model.game.entities.zombies.attack.PlantEatingAttack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Enhanced Zombie class with support for armor, abilities, and special
@@ -34,6 +34,8 @@ public class Zombie extends Entity {
     private boolean reachedHouse;
     private boolean dead;
     private boolean deathReported;
+    private boolean deathDropsProcessed;
+    private final boolean glowing;
 
     private Armor armor;
     private List<ZombieAbility> abilities;
@@ -60,7 +62,17 @@ public class Zombie extends Entity {
     private double poisonTickTimerSeconds;
 
     public Zombie(ZombieType type, int waveNumber, int lane, double columnPosition) {
+        this(type, waveNumber, lane, columnPosition,
+                ThreadLocalRandom.current().nextDouble()
+                        < Constants.GLOWING_ZOMBIE_CHANCE);
+    }
+
+    public Zombie(ZombieType type, int waveNumber, int lane,
+            double columnPosition, boolean glowing) {
         super(new EntityPosition(lane, (int) columnPosition));
+        if (type == null) {
+            throw new IllegalArgumentException("type cannot be null");
+        }
         this.type = type;
         this.waveNumber = waveNumber;
         this.lane = lane;
@@ -70,6 +82,8 @@ public class Zombie extends Entity {
         this.reachedHouse = false;
         this.dead = false;
         this.deathReported = false;
+        this.deathDropsProcessed = false;
+        this.glowing = glowing;
         this.abilities = new ArrayList<>();
 
         // Initialize armor if applicable
@@ -341,6 +355,18 @@ public class Zombie extends Entity {
 
     public boolean isDeathReported() {
         return deathReported;
+    }
+
+    public boolean isGlowing() {
+        return glowing;
+    }
+
+    public boolean areDeathDropsProcessed() {
+        return deathDropsProcessed;
+    }
+
+    public void markDeathDropsProcessed() {
+        deathDropsProcessed = true;
     }
 
     // Movement

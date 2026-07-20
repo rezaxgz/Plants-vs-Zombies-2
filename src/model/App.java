@@ -1,5 +1,7 @@
 package model;
 
+import model.auth.SessionManager;
+import model.menu.MainMenu;
 import model.menu.Menu;
 import model.menu.SignUpMenu;
 import model.user.User;
@@ -12,6 +14,11 @@ public class App {
     private boolean running = true;
 
     private App() {
+        User persistentUser = SessionManager.restorePersistentUser();
+        if (persistentUser != null) {
+            loggedInUser = persistentUser;
+            currentMenu = new MainMenu();
+        }
     }
 
     public static App getInstance() {
@@ -38,6 +45,7 @@ public class App {
     }
 
     public void logout() {
+        SessionManager.clearPersistentSession();
         loggedInUser = null;
         changeMenu(new SignUpMenu());
     }

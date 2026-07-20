@@ -2,7 +2,6 @@ package commands;
 
 import controller.ShopMenuController;
 import model.CommandResult;
-import java.util.regex.Matcher;
 
 public enum ShopMenuCommand implements Command<CommandResult> {
     SHOP_LIST("^shop list$", ShopMenuController::handleShopList),

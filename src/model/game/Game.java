@@ -16,6 +16,11 @@ import model.game.defense.LawnMower;
 import model.game.defense.LawnMowerResolution;
 import model.game.defense.LawnMowerSystem;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.Coin;
+import model.game.entities.other.CollectibleDrop;
+import model.game.entities.other.Diamond;
+import model.game.entities.other.PlantFoodDrop;
+import model.game.entities.other.PotDrop;
 import model.game.entities.other.Sun;
 import model.game.entities.other.SunType;
 import model.game.entities.plants.BasePlant;
@@ -51,6 +56,7 @@ import model.game.special.SaveOurSeedsSystem;
 import model.game.special.TimedWarObjective;
 import model.game.special.TimedWarState;
 import model.game.special.TimedWarSystem;
+import model.user.User;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
@@ -185,6 +191,8 @@ public class Game {
         List<Zombie> zombieSnapshot =
                 new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+        reportSunLandings();
+        processZombieDeathDrops(zombieSnapshot);
 
         if (resolveDeadLineFailure(deltaSeconds)) {
             return;
@@ -193,6 +201,7 @@ public class Game {
         LawnMowerResolution mowerResolution =
                 lawnMowerSystem.resolve(board);
         pendingResults.addAll(mowerResolution.getMessages());
+        processZombieDeathDrops(mowerResolution.getKilledZombies());
         trackBoardSpawnedZombies();
 
         if (mowerResolution.isBrainEaten()) {
@@ -767,7 +776,10 @@ public class Game {
         List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
         for (ZombieType zombieType : wave.getZombieTypes()) {
             int lane = random.nextInt(board.getNumberOfRows());
-            Zombie zombie = new Zombie(zombieType, waveNumber, lane, spawnColumn);
+            boolean glowing = random.nextDouble()
+                    < Constants.GLOWING_ZOMBIE_CHANCE;
+            Zombie zombie = new Zombie(zombieType, waveNumber, lane,
+                    spawnColumn, glowing);
             spawnedZombies.add(zombie);
             board.addZombie(zombie);
             pendingResults.add(buildSpawnMessage(zombie));
@@ -798,14 +810,9 @@ public class Game {
                 || nextWaveIndex < zombieWaves.size()) {
             return;
         }
-        for (List<Zombie> waveZombies :
-                spawnedZombiesByWave) {
-            for (Zombie zombie : waveZombies) {
-                if (!zombie.isDead()
-                        && !zombie.isHypnotized()
-                        && board.containsEntity(zombie)) {
-                    return;
-                }
+        for (Zombie zombie : board.getZombies()) {
+            if (!zombie.isDead() && !zombie.isHypnotized()) {
+                return;
             }
         }
         status = GameStatus.WON;
@@ -835,6 +842,7 @@ public class Game {
             zombie.kill();
         }
         board.update(0.0f);
+        processZombieDeathDrops(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
         returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
         restoreWizardSheepFromDeadZombies(zombieSnapshot);
@@ -847,13 +855,73 @@ public class Game {
     }
 
     private void dropSkySun() {
-        SunType type = random.nextDouble() < Constants.SPECIAL_SKY_SUN_CHANCE
-                ? SunType.SPECIAL
-                : SunType.NORMAL;
+        double roll = random.nextDouble();
+        SunType type;
+        if (roll < Constants.RADIOACTIVE_SKY_SUN_CHANCE) {
+            type = SunType.RADIOACTIVE;
+        } else if (roll < Constants.RADIOACTIVE_SKY_SUN_CHANCE
+                + Constants.SPECIAL_SKY_SUN_CHANCE) {
+            type = SunType.SPECIAL;
+        } else {
+            type = SunType.NORMAL;
+        }
         EntityPosition position = new EntityPosition(random.nextInt(board.getNumberOfRows()),
                 random.nextInt(board.getNumberOfColumns()));
         board.addEntity(Sun.createSkySun(type, position));
         pendingResults.add("New " + type.getDisplayName() + " sun is dropping at position " + position);
+    }
+
+    private void reportSunLandings() {
+        for (Sun sun : board.getSuns()) {
+            if (sun.consumeLandedEvent()) {
+                pendingResults.add("Sun reached the ground at position "
+                        + sun.getEntityPosition());
+            }
+        }
+    }
+
+    private void processZombieDeathDrops(List<Zombie> zombies) {
+        for (Zombie zombie : zombies) {
+            if (zombie == null || !zombie.isDead()
+                    || zombie.areDeathDropsProcessed()) {
+                continue;
+            }
+            zombie.markDeathDropsProcessed();
+            EntityPosition position = getDropPosition(zombie);
+            if (zombie.isGlowing()) {
+                board.addEntity(new PlantFoodDrop(position));
+                pendingResults.add("The glowing zombie dropped a plant food at "
+                        + position + ".");
+            }
+            if (random.nextDouble() < Constants.ZOMBIE_REWARD_DROP_CHANCE) {
+                dropZombieReward(position);
+            }
+        }
+    }
+
+    private EntityPosition getDropPosition(Zombie zombie) {
+        int row = Math.max(0, Math.min(board.getNumberOfRows() - 1,
+                zombie.getLane()));
+        int column = Math.max(0, Math.min(board.getNumberOfColumns() - 1,
+                (int) Math.floor(zombie.getColumnPosition())));
+        return new EntityPosition(row, column);
+    }
+
+    private void dropZombieReward(EntityPosition position) {
+        int rewardType = random.nextInt(3);
+        String rewardName;
+        if (rewardType == 0) {
+            board.addEntity(new Diamond(position));
+            rewardName = "diamond";
+        } else if (rewardType == 1) {
+            board.addEntity(new Coin(position));
+            rewardName = "coin";
+        } else {
+            board.addEntity(new PotDrop(position));
+            rewardName = "pot";
+        }
+        pendingResults.add("A zombie dropped a " + rewardName + " at "
+                + position + ".");
     }
 
     public static double getSkySunDropIntervalSeconds(double timePassedSeconds) {
@@ -877,6 +945,15 @@ public class Game {
             return false;
         }
 
+        if (sun.isRadioactive() && sun.isDropping()) {
+            if (!sun.collectRadioactiveWhileDropping()) {
+                return false;
+            }
+            board.removeEntity(sun);
+            explodeRadioactiveSun(sun.getEntityPosition());
+            return true;
+        }
+
         int collectedAmount = sun.collect();
         if (collectedAmount <= 0) {
             return false;
@@ -892,15 +969,110 @@ public class Game {
     }
 
     public int collectSunAt(EntityPosition position) {
+        return collectSunsAt(position).getCollectedSunAmount();
+    }
+
+    public SunCollectionResult collectSunsAt(EntityPosition position) {
         int collectedAmount = 0;
+        int collectedCount = 0;
+        int explosionCount = 0;
         List<Sun> sunsAtPosition = new ArrayList<>(board.getSunsAt(position));
         for (Sun sun : sunsAtPosition) {
             int amount = sun.getSunAmount();
+            boolean radioactiveExplosion = sun.isRadioactive() && sun.isDropping();
             if (collectSun(sun)) {
+                collectedCount++;
                 collectedAmount += amount;
+                if (radioactiveExplosion) {
+                    explosionCount++;
+                }
             }
         }
-        return collectedAmount;
+        return new SunCollectionResult(collectedCount, collectedAmount,
+                explosionCount);
+    }
+
+    private void explodeRadioactiveSun(EntityPosition position) {
+        List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
+        int damagedZombies = 0;
+        int damagedPlants = 0;
+        for (Zombie zombie : zombieSnapshot) {
+            if (isWithinArea(position, zombie.getLane(),
+                    (int) Math.floor(zombie.getColumnPosition()), 2)) {
+                zombie.takeDamage(Constants.RADIOACTIVE_SUN_ZOMBIE_DAMAGE);
+                damagedZombies++;
+            }
+        }
+        for (BasePlant plant : new ArrayList<>(board.getPlants())) {
+            EntityPosition plantPosition = plant.getEntityPosition();
+            if (plantPosition != null && isWithinArea(position,
+                    plantPosition.getRow(), plantPosition.getColumn(), 1)) {
+                plant.takeDamage(Constants.RADIOACTIVE_SUN_PLANT_DAMAGE);
+                damagedPlants++;
+            }
+        }
+        board.update(0.0f);
+        processZombieDeathDrops(zombieSnapshot);
+        returnStolenSunFromDeadZombies(zombieSnapshot);
+        returnCrystalSkullSunFromDeadZombies(zombieSnapshot);
+        restoreWizardSheepFromDeadZombies(zombieSnapshot);
+        pendingResults.addAll(board.drainResults());
+        pendingResults.add("Radioactive sun exploded at " + position
+                + ", damaging " + damagedZombies + " zombies and "
+                + damagedPlants + " plants.");
+    }
+
+    private static boolean isWithinArea(EntityPosition center, int row,
+            int column, int radius) {
+        return Math.abs(center.getRow() - row) <= radius
+                && Math.abs(center.getColumn() - column) <= radius;
+    }
+
+    public int collectPlantFoodDropsAt(EntityPosition position) {
+        int collected = 0;
+        for (CollectibleDrop drop : new ArrayList<>(
+                board.getCollectibleDropsAt(position))) {
+            if (!(drop instanceof PlantFoodDrop)
+                    || plantFoodCount >= MAX_PLANT_FOOD) {
+                continue;
+            }
+            if (drop.collect()) {
+                board.removeEntity(drop);
+                plantFoodCount++;
+                collected++;
+            }
+        }
+        return collected;
+    }
+
+    public RewardCollectionResult collectRewardDropsAt(EntityPosition position,
+            User user) {
+        if (user == null) {
+            throw new IllegalArgumentException("user cannot be null");
+        }
+        int dropCount = 0;
+        int coins = 0;
+        int diamonds = 0;
+        int pots = 0;
+        for (CollectibleDrop drop : new ArrayList<>(
+                board.getCollectibleDropsAt(position))) {
+            if (drop instanceof PlantFoodDrop || !drop.collect()) {
+                continue;
+            }
+            board.removeEntity(drop);
+            dropCount++;
+            if (drop instanceof Coin) {
+                coins += Coin.AMOUNT;
+                user.addCoins(Coin.AMOUNT);
+            } else if (drop instanceof Diamond) {
+                diamonds += Diamond.AMOUNT;
+                user.addDiamonds(Diamond.AMOUNT);
+            } else if (drop instanceof PotDrop) {
+                pots++;
+                user.addPots(1);
+            }
+        }
+        return new RewardCollectionResult(dropCount, coins, diamonds, pots);
     }
 
     public boolean addPlantFood() {
@@ -930,6 +1102,25 @@ public class Game {
             throw new IllegalArgumentException("sun total is too large");
         }
         sunCount += amount;
+    }
+
+    public Zombie spawnZombie(String requestedType, int column, int row) {
+        ZombieType type = ZombieType.findByName(requestedType);
+        if (type == null) {
+            return null;
+        }
+        if (row < 0 || row >= board.getNumberOfRows()
+                || column < 0 || column >= board.getNumberOfColumns()) {
+            throw new IllegalArgumentException("zombie position is outside the board");
+        }
+        boolean glowing = random.nextDouble()
+                < Constants.GLOWING_ZOMBIE_CHANCE;
+        Zombie zombie = new Zombie(type, Math.max(1, zombieWaveNumber),
+                row, column, glowing);
+        board.addZombie(zombie);
+        pendingResults.add("Zombie " + zombie.getName()
+                + " spawned by cheat at (" + column + ", " + row + ").");
+        return zombie;
     }
 
     public void enableConveyorBelt(

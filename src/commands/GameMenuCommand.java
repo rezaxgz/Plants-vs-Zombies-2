@@ -10,6 +10,14 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handleAdvanceTime),
     COLLECT_SUN("^collect\\s+sun\\s+-l\\s+\\(\\s*(?<x>\\d+)\\s*,\\s*(?<y>\\d+)\\s*\\)$",
             GameMenuController::handleCollectSun),
+    COLLECT_PLANT_FOOD(
+            "^collect\\s+plant(?:-|\\s+)food\\s+-l\\s+"
+                    + "\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameMenuController::handleCollectPlantFood),
+    COLLECT_REWARD(
+            "^collect\\s+(?:reward|drop)\\s+-l\\s+"
+                    + "\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            GameMenuController::handleCollectReward),
     CHEAT_ADD_SUNS("^cheat\\s+add\\s+-n\\s+(?<count>-?\\d+)\\s+suns$",
             GameMenuController::handleCheatAddSuns),
     CHEAT_ADD_PLANT_FOOD("^cheat\\s+add-plant-food$",
@@ -57,6 +65,11 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handlePlantFromConveyor),
     ZOMBIES_INFO("^zombies\\s+info$",
             GameMenuController::handleZombiesInfo),
+    CHEAT_SPAWN_ZOMBIE(
+            "^cheat\\s+spawn-zombie\\s+-t\\s+(?<type>.+?)\\s+-l\\s+"
+                    + "(?:\\(\\s*)?(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)"
+                    + "(?:\\s*\\))?$",
+            GameMenuController::handleSpawnZombie),
     RELEASE_NUKE("^release\\s+the\\s+nuke$",
             GameMenuController::handleReleaseNuke);
 

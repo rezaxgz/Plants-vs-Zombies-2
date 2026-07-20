@@ -2,7 +2,6 @@ package commands;
 
 import controller.GreenhouseMenuController;
 import model.CommandResult;
-import java.util.regex.Matcher;
 
 public enum GreenhouseMenuCommand implements Command<CommandResult> {
     SHOW_GREENHOUSE("^show greenhouse$", GreenhouseMenuController::handleShowGreenhouse),

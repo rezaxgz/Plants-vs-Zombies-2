@@ -12,6 +12,7 @@ import model.Constants;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.ArcadeMachine;
+import model.game.entities.other.CollectibleDrop;
 import model.game.entities.other.IceBlock;
 import model.game.entities.other.PushedObstacle;
 import model.game.entities.other.RollingBarrel;
@@ -3422,6 +3423,29 @@ public class Board {
             }
         }
         return Collections.unmodifiableList(suns);
+    }
+
+    public List<CollectibleDrop> getCollectibleDrops() {
+        List<CollectibleDrop> drops = new ArrayList<>();
+        for (Entity entity : allEntities) {
+            if (entity instanceof CollectibleDrop && !entity.isRemoved()) {
+                drops.add((CollectibleDrop) entity);
+            }
+        }
+        return Collections.unmodifiableList(drops);
+    }
+
+    public List<CollectibleDrop> getCollectibleDropsAt(EntityPosition position) {
+        if (position == null) {
+            return Collections.emptyList();
+        }
+        List<CollectibleDrop> drops = new ArrayList<>();
+        for (CollectibleDrop drop : getCollectibleDrops()) {
+            if (position.equals(drop.getEntityPosition())) {
+                drops.add(drop);
+            }
+        }
+        return Collections.unmodifiableList(drops);
     }
 
     public List<Projectile> getProjectiles() {

@@ -1,36 +1,41 @@
 package model.security;
 
 public enum Question {
-    Q1(1, "dfjslkdfj?");
+    FIRST_SCHOOL(1, "What was the name of your first school?"),
+    CHILDHOOD_FRIEND(2, "What was the name of your childhood best friend?"),
+    FAVORITE_BOOK(3, "What was your favorite childhood book?"),
+    FIRST_PET(4, "What was the name of your first pet?"),
+    BIRTH_CITY(5, "In which city were you born?");
 
     private final String text;
-    private final int n;
+    private final int number;
 
-    Question(int n, String q) {
-        this.n = n;
-        this.text = q;
+    Question(int number, String text) {
+        this.number = number;
+        this.text = text;
     }
 
     public String getText() {
-        return this.text;
+        return text;
     }
 
-    public static Question getByNumber(int n) {
-        for (Question q : values()) {
-            if (q.n == n)
-                return q;
+    public static Question getByNumber(int number) {
+        for (Question question : values()) {
+            if (question.number == number) {
+                return question;
+            }
         }
         return null;
     }
 
     public static String getAllQuestions() {
-        StringBuilder sb = new StringBuilder();
-        for (Question q : values()) {
-            sb.append("\n");
-            sb.append(q.n);
-            sb.append(". ");
-            sb.append(q.text);
+        StringBuilder output = new StringBuilder();
+        for (Question question : values()) {
+            if (output.length() > 0) {
+                output.append(System.lineSeparator());
+            }
+            output.append(question.number).append(". ").append(question.text);
         }
-        return sb.toString().trim();
+        return output.toString();
     }
 }

@@ -265,6 +265,11 @@ public final class MainController {
             game.configurePlantLoadout(
                     selectedPlantLevels, boostedPlantNames);
         }
+        User user = App.getInstance().getLoggedInUser();
+        if (user != null) {
+            user.getGameProgerss().recordGameStarted();
+            UserManager.saveAllUsers();
+        }
         App.getInstance().changeMenu(
                 new GameMenu(game, chapter.getId(),
                         level.getNumber(), level));

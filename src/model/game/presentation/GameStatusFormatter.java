@@ -7,6 +7,11 @@ import model.game.Board;
 import model.game.Game;
 import model.game.defense.LawnMower;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.CollectibleDrop;
+import model.game.entities.other.Coin;
+import model.game.entities.other.Diamond;
+import model.game.entities.other.PlantFoodDrop;
+import model.game.entities.other.PotDrop;
 import model.game.entities.other.Sun;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
@@ -42,6 +47,7 @@ public final class GameStatusFormatter {
                 .append("F=frozen W=water LB=low-beach ")
                 .append("NE=necromancy C=crater; ")
                 .append("P=plants Z=zombies S=suns R=structures")
+                .append(" D=drops")
                 .append(System.lineSeparator());
         for (int row = 0;
                 row < board.getNumberOfRows(); row++) {
@@ -57,6 +63,7 @@ public final class GameStatusFormatter {
                 int zombies = getZombiesAt(
                         board, row, column).size();
                 int suns = board.getSunsAt(position).size();
+                int drops = board.getCollectibleDropsAt(position).size();
                 int structures =
                         board.getStructureAt(position) == null
                                 ? 0 : 1;
@@ -67,6 +74,7 @@ public final class GameStatusFormatter {
                         .append(" Z").append(zombies)
                         .append(" S").append(suns)
                         .append(" R").append(structures)
+                        .append(" D").append(drops)
                         .append(']');
                 if (column
                         < board.getNumberOfColumns() - 1) {
@@ -167,6 +175,8 @@ public final class GameStatusFormatter {
                         position.getColumn()));
         appendSunDetails(
                 output, board.getSunsAt(position));
+        appendDropDetails(
+                output, board.getCollectibleDropsAt(position));
         LawnMower mower = game.getLawnMowerAtRow(
                 position.getRow());
         output.append("row lawn mower: ")
@@ -348,6 +358,9 @@ public final class GameStatusFormatter {
         if (zombie.isHypnotized()) {
             effects.add("hypnotized");
         }
+        if (zombie.isGlowing()) {
+            effects.add("glowing");
+        }
         if (zombie.getPoisonDurationSeconds() > 0.0) {
             effects.add("poisoned "
                     + formatSeconds(
@@ -380,6 +393,40 @@ public final class GameStatusFormatter {
                             ? "yes" : "no")
                     .append(System.lineSeparator());
         }
+    }
+    private static void appendDropDetails(
+            StringBuilder output, List<CollectibleDrop> drops) {
+        output.append("drops:");
+        if (drops.isEmpty()) {
+            output.append(" none")
+                    .append(System.lineSeparator());
+            return;
+        }
+        output.append(System.lineSeparator());
+        for (CollectibleDrop drop : drops) {
+            output.append("- ")
+                    .append(dropName(drop))
+                    .append(" | despawns in: ")
+                    .append(formatSeconds(Math.max(0.0,
+                            drop.getLifeSpanSeconds()
+                                    - drop.getElapsedSeconds())))
+                    .append(System.lineSeparator());
+        }
+    }
+    private static String dropName(CollectibleDrop drop) {
+        if (drop instanceof PlantFoodDrop) {
+            return "plant food";
+        }
+        if (drop instanceof Coin) {
+            return "50 coins";
+        }
+        if (drop instanceof Diamond) {
+            return "1 diamond";
+        }
+        if (drop instanceof PotDrop) {
+            return "1 pot";
+        }
+        return drop.getClass().getSimpleName();
     }
     private static List<Zombie> getZombiesAt(
             Board board, int row, int column) {
