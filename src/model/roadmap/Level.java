@@ -186,8 +186,10 @@ public final class Level {
             case FROSTBITE_CAVES:
                 configureFrostbiteBoard(board);
                 break;
-            case NONE:
             case BIG_WAVE_BEACH:
+                configureBigWaveBeachBoard(board);
+                break;
+            case NONE:
             case DARK_AGES:
                 break;
             default:
@@ -217,6 +219,43 @@ public final class Level {
             board.addFrozenZombie(
                     ZombieType.ICEAGE_CONEHEAD,
                     new EntityPosition(4, 7));
+        }
+    }
+
+    private void configureBigWaveBeachBoard(Board board) {
+        int initialWaterColumns = Math.min(3, numberOfColumns);
+        int maximumWaterColumns = Math.min(5, numberOfColumns);
+        List<EntityPosition> lowBeachPositions =
+                createLowBeachPositions(initialWaterColumns,
+                        maximumWaterColumns);
+        board.configureBigWaveBeach(initialWaterColumns,
+                maximumWaterColumns, lowBeachPositions);
+    }
+
+    private List<EntityPosition> createLowBeachPositions(
+            int initialWaterColumns, int maximumWaterColumns) {
+        List<EntityPosition> positions = new ArrayList<>();
+        int firstFloodedColumn =
+                numberOfColumns - initialWaterColumns - 1;
+        if (maximumWaterColumns > initialWaterColumns
+                && firstFloodedColumn >= 0) {
+            addLowBeachPosition(positions, 1, firstFloodedColumn);
+            addLowBeachPosition(positions, 3, firstFloodedColumn);
+        }
+        int secondFloodedColumn = firstFloodedColumn - 1;
+        if (maximumWaterColumns > initialWaterColumns + 1
+                && secondFloodedColumn >= 0) {
+            addLowBeachPosition(positions, 2, secondFloodedColumn);
+        }
+        return positions;
+    }
+
+    private void addLowBeachPosition(List<EntityPosition> positions,
+            int preferredRow, int column) {
+        int row = Math.min(preferredRow, numberOfRows - 1);
+        EntityPosition position = new EntityPosition(row, column);
+        if (!positions.contains(position)) {
+            positions.add(position);
         }
     }
 

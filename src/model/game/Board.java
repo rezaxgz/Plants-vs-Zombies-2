@@ -112,7 +112,11 @@ public class Board {
     private final List<Zombie> pendingSpawnedZombies;
     private final List<ActiveFamilyBoost> activeFamilyBoosts;
     private final List<PlantFamily> pendingPlantCooldownResets;
+    private final Set<EntityPosition> lowBeachTiles;
     private boolean frostbiteCavesRules;
+    private boolean bigWaveBeachRules;
+    private int waterColumnCount;
+    private int maximumWaterColumnCount;
 
     public Board() {
         this(Constants.DEFAULT_BOARD_ROWS, Constants.DEFAULT_BOARD_COLUMNS);
@@ -131,6 +135,7 @@ public class Board {
         this.pendingSpawnedZombies = new ArrayList<>();
         this.activeFamilyBoosts = new ArrayList<>();
         this.pendingPlantCooldownResets = new ArrayList<>();
+        this.lowBeachTiles = new LinkedHashSet<>();
         initializeTiles();
     }
 
@@ -243,17 +248,39 @@ public class Board {
     }
 
     private void cleanupRemovedEntities() {
-        List<EntityPosition> affectedPlantPositions = new ArrayList<>();
+        Set<EntityPosition> affectedPlantPositions =
+                collectRemovedPlantPositions();
+        while (!affectedPlantPositions.isEmpty()) {
+            allEntities.removeIf(Entity::isRemoved);
+            for (EntityPosition position : affectedPlantPositions) {
+                refreshTilePlant(position);
+                drownPlantWithoutLilyPad(position);
+            }
+            affectedPlantPositions = collectRemovedPlantPositions();
+        }
+        allEntities.removeIf(Entity::isRemoved);
+    }
+
+    private Set<EntityPosition> collectRemovedPlantPositions() {
+        Set<EntityPosition> positions = new LinkedHashSet<>();
         for (Entity entity : allEntities) {
             if (entity.isRemoved() && entity instanceof BasePlant
                     && entity.getEntityPosition() != null) {
-                affectedPlantPositions.add(entity.getEntityPosition());
+                positions.add(entity.getEntityPosition());
             }
         }
-        allEntities.removeIf(Entity::isRemoved);
-        for (EntityPosition position : affectedPlantPositions) {
-            refreshTilePlant(position);
+        return positions;
+    }
+
+    private void drownPlantWithoutLilyPad(
+            EntityPosition position) {
+        Tile tile = getTileAt(position);
+        if (tile == null
+                || tile.getTileType() != TileType.WATER) {
+            return;
         }
+        drownUnsupportedPlants(position,
+                " because it no longer had a lily pad.");
     }
 
     private void refreshTilePlant(EntityPosition position) {
@@ -3608,32 +3635,66 @@ public class Board {
 
     public boolean canAddPlant(BasePlant requestedPlant) {
         BasePlant plant = resolvePlacedPlant(requestedPlant);
-        if (plant == null || !isPositionInsideBoard(plant.getEntityPosition())
+        if (plant == null
+                || !isPositionInsideBoard(plant.getEntityPosition())
                 || !canPlantOnTerrain(plant)) {
             return false;
         }
         EntityPosition position = plant.getEntityPosition();
         List<BasePlant> plantsAtPosition = getPlantsAt(position);
         Tile tile = getTileAt(position);
-        if (isLilyPad(plant)) {
-            return tile != null && tile.getTileType() == TileType.WATER
-                    && plantsAtPosition.isEmpty();
+        if (tile != null
+                && tile.getTileType() == TileType.WATER) {
+            return canAddPlantInWater(plant, plantsAtPosition);
         }
-        if (tile != null && tile.getTileType() == TileType.WATER) {
-            boolean hasLilyPad = plantsAtPosition.stream()
-                    .anyMatch(Board::isLilyPad);
-            if (plantsAtPosition.isEmpty()) {
-                return plant.getTags().contains(PlantTag.WATER);
+        return canAddPlantOnLand(plant, plantsAtPosition);
+    }
+
+    private boolean canAddPlantInWater(BasePlant plant,
+            List<BasePlant> plantsAtPosition) {
+        if (isLilyPad(plant)) {
+            return plantsAtPosition.isEmpty();
+        }
+        boolean hasLilyPad = plantsAtPosition.stream()
+                .anyMatch(Board::isLilyPad);
+        List<BasePlant> plantsAbovePad = new ArrayList<>();
+        for (BasePlant existing : plantsAtPosition) {
+            if (!isLilyPad(existing)) {
+                plantsAbovePad.add(existing);
             }
-            return hasLilyPad && plantsAtPosition.size() == 1;
+        }
+        if (plant.hasTag(PlantTag.WATER)) {
+            return plantsAtPosition.isEmpty();
+        }
+        if (!hasLilyPad) {
+            return false;
+        }
+        if (plantsAbovePad.isEmpty()) {
+            return !isCover(plant);
+        }
+        if (isPeaPod(plant) && plantsAbovePad.size() < 5) {
+            return plantsAbovePad.stream()
+                    .allMatch(Board::isPeaPod);
+        }
+        return isCover(plant)
+                && plantsAbovePad.size() == 1
+                && !isCover(plantsAbovePad.get(0));
+    }
+
+    private static boolean canAddPlantOnLand(BasePlant plant,
+            List<BasePlant> plantsAtPosition) {
+        if (isLilyPad(plant)) {
+            return false;
         }
         if (plantsAtPosition.isEmpty()) {
             return !isCover(plant);
         }
         if (isPeaPod(plant) && plantsAtPosition.size() < 5) {
-            return plantsAtPosition.stream().allMatch(Board::isPeaPod);
+            return plantsAtPosition.stream()
+                    .allMatch(Board::isPeaPod);
         }
-        return isCover(plant) && plantsAtPosition.size() == 1
+        return isCover(plant)
+                && plantsAtPosition.size() == 1
                 && !isCover(plantsAtPosition.get(0));
     }
 
@@ -3979,6 +4040,144 @@ public class Board {
             return null;
         }
         return tiles.get(position.getRow() * numberOfColumns + position.getColumn());
+    }
+
+    public void configureBigWaveBeach(int initialWaterColumns,
+            int maximumWaterColumns,
+            List<EntityPosition> lowBeachPositions) {
+        validateBeachWaterColumns(initialWaterColumns,
+                maximumWaterColumns);
+        if (lowBeachPositions == null) {
+            throw new IllegalArgumentException(
+                    "lowBeachPositions cannot be null");
+        }
+        bigWaveBeachRules = true;
+        maximumWaterColumnCount = maximumWaterColumns;
+        waterColumnCount = 0;
+        lowBeachTiles.clear();
+        for (EntityPosition position : lowBeachPositions) {
+            if (!isPositionInsideBoard(position)) {
+                throw new IllegalArgumentException(
+                        "low-beach position is outside the board");
+            }
+            lowBeachTiles.add(position);
+        }
+        setBeachWaterColumns(initialWaterColumns, false);
+    }
+
+    private void validateBeachWaterColumns(int initialWaterColumns,
+            int maximumWaterColumns) {
+        if (initialWaterColumns < 0
+                || maximumWaterColumns < initialWaterColumns
+                || maximumWaterColumns > numberOfColumns) {
+            throw new IllegalArgumentException(
+                    "beach water columns are invalid");
+        }
+    }
+
+    public List<EntityPosition> raiseBigWaveBeachTide() {
+        if (!bigWaveBeachRules
+                || waterColumnCount >= maximumWaterColumnCount) {
+            return Collections.emptyList();
+        }
+        return setBeachWaterColumns(waterColumnCount + 1, true);
+    }
+
+    private List<EntityPosition> setBeachWaterColumns(
+            int requestedWaterColumns, boolean drownPlants) {
+        int oldWaterColumns = waterColumnCount;
+        int newWaterColumns = Math.min(
+                requestedWaterColumns, maximumWaterColumnCount);
+        int oldWaterStart = numberOfColumns - oldWaterColumns;
+        int newWaterStart = numberOfColumns - newWaterColumns;
+        List<EntityPosition> newlyFloodedLowBeach = new ArrayList<>();
+        for (int row = 0; row < numberOfRows; row++) {
+            for (int column = 0; column < numberOfColumns; column++) {
+                EntityPosition position =
+                        new EntityPosition(row, column);
+                boolean isWater = column >= newWaterStart;
+                boolean wasWater = column >= oldWaterStart;
+                updateBeachTile(position, isWater);
+                if (isWater && !wasWater) {
+                    recordNewlyFloodedTile(position, drownPlants,
+                            newlyFloodedLowBeach);
+                }
+            }
+        }
+        waterColumnCount = newWaterColumns;
+        if (drownPlants) {
+            cleanupRemovedEntities();
+        }
+        return Collections.unmodifiableList(newlyFloodedLowBeach);
+    }
+
+    private void updateBeachTile(EntityPosition position,
+            boolean water) {
+        Tile tile = getTileAt(position);
+        if (water) {
+            tile.setTileType(TileType.WATER);
+        } else if (lowBeachTiles.contains(position)) {
+            tile.setTileType(TileType.LOW_BEACH);
+        } else {
+            tile.setTileType(TileType.NORMAL);
+        }
+    }
+
+    private void recordNewlyFloodedTile(EntityPosition position,
+            boolean drownPlants,
+            List<EntityPosition> newlyFloodedLowBeach) {
+        if (lowBeachTiles.contains(position)) {
+            newlyFloodedLowBeach.add(position);
+        }
+        if (drownPlants) {
+            drownUnsupportedPlants(position,
+                    " when the tide rose.");
+        }
+    }
+
+    private void drownUnsupportedPlants(EntityPosition position,
+            String reason) {
+        List<BasePlant> plantsAtPosition =
+                new ArrayList<>(getPlantsAt(position));
+        boolean hasLilyPad = plantsAtPosition.stream()
+                .anyMatch(Board::isLilyPad);
+        for (BasePlant plant : plantsAtPosition) {
+            if (isLilyPad(plant)
+                    || plant.hasTag(PlantTag.WATER)
+                    || hasLilyPad) {
+                continue;
+            }
+            plant.takeDamage(Integer.MAX_VALUE);
+            pendingResults.add("Plant " + plant.getName()
+                    + " at " + position + " drowned" + reason);
+        }
+    }
+
+    public boolean isBigWaveBeachRulesEnabled() {
+        return bigWaveBeachRules;
+    }
+
+    public int getWaterColumnCount() {
+        return waterColumnCount;
+    }
+
+    public int getMaximumWaterColumnCount() {
+        return maximumWaterColumnCount;
+    }
+
+    public int getWaterBoundaryColumn() {
+        return numberOfColumns - maximumWaterColumnCount;
+    }
+
+    public boolean isLowBeachTile(EntityPosition position) {
+        return position != null && lowBeachTiles.contains(position);
+    }
+
+    public boolean isSubmergedLowBeachTile(EntityPosition position) {
+        Tile tile = getTileAt(position);
+        return isLowBeachTile(position)
+                && tile != null
+                && tile.getTileType() == TileType.WATER;
     }
 
     public void enableFrostbiteCavesRules() {

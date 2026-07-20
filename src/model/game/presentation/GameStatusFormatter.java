@@ -47,6 +47,7 @@ public final class GameStatusFormatter {
                 .append("N=normal G=gravestone SU=slider-up ")
                 .append("SD=slider-down SL=slippery F=frozen ")
                 .append("W=water LB=low-beach ")
+                .append("LBW=submerged-low-beach ")
                 .append("NE=necromancy C=crater; ")
                 .append("P=plants Z=zombies S=suns R=structures")
                 .append(" D=drops")
@@ -70,7 +71,7 @@ public final class GameStatusFormatter {
                         board.getStructureAt(position) == null
                                 ? 0 : 1;
                 output.append('[')
-                        .append(terrainCode(
+                        .append(terrainCode(board, position,
                                 tile.getTileType()))
                         .append(" P").append(plants)
                         .append(" Z").append(zombies)
@@ -157,7 +158,7 @@ public final class GameStatusFormatter {
         output.append("tile ").append(position)
                 .append(System.lineSeparator())
                 .append("terrain: ")
-                .append(tile.getTileType())
+                .append(formatTerrain(board, position, tile))
                 .append(System.lineSeparator());
         BaseStructure structure =
                 board.getStructureAt(position);
@@ -204,8 +205,9 @@ public final class GameStatusFormatter {
                 .append(System.lineSeparator())
                 .append("game status: ")
                 .append(game.getStatus())
-                .append(System.lineSeparator())
-                .append("lawn mowers: ");
+                .append(System.lineSeparator());
+        appendTideStatus(output, game.getBoard());
+        output.append("lawn mowers: ");
         List<LawnMower> mowers = game.getLawnMowers();
         for (int index = 0;
                 index < mowers.size(); index++) {
@@ -515,8 +517,33 @@ public final class GameStatusFormatter {
             plants.add(plant);
         }
     }
-    private static String terrainCode(
-            TileType tileType) {
+    private static void appendTideStatus(
+            StringBuilder output, Board board) {
+        if (!board.isBigWaveBeachRulesEnabled()) {
+            return;
+        }
+        output.append("tide: ")
+                .append(board.getWaterColumnCount())
+                .append('/')
+                .append(board.getMaximumWaterColumnCount())
+                .append(" rightmost columns; limit begins at column ")
+                .append(board.getWaterBoundaryColumn())
+                .append(System.lineSeparator());
+    }
+
+    private static String formatTerrain(Board board,
+            EntityPosition position, Tile tile) {
+        if (board.isSubmergedLowBeachTile(position)) {
+            return "WATER (submerged LOW_BEACH)";
+        }
+        return tile.getTileType().toString();
+    }
+
+    private static String terrainCode(Board board,
+            EntityPosition position, TileType tileType) {
+        if (board.isSubmergedLowBeachTile(position)) {
+            return "LBW";
+        }
         switch (tileType) {
             case NORMAL:
                 return "N";

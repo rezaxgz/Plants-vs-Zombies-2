@@ -813,8 +813,10 @@ public class Game {
         }
         applyFrostbiteIcyWind(waveNumber);
 
+        List<Zombie> spawnedZombies =
+                spawnedZombiesByWave.get(waveIndex);
+        applyBigWaveBeachWaterWave(waveNumber, spawnedZombies);
         double normalSpawnColumn = board.getNumberOfColumns() - 0.001;
-        List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
         for (ZombieType zombieType : wave.getZombieTypes()) {
             int lane = random.nextInt(board.getNumberOfRows());
             boolean glowing = random.nextDouble()
@@ -866,6 +868,47 @@ public class Game {
                     + " and chilled " + affectedPlants
                     + " plant(s).");
         }
+    }
+
+    private void applyBigWaveBeachWaterWave(int waveNumber,
+            List<Zombie> spawnedZombies) {
+        if (chapterRuleset != ChapterRuleset.BIG_WAVE_BEACH
+                || waveNumber <= 1
+                || !board.isBigWaveBeachRulesEnabled()) {
+            return;
+        }
+        int previousWaterColumns = board.getWaterColumnCount();
+        List<EntityPosition> floodedLowBeachTiles =
+                board.raiseBigWaveBeachTide();
+        int currentWaterColumns = board.getWaterColumnCount();
+        pendingResults.addAll(board.drainResults());
+        if (currentWaterColumns == previousWaterColumns) {
+            return;
+        }
+        pendingResults.add("A water wave raised the tide from "
+                + previousWaterColumns + " to "
+                + currentWaterColumns
+                + " rightmost columns. The tide limit is "
+                + board.getMaximumWaterColumnCount()
+                + " columns, beginning at column "
+                + board.getWaterBoundaryColumn() + ".");
+        for (EntityPosition position : floodedLowBeachTiles) {
+            spawnLowBeachZombie(position, waveNumber,
+                    spawnedZombies);
+        }
+    }
+
+    private void spawnLowBeachZombie(EntityPosition position,
+            int waveNumber, List<Zombie> spawnedZombies) {
+        boolean glowing = random.nextDouble()
+                < Constants.GLOWING_ZOMBIE_CHANCE;
+        Zombie zombie = new Zombie(ZombieType.BEACH, waveNumber,
+                position.getRow(), position.getColumn(), glowing);
+        spawnedZombies.add(zombie);
+        board.addZombie(zombie);
+        pendingResults.add("Zombie " + zombie.getName()
+                + " emerged from the flooded low-beach tile at "
+                + position + " during wave " + waveNumber + ".");
     }
 
     private int chooseTornadoAdvance(ZombieWave wave) {
