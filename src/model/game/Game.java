@@ -43,6 +43,9 @@ import model.game.entities.zombies.abilities.WizardSpellAbility;
 import model.game.entities.zombies.abilities.ZombossAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.gameTypes.GameType;
+import model.game.structure.Grave;
+import model.game.structure.GraveReward;
+import model.game.tile.TileType;
 import model.game.special.ConveyorBeltSystem;
 import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
@@ -64,6 +67,9 @@ public class Game {
     private static final double TORNADO_SPAWN_CHANCE = 0.50;
     private static final double ICY_WIND_LANE_CHANCE = 0.50;
     private static final int MAX_TORNADO_ADVANCE_COLUMNS = 4;
+    private static final int DARK_AGES_GRAVES_PER_WAVE = 2;
+    private static final double DARK_AGES_SUN_GRAVE_CHANCE = 0.20;
+    private static final double DARK_AGES_PLANT_FOOD_GRAVE_CHANCE = 0.20;
     private static final int MAX_PLANT_FOOD = 3;
 
     private final Board board;
@@ -175,6 +181,10 @@ public class Game {
         this.chapterRuleset = chapterRuleset;
         if (chapterRuleset == ChapterRuleset.FROSTBITE_CAVES) {
             board.enableFrostbiteCavesRules();
+        } else if (chapterRuleset == ChapterRuleset.DARK_AGES) {
+            disableSkySuns("Dark Ages night");
+            pendingResults.add("Dark Ages is at night: no sun will fall "
+                    + "from the sky; use sun-producing plants.");
         }
         this.lawnMowerSystem =
                 new LawnMowerSystem(board.getNumberOfRows());
@@ -811,10 +821,10 @@ public class Game {
         } else {
             pendingResults.add("Wave " + waveNumber + " started.");
         }
-        applyFrostbiteIcyWind(waveNumber);
-
         List<Zombie> spawnedZombies =
                 spawnedZombiesByWave.get(waveIndex);
+        applyDarkAgesWave(waveNumber, spawnedZombies);
+        applyFrostbiteIcyWind(waveNumber);
         applyBigWaveBeachWaterWave(waveNumber, spawnedZombies);
         double normalSpawnColumn = board.getNumberOfColumns() - 0.001;
         for (ZombieType zombieType : wave.getZombieTypes()) {
@@ -830,6 +840,110 @@ public class Game {
             pendingResults.add(buildSpawnMessage(zombie, tornadoAdvance));
         }
         zombieWaveNumber = waveNumber;
+    }
+
+    private void applyDarkAgesWave(int waveNumber,
+            List<Zombie> spawnedZombies) {
+        if (chapterRuleset != ChapterRuleset.DARK_AGES) {
+            return;
+        }
+        spawnDarkAgesGraves(waveNumber);
+        spawnNecromancyZombies(waveNumber, spawnedZombies);
+    }
+
+    private void spawnDarkAgesGraves(int waveNumber) {
+        List<EntityPosition> candidates =
+                findDarkAgesGraveCandidates();
+        if (candidates.isEmpty()) {
+            pendingResults.add("No empty tile was available for a new "
+                    + "Dark Ages grave at wave " + waveNumber + ".");
+            return;
+        }
+
+        List<EntityPosition> selected = new ArrayList<>();
+        List<EntityPosition> necromancyCandidates = new ArrayList<>();
+        for (EntityPosition position : candidates) {
+            if (board.getTileAt(position).getTileType()
+                    == TileType.NECROMANCY) {
+                necromancyCandidates.add(position);
+            }
+        }
+        if (!necromancyCandidates.isEmpty()) {
+            Collections.shuffle(necromancyCandidates, random);
+            EntityPosition necromancyPosition =
+                    necromancyCandidates.get(0);
+            selected.add(necromancyPosition);
+            candidates.remove(necromancyPosition);
+        }
+
+        Collections.shuffle(candidates, random);
+        for (EntityPosition position : candidates) {
+            if (selected.size() >= DARK_AGES_GRAVES_PER_WAVE) {
+                break;
+            }
+            selected.add(position);
+        }
+
+        for (EntityPosition position : selected) {
+            boolean necromancy = board.getTileAt(position).getTileType()
+                    == TileType.NECROMANCY;
+            GraveReward reward = chooseDarkAgesGraveReward();
+            if (!board.addGrave(position, reward)) {
+                continue;
+            }
+            pendingResults.add("Dark Ages grave formed at " + position
+                    + " during wave " + waveNumber + "; type: "
+                    + (necromancy ? "necromancy" : "ordinary")
+                    + "; contents: " + reward.getDescription() + ".");
+        }
+    }
+
+    private List<EntityPosition> findDarkAgesGraveCandidates() {
+        List<EntityPosition> candidates = new ArrayList<>();
+        for (int row = 0; row < board.getNumberOfRows(); row++) {
+            for (int column = 0;
+                    column < board.getNumberOfColumns(); column++) {
+                EntityPosition position =
+                        new EntityPosition(row, column);
+                if (board.canAddGraveAt(position)) {
+                    candidates.add(position);
+                }
+            }
+        }
+        return candidates;
+    }
+
+    private GraveReward chooseDarkAgesGraveReward() {
+        double rewardRoll = random.nextDouble();
+        if (rewardRoll < DARK_AGES_PLANT_FOOD_GRAVE_CHANCE) {
+            return GraveReward.PLANT_FOOD;
+        }
+        if (rewardRoll < DARK_AGES_PLANT_FOOD_GRAVE_CHANCE
+                + DARK_AGES_SUN_GRAVE_CHANCE) {
+            return GraveReward.SUN;
+        }
+        return GraveReward.NONE;
+    }
+
+    private void spawnNecromancyZombies(int waveNumber,
+            List<Zombie> spawnedZombies) {
+        for (Grave grave : board.getGraves()) {
+            if (!grave.isNecromancyGrave()
+                    || board.hasZombieAt(grave.getPosition())) {
+                continue;
+            }
+            EntityPosition position = grave.getPosition();
+            boolean glowing = random.nextDouble()
+                    < Constants.GLOWING_ZOMBIE_CHANCE;
+            Zombie zombie = new Zombie(ZombieType.DARK,
+                    waveNumber, position.getRow(),
+                    position.getColumn(), glowing);
+            spawnedZombies.add(zombie);
+            board.addZombie(zombie);
+            pendingResults.add("Necromancy awakened "
+                    + zombie.getName() + " beneath the grave at "
+                    + position + " during wave " + waveNumber + ".");
+        }
     }
 
     private void applyFrostbiteIcyWind(int waveNumber) {

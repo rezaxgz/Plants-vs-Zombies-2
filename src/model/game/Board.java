@@ -15,6 +15,7 @@ import model.game.entities.EntityPosition;
 import model.game.entities.other.ArcadeMachine;
 import model.game.entities.other.CollectibleDrop;
 import model.game.entities.other.IceBlock;
+import model.game.entities.other.PlantFoodDrop;
 import model.game.entities.other.PushedObstacle;
 import model.game.entities.other.RollingBarrel;
 import model.game.entities.other.Sun;
@@ -71,6 +72,7 @@ import model.game.entities.zombies.abilities.WizardSpellAbility;
 import model.game.entities.zombies.abilities.ZombieAbility;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
+import model.game.structure.GraveReward;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
 
@@ -915,15 +917,45 @@ public class Board {
     private void damageGrave(Grave grave, int damage) {
         grave.takeDamage(damage);
         if (grave.isRemoved()) {
-            structures.remove(grave);
-            setTileType(grave.getPosition(), TileType.NORMAL);
-            pendingResults.add("Grave at " + grave.getPosition()
-                    + " was destroyed.");
+            destroyGrave(grave);
             return;
         }
         pendingResults.add("Grave at " + grave.getPosition()
                 + " absorbed " + damage + " projectile damage; "
                 + grave.getHitPoints() + " HP remains.");
+    }
+
+    private void destroyGrave(Grave grave) {
+        if (grave == null || !structures.remove(grave)) {
+            return;
+        }
+        setTileType(grave.getPosition(),
+                grave.getUnderlyingTileType());
+        pendingResults.add("Grave at " + grave.getPosition()
+                + " was destroyed.");
+        releaseGraveReward(grave);
+    }
+
+    private void releaseGraveReward(Grave grave) {
+        switch (grave.getReward()) {
+            case SUN:
+                addEntity(new Sun(50, grave.getPosition()));
+                pendingResults.add("The grave at "
+                        + grave.getPosition()
+                        + " released 50 sun; collect it before it disappears.");
+                break;
+            case PLANT_FOOD:
+                addEntity(new PlantFoodDrop(grave.getPosition()));
+                pendingResults.add("The grave at "
+                        + grave.getPosition()
+                        + " released one plant food; collect it before it despawns.");
+                break;
+            case NONE:
+                break;
+            default:
+                throw new IllegalStateException(
+                        "unknown grave reward");
+        }
     }
 
     private boolean resolveFrozenZombieImpact(
@@ -4239,10 +4271,43 @@ public class Board {
     }
 
     public boolean addGrave(EntityPosition position) {
-        return addStructure(new Grave(position));
+        return addGrave(position, GraveReward.NONE);
     }
 
-    private boolean hasZombieAt(EntityPosition position) {
+    public boolean addGrave(EntityPosition position, GraveReward reward) {
+        if (!canAddGraveAt(position) || reward == null) {
+            return false;
+        }
+        Tile tile = getTileAt(position);
+        return addStructure(new Grave(position, reward,
+                tile.getTileType()));
+    }
+
+    public boolean canAddGraveAt(EntityPosition position) {
+        if (!isPositionInsideBoard(position)
+                || getStructureAt(position) != null
+                || !getPlantsAt(position).isEmpty()
+                || hasZombieAt(position)) {
+            return false;
+        }
+        Tile tile = getTileAt(position);
+        return tile != null
+                && (tile.getTileType() == TileType.NORMAL
+                        || tile.getTileType() == TileType.NECROMANCY);
+    }
+
+    public List<Grave> getGraves() {
+        List<Grave> graves = new ArrayList<>();
+        for (BaseStructure structure : structures) {
+            if (structure instanceof Grave
+                    && !structure.isRemoved()) {
+                graves.add((Grave) structure);
+            }
+        }
+        return Collections.unmodifiableList(graves);
+    }
+
+    public boolean hasZombieAt(EntityPosition position) {
         for (Zombie zombie : getZombies()) {
             if (zombie.getLane() == position.getRow()
                     && (int) Math.floor(zombie.getColumnPosition())
@@ -4317,18 +4382,16 @@ public class Board {
             return null;
         }
         structure.markForRemoval();
-        structures.remove(structure);
         if (structure instanceof Grave) {
-            setTileType(position, TileType.NORMAL);
+            destroyGrave((Grave) structure);
+        } else {
+            structures.remove(structure);
         }
         return structure;
     }
 
     private void removeGraveAt(EntityPosition position) {
-        BaseStructure removed = removeStructureAt(position);
-        if (removed instanceof Grave) {
-            pendingResults.add("Grave at " + position + " was destroyed.");
-        }
+        removeStructureAt(position);
     }
 
     public List<Zombie> drainSpawnedZombies() {

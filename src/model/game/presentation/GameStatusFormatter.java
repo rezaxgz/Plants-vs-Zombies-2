@@ -44,7 +44,11 @@ public final class GameStatusFormatter {
         appendGameHeader(output, game);
         output.append(System.lineSeparator())
                 .append("legend: terrain ")
-                .append("N=normal G=gravestone SU=slider-up ")
+                .append("N=normal G=empty-grave GS=sun-grave ")
+                .append("GP=plant-food-grave NG=necromancy-grave ")
+                .append("NGS=necromancy-sun-grave ")
+                .append("NGP=necromancy-plant-food-grave ")
+                .append("SU=slider-up ")
                 .append("SD=slider-down SL=slippery F=frozen ")
                 .append("W=water LB=low-beach ")
                 .append("LBW=submerged-low-beach ")
@@ -205,6 +209,11 @@ public final class GameStatusFormatter {
                 .append(System.lineSeparator())
                 .append("game status: ")
                 .append(game.getStatus())
+                .append(System.lineSeparator())
+                .append("sky suns: ")
+                .append(game.areSkySunsDisabled()
+                        ? "disabled (" + game.getSkySunDisabledReason() + ")"
+                        : "enabled")
                 .append(System.lineSeparator());
         appendTideStatus(output, game.getBoard());
         output.append("lawn mowers: ");
@@ -252,7 +261,11 @@ public final class GameStatusFormatter {
         if (structure instanceof Grave) {
             Grave grave = (Grave) structure;
             return "Grave " + grave.getHitPoints() + "/"
-                    + Grave.DEFAULT_HIT_POINTS + " HP";
+                    + Grave.DEFAULT_HIT_POINTS + " HP | type: "
+                    + (grave.isNecromancyGrave()
+                            ? "necromancy" : "ordinary")
+                    + " | contents: "
+                    + grave.getReward().getDescription();
         }
         return structure.getClass().getSimpleName();
     }
@@ -536,6 +549,15 @@ public final class GameStatusFormatter {
         if (board.isSubmergedLowBeachTile(position)) {
             return "WATER (submerged LOW_BEACH)";
         }
+        BaseStructure structure = board.getStructureAt(position);
+        if (structure instanceof Grave) {
+            Grave grave = (Grave) structure;
+            return "GRAVESTONE ("
+                    + (grave.isNecromancyGrave()
+                            ? "necromancy" : "ordinary")
+                    + "; contents: "
+                    + grave.getReward().getDescription() + ")";
+        }
         return tile.getTileType().toString();
     }
 
@@ -543,6 +565,10 @@ public final class GameStatusFormatter {
             EntityPosition position, TileType tileType) {
         if (board.isSubmergedLowBeachTile(position)) {
             return "LBW";
+        }
+        BaseStructure structure = board.getStructureAt(position);
+        if (structure instanceof Grave) {
+            return graveTerrainCode((Grave) structure);
         }
         switch (tileType) {
             case NORMAL:
@@ -570,6 +596,21 @@ public final class GameStatusFormatter {
                         "unknown tile type: " + tileType);
         }
     }
+    private static String graveTerrainCode(Grave grave) {
+        String prefix = grave.isNecromancyGrave() ? "NG" : "G";
+        switch (grave.getReward()) {
+            case SUN:
+                return prefix + "S";
+            case PLANT_FOOD:
+                return prefix + "P";
+            case NONE:
+                return prefix;
+            default:
+                throw new IllegalStateException(
+                        "unknown grave reward");
+        }
+    }
+
     private static String formatSeconds(double seconds) {
         return String.format(
                 Locale.ROOT, "%.1fs", seconds);

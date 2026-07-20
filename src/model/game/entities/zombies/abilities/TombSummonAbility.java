@@ -7,7 +7,6 @@ import java.util.List;
 import model.game.Board;
 import model.game.entities.EntityPosition;
 import model.game.entities.zombies.Zombie;
-import model.game.structure.Grave;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
 
@@ -50,7 +49,7 @@ public class TombSummonAbility extends ZombieAbility {
             if (spawned.size() >= tombsToSpawn) {
                 break;
             }
-            if (board.addStructure(new Grave(position))) {
+            if (board.addGrave(position)) {
                 spawned.add(position);
             }
         }

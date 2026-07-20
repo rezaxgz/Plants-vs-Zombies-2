@@ -11,6 +11,7 @@ import model.game.Game;
 import model.game.ZombieWave;
 import model.game.entities.EntityPosition;
 import model.game.entities.zombies.ZombieType;
+import model.game.tile.TileType;
 import model.game.special.TimedWarObjective;
 
 /**
@@ -189,8 +190,10 @@ public final class Level {
             case BIG_WAVE_BEACH:
                 configureBigWaveBeachBoard(board);
                 break;
-            case NONE:
             case DARK_AGES:
+                configureDarkAgesBoard(board);
+                break;
+            case NONE:
                 break;
             default:
                 throw new IllegalStateException(
@@ -220,6 +223,20 @@ public final class Level {
                     ZombieType.ICEAGE_CONEHEAD,
                     new EntityPosition(4, 7));
         }
+    }
+
+    private void configureDarkAgesBoard(Board board) {
+        addNecromancyTile(board, 0, 5);
+        addNecromancyTile(board, 2, 6);
+        addNecromancyTile(board, 4, 5);
+    }
+
+    private void addNecromancyTile(Board board,
+            int preferredRow, int preferredColumn) {
+        int row = Math.min(preferredRow, numberOfRows - 1);
+        int column = Math.min(preferredColumn, numberOfColumns - 1);
+        board.setTileType(new EntityPosition(row, column),
+                TileType.NECROMANCY);
     }
 
     private void configureBigWaveBeachBoard(Board board) {
