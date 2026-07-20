@@ -1,5 +1,6 @@
 package controller;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -13,7 +14,10 @@ import model.game.PlantPlacementResult;
 import model.game.RewardCollectionResult;
 import model.game.SunCollectionResult;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.Coin;
+import model.game.entities.other.Diamond;
 import model.game.entities.other.PlantFoodDrop;
+import model.game.entities.other.PotDrop;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.zombies.Zombie;
@@ -24,6 +28,7 @@ import model.game.special.ProtectedPlantStatus;
 import model.menu.GameMenu;
 import model.menu.GreenhouseMenu;
 import model.menu.Menu;
+import model.menu.TravelLogMenu;
 import model.roadmap.AdventureSession;
 import model.user.User;
 
@@ -39,6 +44,16 @@ public final class GameMenuController {
         App.getInstance().changeMenu(
                 new GreenhouseMenu((GameMenu) currentMenu));
         return CommandResult.success("entered greenhouse menu");
+    }
+
+    public static CommandResult handleOpenTravelLog(Matcher matcher) {
+        Menu currentMenu = App.getInstance().getCurrentMenu();
+        if (!(currentMenu instanceof GameMenu)) {
+            return CommandResult.error("game menu is not active!");
+        }
+        App.getInstance().changeMenu(
+                new TravelLogMenu((GameMenu) currentMenu));
+        return CommandResult.success("entered travel log menu");
     }
 
     public static CommandResult handleAdvanceTime(Matcher matcher) {
@@ -151,7 +166,9 @@ public final class GameMenuController {
                     .addPreCommandResults(preCommandResults);
         }
         boolean hasReward = game.getBoard().getCollectibleDropsAt(position).stream()
-                .anyMatch(drop -> !(drop instanceof PlantFoodDrop));
+                .anyMatch(drop -> drop instanceof Coin
+                        || drop instanceof Diamond
+                        || drop instanceof PotDrop);
         if (!hasReward) {
             return CommandResult.error("there is no reward at " + position + "!")
                     .addPreCommandResults(preCommandResults);
@@ -299,6 +316,11 @@ public final class GameMenuController {
 
         EntityPosition position = new EntityPosition(x, y);
         String requestedType = matcher.group("type").trim();
+        if (!game.allowsDirectPlanting()) {
+            return CommandResult.error(
+                    game.getDirectPlantingDisabledMessage())
+                    .addPreCommandResults(preCommandResults);
+        }
         if (PlantFactory.createPlant(requestedType, position) == null) {
             return CommandResult.error(
                     "plant type '" + requestedType
@@ -600,6 +622,11 @@ public final class GameMenuController {
                 return CommandResult.error(
                         "plant location is outside the board!")
                         .addPreCommandResults(pending);
+            case OUTSIDE_BOWLING_ZONE:
+                return CommandResult.error(
+                        "the Wall-nut must be launched on the house side "
+                                + "of the red bowling line!")
+                        .addPreCommandResults(pending);
             case POSITION_OCCUPIED:
                 return CommandResult.error(
                         "there is already a plant at "
@@ -759,10 +786,13 @@ public final class GameMenuController {
         if (!(currentMenu instanceof GameMenu)) {
             return List.of();
         }
-        ((GameMenu) currentMenu)
-                .synchronizeAdventureProgress();
-        return AdventureSession.getInstance()
-                .drainNotifications();
+        GameMenu gameMenu = (GameMenu) currentMenu;
+        gameMenu.synchronizeProgress();
+        List<String> results = new ArrayList<>(
+                gameMenu.drainProgressResults());
+        results.addAll(AdventureSession.getInstance()
+                .drainNotifications());
+        return results;
     }
 
     private static boolean isInsideBoard(Game game, int x, int y) {

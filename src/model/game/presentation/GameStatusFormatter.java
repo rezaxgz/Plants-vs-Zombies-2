@@ -13,6 +13,7 @@ import model.game.entities.other.Diamond;
 import model.game.entities.other.PlantFoodDrop;
 import model.game.entities.other.PotDrop;
 import model.game.entities.other.Sun;
+import model.game.entities.other.VaseSeedPacket;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.plants.explosive.ExplosivePlantType;
@@ -26,8 +27,12 @@ import model.game.entities.plants.sunProducer.SunProducerPlantType;
 import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
+import model.game.minigame.BowlingWallnut;
+import model.game.minigame.VaseBreaker;
+import model.game.minigame.WallnutBowling;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
+import model.game.structure.Vase;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
 /**
@@ -54,7 +59,8 @@ public final class GameStatusFormatter {
                 .append("LBW=submerged-low-beach ")
                 .append("NE=necromancy C=crater; ")
                 .append("P=plants Z=zombies S=suns R=structures")
-                .append(" D=drops")
+                .append(" V=vase marker (?=normal P=plant G=giant)")
+                .append(" D=drops B=rolling-bowling-wallnuts")
                 .append(System.lineSeparator());
         for (int row = 0;
                 row < board.getNumberOfRows(); row++) {
@@ -71,9 +77,13 @@ public final class GameStatusFormatter {
                         board, row, column).size();
                 int suns = board.getSunsAt(position).size();
                 int drops = board.getCollectibleDropsAt(position).size();
+                int bowlingWallnuts = getBowlingWallnutsAt(
+                        game, row, column).size();
                 int structures =
                         board.getStructureAt(position) == null
                                 ? 0 : 1;
+                String vase = vaseSymbol(
+                        board.getStructureAt(position));
                 output.append('[')
                         .append(terrainCode(board, position,
                                 tile.getTileType()))
@@ -81,16 +91,22 @@ public final class GameStatusFormatter {
                         .append(" Z").append(zombies)
                         .append(" S").append(suns)
                         .append(" R").append(structures)
+                        .append(" V").append(vase)
                         .append(" D").append(drops)
+                        .append(" B").append(bowlingWallnuts)
                         .append(']');
-                if (column
-                        < board.getNumberOfColumns() - 1) {
-                    output.append(' ');
+                if (column < board.getNumberOfColumns() - 1) {
+                    if (isBowlingRedLineAfter(game, column)) {
+                        output.append(" ||RED|| ");
+                    } else {
+                        output.append(' ');
+                    }
                 }
             }
             output.append(System.lineSeparator());
         }
         appendExactZombiePositions(output, board);
+        appendExactBowlingWallnutPositions(output, game);
         return trimTrailingLineSeparator(output);
     }
     public static String formatPlantStatuses(Game game) {
@@ -177,6 +193,9 @@ public final class GameStatusFormatter {
                         board,
                         position.getRow(),
                         position.getColumn()));
+        appendBowlingWallnutDetails(output,
+                getBowlingWallnutsAt(game, position.getRow(),
+                        position.getColumn()));
         appendSunDetails(
                 output, board.getSunsAt(position));
         appendDropDetails(
@@ -216,6 +235,8 @@ public final class GameStatusFormatter {
                         : "enabled")
                 .append(System.lineSeparator());
         appendTideStatus(output, game.getBoard());
+        appendVaseBreakerStatus(output, game);
+        appendWallnutBowlingStatus(output, game);
         output.append("lawn mowers: ");
         List<LawnMower> mowers = game.getLawnMowers();
         for (int index = 0;
@@ -231,6 +252,109 @@ public final class GameStatusFormatter {
             }
         }
     }
+
+    private static String vaseSymbol(BaseStructure structure) {
+        if (!(structure instanceof Vase)) {
+            return "-";
+        }
+        return ((Vase) structure).getType().getMapSymbol();
+    }
+
+    private static void appendVaseBreakerStatus(
+            StringBuilder output, Game game) {
+        if (!(game instanceof VaseBreaker)) {
+            return;
+        }
+        VaseBreaker vaseBreaker = (VaseBreaker) game;
+        output.append("vase breaker level: ")
+                .append(vaseBreaker.getLevel().getNumber())
+                .append(" - ")
+                .append(vaseBreaker.getLevel().getName())
+                .append(System.lineSeparator())
+                .append("unbroken vases: ")
+                .append(vaseBreaker.getVases().size())
+                .append(System.lineSeparator())
+                .append("available vase seed packets: ")
+                .append(vaseBreaker.getAvailableSeedPackets().size())
+                .append(System.lineSeparator());
+    }
+
+    private static void appendWallnutBowlingStatus(
+            StringBuilder output, Game game) {
+        if (!(game instanceof WallnutBowling)) {
+            return;
+        }
+        WallnutBowling bowling = (WallnutBowling) game;
+        output.append("Wall-nut Bowling level: ")
+                .append(bowling.getLevel().getNumber())
+                .append(" - ")
+                .append(bowling.getLevel().getName())
+                .append(System.lineSeparator())
+                .append("red bowling line: launch columns 0 through ")
+                .append(bowling.getRedLineColumn())
+                .append(System.lineSeparator())
+                .append("rolling Wall-nuts: ")
+                .append(bowling.getRollingWallnuts().size())
+                .append(System.lineSeparator());
+    }
+
+    private static void appendExactBowlingWallnutPositions(
+            StringBuilder output, Game game) {
+        if (!(game instanceof WallnutBowling)) {
+            return;
+        }
+        WallnutBowling bowling = (WallnutBowling) game;
+        output.append(System.lineSeparator())
+                .append("exact rolling Wall-nut positions:");
+        if (bowling.getRollingWallnuts().isEmpty()) {
+            output.append(" none");
+            return;
+        }
+        for (BowlingWallnut wallnut : bowling.getRollingWallnuts()) {
+            output.append(System.lineSeparator())
+                    .append("- ")
+                    .append(bowling.describeRollingWallnut(wallnut));
+        }
+    }
+
+    private static boolean isBowlingRedLineAfter(
+            Game game, int column) {
+        return game instanceof WallnutBowling
+                && ((WallnutBowling) game).getRedLineColumn() == column;
+    }
+
+    private static List<BowlingWallnut> getBowlingWallnutsAt(
+            Game game, int row, int column) {
+        if (!(game instanceof WallnutBowling)) {
+            return List.of();
+        }
+        return ((WallnutBowling) game).getRollingWallnutsAt(row, column);
+    }
+
+    private static void appendBowlingWallnutDetails(
+            StringBuilder output, List<BowlingWallnut> wallnuts) {
+        output.append("rolling Wall-nuts:");
+        if (wallnuts.isEmpty()) {
+            output.append(" none").append(System.lineSeparator());
+            return;
+        }
+        output.append(System.lineSeparator());
+        for (BowlingWallnut wallnut : wallnuts) {
+            output.append("- ")
+                    .append(wallnut.getType().getDisplayName())
+                    .append(" #").append(wallnut.getId())
+                    .append(" | exact position: (")
+                    .append(String.format(Locale.ROOT, "%.2f",
+                            wallnut.getRowPosition()))
+                    .append(", ")
+                    .append(String.format(Locale.ROOT, "%.2f",
+                            wallnut.getColumnPosition()))
+                    .append(") | direction: ")
+                    .append(wallnut.getDirectionDescription())
+                    .append(System.lineSeparator());
+        }
+    }
+
     private static void appendExactZombiePositions(
             StringBuilder output, Board board) {
         List<Zombie> zombies = board.getZombies();
@@ -266,6 +390,12 @@ public final class GameStatusFormatter {
                             ? "necromancy" : "ordinary")
                     + " | contents: "
                     + grave.getReward().getDescription();
+        }
+        if (structure instanceof Vase) {
+            Vase vase = (Vase) structure;
+            return vase.getType().getDisplayName() + " ["
+                    + vase.getType().getMapSymbol()
+                    + "] | contents: hidden until broken";
         }
         return structure.getClass().getSimpleName();
     }
@@ -463,6 +593,10 @@ public final class GameStatusFormatter {
         }
         if (drop instanceof PotDrop) {
             return "1 pot";
+        }
+        if (drop instanceof VaseSeedPacket) {
+            VaseSeedPacket packet = (VaseSeedPacket) drop;
+            return packet.getPlantType() + " one-use vase seed packet";
         }
         return drop.getClass().getSimpleName();
     }

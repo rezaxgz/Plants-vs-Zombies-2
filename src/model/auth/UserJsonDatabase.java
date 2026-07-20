@@ -286,12 +286,57 @@ final class UserJsonDatabase {
         }
         Map<String, Object> storedProgress = requireObject(
                 value, prefix + ".gameProgress");
+        Map<String, Integer> unlockedMinigames =
+                readMinigameUnlocks(storedProgress, prefix);
+        List<String> completedMinigameLevels =
+                readCompletedMinigameLevels(storedProgress, prefix);
         return GameProgerss.fromStoredData(
                 getInt(storedProgress, "lastCompletedChapter", 0),
                 getInt(storedProgress, "lastCompletedLevel", 0),
                 getInt(storedProgress, "completedMinigames", 0),
                 getInt(storedProgress, "highestScore", 0),
-                getInt(storedProgress, "gamesPlayed", 0));
+                getInt(storedProgress, "gamesPlayed", 0),
+                unlockedMinigames, completedMinigameLevels);
+    }
+
+    private static Map<String, Integer> readMinigameUnlocks(
+            Map<String, Object> storedProgress, String prefix) {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        Object value = storedProgress.get("highestUnlockedMinigameLevels");
+        if (value == null) {
+            return result;
+        }
+        Map<String, Object> stored = requireObject(value,
+                prefix + ".gameProgress.highestUnlockedMinigameLevels");
+        for (Map.Entry<String, Object> entry : stored.entrySet()) {
+            if (!(entry.getValue() instanceof Number number)) {
+                throw new IllegalArgumentException(prefix
+                        + ".gameProgress.highestUnlockedMinigameLevels."
+                        + entry.getKey() + " must be a number");
+            }
+            result.put(entry.getKey(), number.intValue());
+        }
+        return result;
+    }
+
+    private static List<String> readCompletedMinigameLevels(
+            Map<String, Object> storedProgress, String prefix) {
+        List<String> result = new ArrayList<>();
+        Object value = storedProgress.get("completedMinigameLevels");
+        if (value == null) {
+            return result;
+        }
+        List<Object> stored = requireArray(value,
+                prefix + ".gameProgress.completedMinigameLevels");
+        for (int index = 0; index < stored.size(); index++) {
+            if (!(stored.get(index) instanceof String key)) {
+                throw new IllegalArgumentException(prefix
+                        + ".gameProgress.completedMinigameLevels["
+                        + index + "] must be a string");
+            }
+            result.add(key);
+        }
+        return result;
     }
 
     private static GreenHouse readGreenHouse(Map<String, Object> map, String prefix) {
@@ -464,8 +509,34 @@ final class UserJsonDatabase {
         appendNumberProperty(json, indent + "  ", "highestScore",
                 progress.getHighestScore(), true);
         appendNumberProperty(json, indent + "  ", "gamesPlayed",
-                progress.getGamesPlayed(), false);
+                progress.getGamesPlayed(), true);
+        appendMinigameProgress(json, progress, indent);
         json.append(indent).append("  },\n");
+    }
+
+    private static void appendMinigameProgress(StringBuilder json,
+            GameProgerss progress, String indent) {
+        json.append(indent)
+                .append("    \"highestUnlockedMinigameLevels\": {\n");
+        Map<String, Integer> unlocked = progress
+                .getHighestUnlockedMinigameLevelsForStorage();
+        int index = 0;
+        for (Map.Entry<String, Integer> entry : unlocked.entrySet()) {
+            appendNumberProperty(json, indent + "    ", entry.getKey(),
+                    entry.getValue(), ++index < unlocked.size());
+        }
+        json.append(indent).append("    },\n");
+        json.append(indent).append("    \"completedMinigameLevels\": [");
+        List<String> completed = progress
+                .getCompletedMinigameLevelsForStorage();
+        for (int completedIndex = 0;
+                completedIndex < completed.size(); completedIndex++) {
+            if (completedIndex > 0) {
+                json.append(", ");
+            }
+            appendQuoted(json, completed.get(completedIndex));
+        }
+        json.append("]\n");
     }
 
     private static void appendPlantCollection(StringBuilder json,
