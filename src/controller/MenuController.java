@@ -13,6 +13,7 @@ import model.menu.Menu;
 import model.menu.NetworkMenu;
 import model.menu.NewsMenu;
 import model.menu.ProfileMenu;
+import model.news.NewsMessages;
 import model.menu.SettingsMenu;
 import model.menu.SignUpMenu;
 import model.menu.TravelLogMenu;
@@ -46,9 +47,7 @@ public final class MenuController {
 
         String successMsg = "entered " + destination.getName() + " menu";
         if (destination instanceof MainMenu) {
-            if (app.getLoggedInUser() != null && app.getLoggedInUser().getNewsPanel().hasUnreadNews()) {
-                successMsg += "\n(!) You have [NEW] unread news! Use 'menu news show-unread' to view them.";
-            }
+            successMsg = appendNewsBadge(successMsg, app);
         }
 
         return CommandResult.success(successMsg);
@@ -71,8 +70,21 @@ public final class MenuController {
             return CommandResult.success("program ended");
         }
 
-        return CommandResult
-                .success("exited " + exitedMenuName + " menu\nentered " + app.getCurrentMenu().getName() + " menu");
+        String message = "exited " + exitedMenuName + " menu"
+                + System.lineSeparator() + "entered "
+                + app.getCurrentMenu().getName() + " menu";
+        if (app.getCurrentMenu() instanceof MainMenu) {
+            message = appendNewsBadge(message, app);
+        }
+        return CommandResult.success(message);
+    }
+
+    private static String appendNewsBadge(String message, App app) {
+        String badge = NewsMessages.unreadBadge(app.getLoggedInUser());
+        if (badge.isBlank()) {
+            return message;
+        }
+        return message + System.lineSeparator() + badge;
     }
 
     private static Menu createDestination(Menu currentMenu, String requestedName) {

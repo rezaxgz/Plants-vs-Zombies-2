@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 
 import model.App;
+import model.auth.UserManager;
 
 public class PlantCollection {
     private static final List<String> STARTER_PLANTS = List.of(
@@ -115,8 +116,11 @@ public class PlantCollection {
         if (App.getInstance().getLoggedInUser() == null) {
             return;
         }
-        App.getInstance().getLoggedInUser().addNews(
-                "New Plant Unlocked!",
-                "You have successfully unlocked the " + plantName + ".");
+        App.getInstance().getLoggedInUser()
+                .addNewsIfAbsent(
+                        "New Plant Unlocked!",
+                        "You have successfully unlocked the "
+                                + plantName + ".");
+        UserManager.saveAllUsers();
     }
 }

@@ -9,6 +9,7 @@ import model.auth.SessionManager;
 import model.auth.UserManager;
 import model.menu.LoginMenu;
 import model.menu.MainMenu;
+import model.news.NewsMessages;
 import model.roadmap.AdventureSession;
 import model.user.User;
 import model.user.UserDataValidator;
@@ -41,10 +42,14 @@ public final class LoginMenuController {
         AdventureSession.getInstance().reset();
         App.getInstance().changeMenu(new MainMenu());
 
-        return CommandResult.success(
-                "Logged in successfully."
-                        + System.lineSeparator()
-                        + "you're now in main menu");
+        String message = "Logged in successfully."
+                + System.lineSeparator()
+                + "you're now in main menu";
+        String newsBadge = NewsMessages.unreadBadge(loggedInUser);
+        if (!newsBadge.isBlank()) {
+            message += System.lineSeparator() + newsBadge;
+        }
+        return CommandResult.success(message);
     }
 
     public static CommandResult handleForgetPassword(Matcher matcher) {

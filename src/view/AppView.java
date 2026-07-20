@@ -6,6 +6,8 @@ import commands.CommandRegistry;
 import model.App;
 import model.CommandResult;
 import model.auth.UserManager;
+import model.menu.MainMenu;
+import model.news.NewsMessages;
 
 public class AppView {
     private static final AppView instance = new AppView();
@@ -27,12 +29,23 @@ public class AppView {
 
     public void run() {
         App app = App.getInstance();
+        showStartupNewsBadge(app);
         try {
             while (app.isRunning() && hasNext()) {
                 parseCommand(getInput());
             }
         } finally {
             UserManager.saveAllUsers();
+        }
+    }
+
+    private static void showStartupNewsBadge(App app) {
+        if (!(app.getCurrentMenu() instanceof MainMenu)) {
+            return;
+        }
+        String badge = NewsMessages.unreadBadge(app.getLoggedInUser());
+        if (!badge.isBlank()) {
+            printOutput(badge);
         }
     }
 

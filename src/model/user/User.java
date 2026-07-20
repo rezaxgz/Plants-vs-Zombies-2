@@ -3,7 +3,9 @@ package model.user;
 import java.util.HashMap;
 import java.util.Map;
 
+import model.App;
 import model.Settings;
+import model.auth.UserManager;
 import model.collections.plants.PlantCollection;
 import model.collections.zombies.ZombieCollection;
 import model.enums.Gender;
@@ -385,5 +387,24 @@ public class User {
     public void addNews(String title, String description) {
         newsPanel.addNews(new News(System.currentTimeMillis(),
                 title, description, false));
+    }
+
+    public boolean addNewsIfAbsent(String title, String description) {
+        return newsPanel.addNewsIfAbsent(new News(System.currentTimeMillis(),
+                title, description, false));
+    }
+
+    public boolean addMinigameUnlockNews(String minigameName) {
+        if (minigameName == null || minigameName.isBlank()) {
+            return false;
+        }
+        String normalizedName = minigameName.trim();
+        boolean added = addNewsIfAbsent(
+                "New Minigame Unlocked!",
+                normalizedName + " is now available to play.");
+        if (added && App.getInstance().getLoggedInUser() == this) {
+            UserManager.saveAllUsers();
+        }
+        return added;
     }
 }

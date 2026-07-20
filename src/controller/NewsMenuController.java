@@ -5,6 +5,7 @@ import java.util.regex.Matcher;
 
 import model.App;
 import model.CommandResult;
+import model.auth.UserManager;
 import model.news.News;
 import model.user.User;
 
@@ -24,14 +25,10 @@ public final class NewsMenuController {
             return CommandResult.success("You have no unread news.");
         }
 
-        StringBuilder sb = new StringBuilder("=== UNREAD NEWS ===\n");
-        for (News n : unread) {
-            sb.append("[NEW] ").append(n.getTitle()).append(": ").append(n.getDescription()).append("\n");
-        }
-
-        // Mark all unread news as read after showing them
-        user.getNewsPanel().markAllAsRead();
-        return CommandResult.success(sb.toString().trim());
+        String message = formatNews("=== UNREAD NEWS ===", unread, true);
+        user.getNewsPanel().markAsRead(unread);
+        UserManager.saveAllUsers();
+        return CommandResult.success(message);
     }
 
     public static CommandResult handleShowAll(Matcher matcher) {
@@ -45,13 +42,22 @@ public final class NewsMenuController {
             return CommandResult.success("No news available.");
         }
 
-        StringBuilder sb = new StringBuilder("=== ALL NEWS ===\n");
-        for (News n : allNews) {
-            String marker = n.isHasRead() ? "" : "[NEW] ";
-            sb.append(marker).append(n.getTitle()).append(": ").append(n.getDescription()).append("\n");
-        }
+        return CommandResult.success(
+                formatNews("=== ALL NEWS ===", allNews, false));
+    }
 
-        user.getNewsPanel().markAllAsRead();
-        return CommandResult.success(sb.toString().trim());
+    private static String formatNews(String heading, List<News> news,
+            boolean forceNewMarker) {
+        StringBuilder output = new StringBuilder(heading);
+        for (News item : news) {
+            output.append(System.lineSeparator());
+            if (forceNewMarker || !item.isHasRead()) {
+                output.append("[NEW] ");
+            }
+            output.append(item.getTitle())
+                    .append(": ")
+                    .append(item.getDescription());
+        }
+        return output.toString();
     }
 }
