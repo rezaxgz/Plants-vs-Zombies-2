@@ -3,11 +3,27 @@ package commands;
 import controller.GameMenuController;
 import controller.GameStatusCommandController;
 import controller.SpecialLevelCommandController;
+import controller.VaseBreakerCommandController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
     OPEN_GREENHOUSE("^menu\\s+greenhouse$",
             GameMenuController::handleOpenGreenhouse),
+    OPEN_TRAVEL_LOG("^menu\\s+travel(?:-|\\s+)log$",
+            GameMenuController::handleOpenTravelLog),
+    SHOW_VASES("^show\\s+vases$",
+            VaseBreakerCommandController::handleShowVases),
+    SHOW_VASE_SEEDS("^show\\s+vase(?:-|\\s+)seeds$",
+            VaseBreakerCommandController::handleShowSeeds),
+    BREAK_VASE(
+            "^break\\s+vase\\s+-l\\s+"
+                    + "\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            VaseBreakerCommandController::handleBreakVase),
+    PLANT_VASE_SEED(
+            "^plant\\s+(?:vase(?:-|\\s+)?seed|seed)\\s+-s\\s+"
+                    + "\\(\\s*(?<sx>-?\\d+)\\s*,\\s*(?<sy>-?\\d+)\\s*\\)\\s+"
+                    + "-l\\s+\\(\\s*(?<x>-?\\d+)\\s*,\\s*(?<y>-?\\d+)\\s*\\)$",
+            VaseBreakerCommandController::handlePlantSeed),
     ADVANCE_TIME("^advance\\s+time\\s+-t\\s+(?<count>\\d+)\\s+ticks$",
             GameMenuController::handleAdvanceTime),
     COLLECT_SUN("^collect\\s+sun\\s+-l\\s+\\(\\s*(?<x>\\d+)\\s*,\\s*(?<y>\\d+)\\s*\\)$",

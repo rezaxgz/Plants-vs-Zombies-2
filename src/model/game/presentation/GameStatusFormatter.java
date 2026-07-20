@@ -13,6 +13,7 @@ import model.game.entities.other.Diamond;
 import model.game.entities.other.PlantFoodDrop;
 import model.game.entities.other.PotDrop;
 import model.game.entities.other.Sun;
+import model.game.entities.other.VaseSeedPacket;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.plants.explosive.ExplosivePlantType;
@@ -26,8 +27,10 @@ import model.game.entities.plants.sunProducer.SunProducerPlantType;
 import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
+import model.game.minigame.VaseBreaker;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
+import model.game.structure.Vase;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
 /**
@@ -54,6 +57,7 @@ public final class GameStatusFormatter {
                 .append("LBW=submerged-low-beach ")
                 .append("NE=necromancy C=crater; ")
                 .append("P=plants Z=zombies S=suns R=structures")
+                .append(" V=vase marker (?=normal P=plant G=giant)")
                 .append(" D=drops")
                 .append(System.lineSeparator());
         for (int row = 0;
@@ -74,6 +78,8 @@ public final class GameStatusFormatter {
                 int structures =
                         board.getStructureAt(position) == null
                                 ? 0 : 1;
+                String vase = vaseSymbol(
+                        board.getStructureAt(position));
                 output.append('[')
                         .append(terrainCode(board, position,
                                 tile.getTileType()))
@@ -81,6 +87,7 @@ public final class GameStatusFormatter {
                         .append(" Z").append(zombies)
                         .append(" S").append(suns)
                         .append(" R").append(structures)
+                        .append(" V").append(vase)
                         .append(" D").append(drops)
                         .append(']');
                 if (column
@@ -216,6 +223,7 @@ public final class GameStatusFormatter {
                         : "enabled")
                 .append(System.lineSeparator());
         appendTideStatus(output, game.getBoard());
+        appendVaseBreakerStatus(output, game);
         output.append("lawn mowers: ");
         List<LawnMower> mowers = game.getLawnMowers();
         for (int index = 0;
@@ -231,6 +239,33 @@ public final class GameStatusFormatter {
             }
         }
     }
+
+    private static String vaseSymbol(BaseStructure structure) {
+        if (!(structure instanceof Vase)) {
+            return "-";
+        }
+        return ((Vase) structure).getType().getMapSymbol();
+    }
+
+    private static void appendVaseBreakerStatus(
+            StringBuilder output, Game game) {
+        if (!(game instanceof VaseBreaker)) {
+            return;
+        }
+        VaseBreaker vaseBreaker = (VaseBreaker) game;
+        output.append("vase breaker level: ")
+                .append(vaseBreaker.getLevel().getNumber())
+                .append(" - ")
+                .append(vaseBreaker.getLevel().getName())
+                .append(System.lineSeparator())
+                .append("unbroken vases: ")
+                .append(vaseBreaker.getVases().size())
+                .append(System.lineSeparator())
+                .append("available vase seed packets: ")
+                .append(vaseBreaker.getAvailableSeedPackets().size())
+                .append(System.lineSeparator());
+    }
+
     private static void appendExactZombiePositions(
             StringBuilder output, Board board) {
         List<Zombie> zombies = board.getZombies();
@@ -266,6 +301,12 @@ public final class GameStatusFormatter {
                             ? "necromancy" : "ordinary")
                     + " | contents: "
                     + grave.getReward().getDescription();
+        }
+        if (structure instanceof Vase) {
+            Vase vase = (Vase) structure;
+            return vase.getType().getDisplayName() + " ["
+                    + vase.getType().getMapSymbol()
+                    + "] | contents: hidden until broken";
         }
         return structure.getClass().getSimpleName();
     }
@@ -463,6 +504,10 @@ public final class GameStatusFormatter {
         }
         if (drop instanceof PotDrop) {
             return "1 pot";
+        }
+        if (drop instanceof VaseSeedPacket) {
+            VaseSeedPacket packet = (VaseSeedPacket) drop;
+            return packet.getPlantType() + " one-use vase seed packet";
         }
         return drop.getClass().getSimpleName();
     }

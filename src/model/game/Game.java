@@ -1139,6 +1139,15 @@ public class Game {
     }
 
     private void processZombieDeathDrops(List<Zombie> zombies) {
+        if (!shouldProcessZombieDeathDrops()) {
+            for (Zombie zombie : zombies) {
+                if (zombie != null && zombie.isDead()
+                        && !zombie.areDeathDropsProcessed()) {
+                    zombie.markDeathDropsProcessed();
+                }
+            }
+            return;
+        }
         for (Zombie zombie : zombies) {
             if (zombie == null || !zombie.isDead()
                     || zombie.areDeathDropsProcessed()) {
@@ -1314,7 +1323,10 @@ public class Game {
         int pots = 0;
         for (CollectibleDrop drop : new ArrayList<>(
                 board.getCollectibleDropsAt(position))) {
-            if (drop instanceof PlantFoodDrop || !drop.collect()) {
+            boolean isReward = drop instanceof Coin
+                    || drop instanceof Diamond
+                    || drop instanceof PotDrop;
+            if (!isReward || !drop.collect()) {
                 continue;
             }
             board.removeEntity(drop);
@@ -1893,6 +1905,9 @@ public class Game {
         if (plant == null || !board.isPositionInsideBoard(plant.getEntityPosition())) {
             return PlantPlacementResult.INVALID_POSITION;
         }
+        if (!allowsDirectPlanting()) {
+            return PlantPlacementResult.PLANT_LOCKED;
+        }
         if (!isPlantInLoadout(plant)) {
             return PlantPlacementResult.PLANT_NOT_SELECTED;
         }
@@ -1966,6 +1981,34 @@ public class Game {
     public boolean isGameOver() {
         return status != GameStatus.ACTIVE
                 || gameType != null && gameType.checkForSpecialGameEnd();
+    }
+
+    /**
+     * Minigames can disable the ordinary sun-and-cooldown planting command.
+     */
+    public boolean allowsDirectPlanting() {
+        return true;
+    }
+
+    /**
+     * Minigames can suppress glowing-zombie and economy drops.
+     */
+    protected boolean shouldProcessZombieDeathDrops() {
+        return true;
+    }
+
+    protected final void addPendingResult(String message) {
+        if (message != null && !message.isBlank()) {
+            pendingResults.add(message);
+        }
+    }
+
+    protected final void completeGameAsWon(String message) {
+        if (status != GameStatus.ACTIVE) {
+            return;
+        }
+        status = GameStatus.WON;
+        addPendingResult(message);
     }
 
     private static void validateDeltaSeconds(float deltaSeconds) {
