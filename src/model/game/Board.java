@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -172,6 +173,7 @@ public class Board {
         applyPendingWallnutPassiveEffects(updateSnapshot);
         updateZombies(updateSnapshot, deltaSeconds);
         applyPendingModifierDeathEffects(updateSnapshot);
+        warmFrozenPlants(deltaSeconds);
 
         cleanupRemovedEntities();
         for (Entity entity : entitiesToAdd) {
@@ -777,12 +779,10 @@ public class Board {
 
             if (frozenPlant != null
                     && isFrozenPlantBeforeZombie(projectile, frozenPlant, target)) {
-                int iceDamage = projectile.hasFireEffect()
-                        ? BasePlant.DEFAULT_ICE_LAYER_HITS : 1;
-                boolean iceBroken = frozenPlant.damageIce(iceDamage);
+                damageFrozenPlantIce(frozenPlant,
+                        Math.max(1, projectile.getImpactDamage()),
+                        projectile.hasFireEffect());
                 projectile.markForRemoval();
-                pendingResults.add(frozenPlant.getName() + "'s ice layer was hit."
-                        + (iceBroken ? " The plant is active again." : ""));
                 return;
             }
             if (target == null) {
@@ -924,12 +924,38 @@ public class Board {
 
     private void damageZombieOrFrozenShell(
             Zombie zombie, int damage, boolean fireDamage) {
-        if (damageFrozenZombieShell(
-                zombie, damage, fireDamage)) {
+        if (zombie == null || zombie.isDead()
+                || damageFrozenZombieShell(
+                        zombie, damage, fireDamage)) {
             return;
         }
-        damageZombieOrFrozenShell(
-                zombie, damage, fireDamage);
+        if (fireDamage) {
+            zombie.applyFireDamage(damage);
+        } else {
+            zombie.takeDamage(damage);
+        }
+    }
+
+    private boolean damageFrozenPlantIce(BasePlant plant,
+            int damage, boolean fireDamage) {
+        if (plant == null || !plant.isFrozen()) {
+            return false;
+        }
+        boolean released = plant.damageIce(
+                Math.max(1, damage), fireDamage);
+        if (released) {
+            pendingResults.add("The ice around " + plant.getName()
+                    + " at " + plant.getEntityPosition()
+                    + " was destroyed; the plant is active again.");
+        } else {
+            String impact = fireDamage
+                    ? "a fire attack" : damage + " damage";
+            pendingResults.add("The ice around " + plant.getName()
+                    + " absorbed " + impact + "; "
+                    + plant.getIceShellHitPoints()
+                    + " HP remains.");
+        }
+        return true;
     }
 
     private void reportFrozenZombieShellHit(
@@ -1166,6 +1192,42 @@ public class Board {
         return firstPlant;
     }
 
+    private BasePlant findFirstFrozenPlantHit(BouncingGrape grape) {
+        BasePlant firstPlant = null;
+        double firstParameter = Double.POSITIVE_INFINITY;
+        for (BasePlant plant : getPlants()) {
+            if (!plant.isFrozen() || plant.getEntityPosition() == null) {
+                continue;
+            }
+            EntityPosition position = plant.getEntityPosition();
+            double parameter = grape.getIntersectionParameter(
+                    position.getRow(), position.getColumn(),
+                    GRAPE_COLLISION_RADIUS);
+            if (!Double.isNaN(parameter)
+                    && parameter < firstParameter) {
+                firstParameter = parameter;
+                firstPlant = plant;
+            }
+        }
+        return firstPlant;
+    }
+
+    private boolean isFrozenPlantBeforeZombie(BouncingGrape grape,
+            BasePlant frozenPlant, Zombie zombie) {
+        if (zombie == null) {
+            return true;
+        }
+        EntityPosition position = frozenPlant.getEntityPosition();
+        double plantParameter = grape.getIntersectionParameter(
+                position.getRow(), position.getColumn(),
+                GRAPE_COLLISION_RADIUS);
+        double zombieParameter = grape.getIntersectionParameter(
+                zombie.getLane(), zombie.getColumnPosition(),
+                GRAPE_COLLISION_RADIUS);
+        return Double.isNaN(zombieParameter)
+                || plantParameter <= zombieParameter + POSITION_EPSILON;
+    }
+
     private boolean isFrozenPlantBeforeZombie(Projectile projectile,
             BasePlant frozenPlant, Zombie zombie) {
         if (zombie == null) {
@@ -1221,11 +1283,20 @@ public class Board {
                     frozenByReflection = source.applyIceHit();
                 }
                 source.takeDamage(reflectedDamage);
+                String freezeResult = projectile.hasChillEffect()
+                        ? ", raising it to freeze level "
+                                + source.getFreezeLevel() + "/"
+                                + BasePlant.MAX_FREEZE_LEVEL + "."
+                                + (frozenByReflection
+                                        ? " The plant is frozen inside a "
+                                                + BasePlant.ICE_SHELL_HIT_POINTS
+                                                + " HP ice shell."
+                                        : "")
+                        : ".";
                 pendingResults.add(target.getName()
                         + " reflected " + reflectedDamage
-                        + " damage back to " + source.getName() + "."
-                        + (frozenByReflection
-                                ? " The plant is now frozen." : ""));
+                        + " damage back to " + source.getName()
+                        + freezeResult);
                 reportDestroyedPlant(source);
             } else {
                 pendingResults.add(target.getName()
@@ -1250,8 +1321,14 @@ public class Board {
             }
             boolean frozen = source.applyIceHit();
             pendingResults.add(source.getName() + " received an ice hit from "
-                    + blockhead.getName() + "."
-                    + (frozen ? " The plant is now frozen." : ""));
+                    + blockhead.getName() + ", raising it to freeze level "
+                    + source.getFreezeLevel() + "/"
+                    + BasePlant.MAX_FREEZE_LEVEL + "."
+                    + (frozen
+                            ? " The plant is frozen inside a "
+                                    + BasePlant.ICE_SHELL_HIT_POINTS
+                                    + " HP ice shell."
+                            : ""));
             return;
         }
     }
@@ -1318,6 +1395,14 @@ public class Board {
                 continue;
             }
             HomingProjectile projectile = (HomingProjectile) entity;
+            BasePlant frozenPlant = findFirstFrozenPlantHit(projectile);
+            if (frozenPlant != null) {
+                damageFrozenPlantIce(frozenPlant,
+                        Math.max(1, projectile.getImpactDamage()),
+                        projectile.hasFireEffect());
+                projectile.markForRemoval();
+                continue;
+            }
             if (!projectile.isTargetAvailable()) {
                 projectile.markForRemoval();
                 continue;
@@ -1460,7 +1545,15 @@ public class Board {
             }
             BouncingGrape grape = (BouncingGrape) entity;
             grape.bounceInside(numberOfRows, numberOfColumns);
+            BasePlant frozenPlant = findFirstFrozenPlantHit(grape);
             Zombie target = findFirstZombieHit(grape);
+            if (frozenPlant != null
+                    && isFrozenPlantBeforeZombie(grape, frozenPlant, target)) {
+                damageFrozenPlantIce(frozenPlant,
+                        Math.max(1, grape.getDamage()), false);
+                grape.markForRemoval();
+                continue;
+            }
             if (target != null) {
                 if (damageFrozenZombieShell(
                         target, grape.getDamage(), false)) {
@@ -1916,6 +2009,9 @@ public class Board {
 
     private void damageArea(EntityPosition center, int rowRadius,
             double columnRadius, int damage, boolean fireDamage) {
+        if (fireDamage) {
+            meltFrozenPlantsInArea(center, rowRadius, columnRadius);
+        }
         for (Zombie zombie : getZombies()) {
             if (zombie.isHypnotized() || zombie.isSubmerged()
                     || Math.abs(zombie.getLane() - center.getRow()) > rowRadius
@@ -1931,6 +2027,7 @@ public class Board {
     }
 
     private void damageLaneWithFire(int lane, int damage) {
+        meltFrozenPlantsInLane(lane);
         for (Zombie zombie : getZombies()) {
             if (!zombie.isHypnotized() && !zombie.isSubmerged()
                     && zombie.getLane() == lane) {
@@ -2260,6 +2357,7 @@ public class Board {
                 tile.setTileType(TileType.NORMAL);
             }
         }
+        meltFrozenPlantsInArea(center, radius, radius);
     }
 
     private void applyPendingModifierBoardEffects(List<Entity> updateSnapshot,
@@ -2463,6 +2561,7 @@ public class Board {
 
     private void damageAreaWithFire(EntityPosition center, int radius,
             int damage) {
+        meltFrozenPlantsInArea(center, radius, radius);
         for (Zombie zombie : getZombies()) {
             if (zombie.isDead() || zombie.isHypnotized()
                     || zombie.isSubmerged()
@@ -2543,6 +2642,77 @@ public class Board {
         pendingResults.add("Sweet Potato pulled adjacent-lane zombies into lane " + targetLane + ".");
     }
 
+    private void warmFrozenPlants(float deltaSeconds) {
+        if (deltaSeconds <= 0.0f) {
+            return;
+        }
+        for (BasePlant plant : getPlants()) {
+            if (!plant.isFrozen() || plant.getEntityPosition() == null
+                    || !hasAdjacentActiveFirePlant(
+                            plant.getEntityPosition(), plant)) {
+                continue;
+            }
+            boolean released = plant.meltIce(
+                    BasePlant.ICE_WARMING_DAMAGE_PER_SECOND
+                            * deltaSeconds);
+            if (released) {
+                pendingResults.add("The ice around " + plant.getName()
+                        + " at " + plant.getEntityPosition()
+                        + " melted; the plant is active again.");
+            }
+        }
+    }
+
+    private boolean hasAdjacentActiveFirePlant(
+            EntityPosition center, BasePlant excludedPlant) {
+        if (center == null) {
+            return false;
+        }
+        for (BasePlant plant : getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (plant == excludedPlant || position == null
+                    || plant.isDestroyed() || plant.isDisabled()
+                    || !plant.hasTag(PlantTag.FIRE)) {
+                continue;
+            }
+            int rowDistance = Math.abs(
+                    position.getRow() - center.getRow());
+            int columnDistance = Math.abs(
+                    position.getColumn() - center.getColumn());
+            if (rowDistance <= 1 && columnDistance <= 1
+                    && rowDistance + columnDistance > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void meltFrozenPlantsInLane(int lane) {
+        for (BasePlant plant : getPlants()) {
+            if (plant.isFrozen() && plant.getEntityPosition() != null
+                    && plant.getEntityPosition().getRow() == lane) {
+                damageFrozenPlantIce(plant, 1, true);
+            }
+        }
+    }
+
+    private void meltFrozenPlantsInArea(EntityPosition center,
+            int rowRadius, double columnRadius) {
+        if (center == null) {
+            return;
+        }
+        for (BasePlant plant : getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (!plant.isFrozen() || position == null
+                    || Math.abs(position.getRow() - center.getRow()) > rowRadius
+                    || Math.abs(position.getColumn() - center.getColumn())
+                            > columnRadius) {
+                continue;
+            }
+            damageFrozenPlantIce(plant, 1, true);
+        }
+    }
+
     private void updateZombies(List<Entity> updateSnapshot, float deltaSeconds) {
         for (Entity entity : updateSnapshot) {
             if (!(entity instanceof Zombie) || entity.isRemoved()) {
@@ -2592,26 +2762,9 @@ public class Board {
     }
 
     private boolean hasAdjacentFirePlant(Zombie zombie) {
-        EntityPosition center = zombie.getEntityPosition();
-        if (center == null) {
-            return false;
-        }
-        for (BasePlant plant : getPlants()) {
-            EntityPosition position = plant.getEntityPosition();
-            if (position == null || plant.isDestroyed()
-                    || !plant.getTags().contains(PlantTag.FIRE)) {
-                continue;
-            }
-            int rowDistance = Math.abs(
-                    position.getRow() - center.getRow());
-            int columnDistance = Math.abs(
-                    position.getColumn() - center.getColumn());
-            if (rowDistance <= 1 && columnDistance <= 1
-                    && rowDistance + columnDistance > 0) {
-                return true;
-            }
-        }
-        return false;
+        return zombie != null
+                && hasAdjacentActiveFirePlant(
+                        zombie.getEntityPosition(), null);
     }
 
     private void applySliderTile(Zombie zombie) {
@@ -3837,6 +3990,40 @@ public class Board {
 
     public boolean isFrostbiteCavesRulesEnabled() {
         return frostbiteCavesRules;
+    }
+
+    public int applyIcyWind(List<Integer> lanes) {
+        if (!frostbiteCavesRules || lanes == null || lanes.isEmpty()) {
+            return 0;
+        }
+        Set<Integer> affectedLanes = new LinkedHashSet<>();
+        for (Integer lane : lanes) {
+            if (lane != null && lane >= 0 && lane < numberOfRows) {
+                affectedLanes.add(lane);
+            }
+        }
+        int affectedPlants = 0;
+        for (BasePlant plant : getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (position == null || plant.isDestroyed()
+                    || plant.isFrozen()
+                    || plant.hasTag(PlantTag.FIRE)
+                    || !affectedLanes.contains(position.getRow())) {
+                continue;
+            }
+            boolean frozenNow = plant.increaseFreezeLevel();
+            affectedPlants++;
+            pendingResults.add("Icy wind raised " + plant.getName()
+                    + " at " + position + " to freeze level "
+                    + plant.getFreezeLevel() + "/"
+                    + BasePlant.MAX_FREEZE_LEVEL + "."
+                    + (frozenNow
+                            ? " The plant is frozen inside a "
+                                    + BasePlant.ICE_SHELL_HIT_POINTS
+                                    + " HP ice shell."
+                            : ""));
+        }
+        return affectedPlants;
     }
 
     public void setSliderTile(EntityPosition position, int laneDelta) {

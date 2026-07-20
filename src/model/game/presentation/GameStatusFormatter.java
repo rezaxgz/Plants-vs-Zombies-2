@@ -291,8 +291,12 @@ public final class GameStatusFormatter {
     private static String plantState(BasePlant plant) {
         List<String> states = new ArrayList<>();
         if (plant.isFrozen()) {
-            states.add("frozen; ice layer "
-                    + plant.getIceLayerHitsRemaining());
+            states.add("frozen; ice "
+                    + plant.getIceShellHitPoints() + "/"
+                    + plant.getIceShellMaximumHitPoints() + " HP");
+        } else if (plant.getFreezeLevel() > 0) {
+            states.add("freeze level " + plant.getFreezeLevel()
+                    + "/" + BasePlant.MAX_FREEZE_LEVEL);
         }
         if (plant.isCoveredByOctopus()) {
             states.add("octopus; hits "

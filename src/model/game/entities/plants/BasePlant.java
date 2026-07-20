@@ -8,8 +8,15 @@ import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 
 public abstract class BasePlant extends Entity {
-    public static final int ICE_HITS_TO_FREEZE = 3;
-    public static final int DEFAULT_ICE_LAYER_HITS = 3;
+    public static final int MAX_FREEZE_LEVEL = 3;
+    public static final int ICE_SHELL_HIT_POINTS = 600;
+    public static final double ICE_WARMING_DAMAGE_PER_SECOND = 60.0;
+    /** @deprecated Use {@link #MAX_FREEZE_LEVEL}. */
+    @Deprecated
+    public static final int ICE_HITS_TO_FREEZE = MAX_FREEZE_LEVEL;
+    /** @deprecated Ice durability is now measured in hit points. */
+    @Deprecated
+    public static final int DEFAULT_ICE_LAYER_HITS = ICE_SHELL_HIT_POINTS;
     public static final int DEFAULT_OCTOPUS_HITS = 3;
 
     private final String name;
@@ -20,8 +27,9 @@ public abstract class BasePlant extends Entity {
     private final int baseHP;
     private final int damage;
     private int currentHP;
-    private int iceHitCount;
-    private int iceLayerHitsRemaining;
+    private int freezeLevel;
+    private int iceShellHitPoints;
+    private double iceMeltRemainder;
     private boolean frozenByIce;
     private int octopusHitsRemaining;
     private boolean coveredByOctopus;
@@ -109,37 +117,69 @@ public abstract class BasePlant extends Entity {
     }
 
     public boolean applyIceHit() {
+        return increaseFreezeLevel();
+    }
+
+    public boolean increaseFreezeLevel() {
         if (isDestroyed() || frozenByIce) {
             return false;
         }
-        iceHitCount++;
-        if (iceHitCount < ICE_HITS_TO_FREEZE) {
+        freezeLevel = Math.min(MAX_FREEZE_LEVEL, freezeLevel + 1);
+        if (freezeLevel < MAX_FREEZE_LEVEL) {
             return false;
         }
         frozenByIce = true;
-        iceLayerHitsRemaining = DEFAULT_ICE_LAYER_HITS;
+        iceShellHitPoints = ICE_SHELL_HIT_POINTS;
+        iceMeltRemainder = 0.0;
         return true;
     }
 
-    public boolean damageIce(int hits) {
-        if (hits < 0) {
-            throw new IllegalArgumentException("ice damage hits cannot be negative");
+    public boolean damageIce(int damage) {
+        return damageIce(damage, false);
+    }
+
+    public boolean damageIce(int damage, boolean fireDamage) {
+        if (damage < 0) {
+            throw new IllegalArgumentException(
+                    "ice damage cannot be negative");
         }
-        if (!frozenByIce || hits == 0) {
+        if (!frozenByIce || (damage == 0 && !fireDamage)) {
             return false;
         }
-        iceLayerHitsRemaining = Math.max(0, iceLayerHitsRemaining - hits);
-        if (iceLayerHitsRemaining == 0) {
+        if (fireDamage) {
+            clearIce();
+            return true;
+        }
+        iceShellHitPoints = Math.max(0, iceShellHitPoints - damage);
+        if (iceShellHitPoints == 0) {
             clearIce();
             return true;
         }
         return false;
     }
 
+    public boolean meltIce(double damage) {
+        if (!Double.isFinite(damage) || damage < 0.0) {
+            throw new IllegalArgumentException(
+                    "ice melt damage must be finite and non-negative");
+        }
+        if (!frozenByIce || damage == 0.0) {
+            return false;
+        }
+        iceMeltRemainder += damage;
+        int wholeDamage = (int) Math.floor(iceMeltRemainder);
+        if (wholeDamage <= 0) {
+            return false;
+        }
+        iceMeltRemainder -= wholeDamage;
+        return damageIce(wholeDamage, false);
+    }
+
     public void clearIce() {
         frozenByIce = false;
-        iceHitCount = 0;
-        iceLayerHitsRemaining = 0;
+        freezeLevel = 0;
+        iceShellHitPoints = 0;
+        iceMeltRemainder = 0.0;
     }
 
     public boolean attachOctopus() {
@@ -210,11 +250,27 @@ public abstract class BasePlant extends Entity {
     }
 
     public int getIceHitCount() {
-        return iceHitCount;
+        return freezeLevel;
+    }
+
+    public int getFreezeLevel() {
+        return freezeLevel;
     }
 
     public int getIceLayerHitsRemaining() {
-        return iceLayerHitsRemaining;
+        return iceShellHitPoints;
+    }
+
+    public int getIceShellHitPoints() {
+        return iceShellHitPoints;
+    }
+
+    public int getIceShellMaximumHitPoints() {
+        return ICE_SHELL_HIT_POINTS;
+    }
+
+    public boolean hasTag(PlantTag tag) {
+        return tag != null && tags.contains(tag);
     }
 
     public boolean isDestroyed() {

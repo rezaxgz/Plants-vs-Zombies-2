@@ -26,6 +26,7 @@ import model.game.entities.other.SunType;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.plants.PlantFamily;
+import model.game.entities.plants.PlantTag;
 import model.game.entities.plants.modifier.Modifier;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
@@ -61,6 +62,7 @@ import model.user.User;
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
     private static final double TORNADO_SPAWN_CHANCE = 0.50;
+    private static final double ICY_WIND_LANE_CHANCE = 0.50;
     private static final int MAX_TORNADO_ADVANCE_COLUMNS = 4;
     private static final int MAX_PLANT_FOOD = 3;
 
@@ -539,9 +541,15 @@ public class Game {
             return;
         }
         pendingResults.add(hunter.getName() + " hit " + target.getName()
-                + " with " + snowball.getLastSnowballCount() + " snowball(s)."
+                + " with " + snowball.getLastSnowballCount()
+                + " snowball(s), raising it to freeze level "
+                + target.getFreezeLevel() + "/"
+                + BasePlant.MAX_FREEZE_LEVEL + "."
                 + (snowball.didLastBarrageFreezeTarget()
-                        ? " The plant is now frozen." : ""));
+                        ? " The plant is frozen inside a "
+                                + BasePlant.ICE_SHELL_HIT_POINTS
+                                + " HP ice shell."
+                        : ""));
     }
 
     private void activateWeaselRelease(Zombie hoarder, ZombieAbility ability) {
@@ -803,6 +811,7 @@ public class Game {
         } else {
             pendingResults.add("Wave " + waveNumber + " started.");
         }
+        applyFrostbiteIcyWind(waveNumber);
 
         double normalSpawnColumn = board.getNumberOfColumns() - 0.001;
         List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
@@ -819,6 +828,44 @@ public class Game {
             pendingResults.add(buildSpawnMessage(zombie, tornadoAdvance));
         }
         zombieWaveNumber = waveNumber;
+    }
+
+    private void applyFrostbiteIcyWind(int waveNumber) {
+        if (chapterRuleset != ChapterRuleset.FROSTBITE_CAVES
+                || board.getPlants().isEmpty()) {
+            return;
+        }
+        List<Integer> candidateLanes = new ArrayList<>();
+        for (BasePlant plant : board.getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (position != null && !plant.isDestroyed()
+                    && !plant.isFrozen()
+                    && !plant.hasTag(PlantTag.FIRE)
+                    && !candidateLanes.contains(position.getRow())) {
+                candidateLanes.add(position.getRow());
+            }
+        }
+        if (candidateLanes.isEmpty()) {
+            return;
+        }
+        List<Integer> windLanes = new ArrayList<>();
+        for (int lane : candidateLanes) {
+            if (random.nextDouble() < ICY_WIND_LANE_CHANCE) {
+                windLanes.add(lane);
+            }
+        }
+        if (windLanes.isEmpty()) {
+            return;
+        }
+        Collections.sort(windLanes);
+        int affectedPlants = board.applyIcyWind(windLanes);
+        pendingResults.addAll(board.drainResults());
+        if (affectedPlants > 0) {
+            pendingResults.add("Icy wind struck lane(s) "
+                    + windLanes + " at wave " + waveNumber
+                    + " and chilled " + affectedPlants
+                    + " plant(s).");
+        }
     }
 
     private int chooseTornadoAdvance(ZombieWave wave) {
