@@ -7,6 +7,7 @@ import model.App;
 import model.Settings;
 import model.auth.UserManager;
 import model.collections.plants.PlantCollection;
+import model.collections.plants.PlantCollectionItem;
 import model.collections.zombies.ZombieCollection;
 import model.enums.Gender;
 import model.greenHouse.GreenHouse;
@@ -74,9 +75,11 @@ public class User {
         this.securityQuestion = securityQuestion;
         this.coins = coins;
         this.diamonds = diamonds;
-        this.greenhousePotsUnlocked = greenhousePotsUnlocked;
         this.plantFoodCount = plantFoodCount;
         this.greenHouse = new GreenHouse();
+        this.greenhousePotsUnlocked = Math.max(
+                greenhousePotsUnlocked,
+                this.greenHouse.getBoard().getUnlockedPotCount());
         this.plantBoosts = new HashMap<>();
         this.plantCollection = new PlantCollection();
         this.zombieCollection = new ZombieCollection();
@@ -126,6 +129,8 @@ public class User {
                 greenhousePotsUnlocked, plantFoodCount);
         if (greenHouse != null) {
             user.greenHouse = greenHouse;
+            user.greenhousePotsUnlocked =
+                    greenHouse.getBoard().getUnlockedPotCount();
         }
         if (plantBoosts != null) {
             user.plantBoosts = plantBoosts;
@@ -311,9 +316,64 @@ public class User {
         this.dailyOfferPurchased = dailyOfferPurchased;
     }
 
+    public boolean addPlantBoost(String plantName) {
+        String key = findPlantBoostKey(plantName);
+        if (key == null) {
+            key = canonicalPlantName(plantName);
+        }
+        if (key.isBlank() || plantBoosts.getOrDefault(key, 0) >= 1) {
+            return false;
+        }
+        plantBoosts.put(key, 1);
+        return true;
+    }
+
     public void addPlantBoost(String plantName, int amount) {
-        plantBoosts.put(plantName,
-                Math.min(1, plantBoosts.getOrDefault(plantName, 0) + amount));
+        if (amount <= 0) {
+            return;
+        }
+        addPlantBoost(plantName);
+    }
+
+    public boolean hasPlantBoost(String plantName) {
+        String key = findPlantBoostKey(plantName);
+        return key != null && plantBoosts.getOrDefault(key, 0) > 0;
+    }
+
+    public boolean consumePlantBoost(String plantName) {
+        String key = findPlantBoostKey(plantName);
+        if (key == null || plantBoosts.getOrDefault(key, 0) <= 0) {
+            return false;
+        }
+        plantBoosts.remove(key);
+        return true;
+    }
+
+    private String findPlantBoostKey(String plantName) {
+        String normalized = normalizePlantName(plantName);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        for (String key : plantBoosts.keySet()) {
+            if (normalizePlantName(key).equals(normalized)) {
+                return key;
+            }
+        }
+        return null;
+    }
+
+    private String canonicalPlantName(String plantName) {
+        PlantCollectionItem plant = plantCollection.findPlant(plantName);
+        return plant == null ? (plantName == null ? "" : plantName.trim())
+                : plant.getName();
+    }
+
+    private static String normalizePlantName(String plantName) {
+        if (plantName == null) {
+            return "";
+        }
+        return plantName.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]", "");
     }
 
     public void setSecurityQuestion(int number, String answer) {

@@ -22,12 +22,23 @@ import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
 import model.game.special.ProtectedPlantStatus;
 import model.menu.GameMenu;
+import model.menu.GreenhouseMenu;
 import model.menu.Menu;
 import model.roadmap.AdventureSession;
 import model.user.User;
 
 public final class GameMenuController {
     private GameMenuController() {
+    }
+
+    public static CommandResult handleOpenGreenhouse(Matcher matcher) {
+        Menu currentMenu = App.getInstance().getCurrentMenu();
+        if (!(currentMenu instanceof GameMenu)) {
+            return CommandResult.error("game menu is not active!");
+        }
+        App.getInstance().changeMenu(
+                new GreenhouseMenu((GameMenu) currentMenu));
+        return CommandResult.success("entered greenhouse menu");
     }
 
     public static CommandResult handleAdvanceTime(Matcher matcher) {
@@ -332,6 +343,7 @@ public final class GameMenuController {
                 return CommandResult.error("plant location is outside the board!")
                         .addPreCommandResults(preCommandResults);
             case SUCCESS:
+                persistConsumedGreenhouseBoosts(game);
                 return CommandResult.success("planted " + plant.getName() + " at " + position + "\nspent "
                         + plant.getCost() + " suns; " + game.getSunCount() + " suns remaining")
                         .addPreCommandResults(preCommandResults).addPostCommandResults(game.drainResults());
@@ -598,6 +610,7 @@ public final class GameMenuController {
                         "the conveyor packet contains an unknown plant!")
                         .addPreCommandResults(pending);
             case SUCCESS:
+                persistConsumedGreenhouseBoosts(game);
                 return CommandResult.success(
                         "planted " + packet.getPlantType()
                                 + " from conveyor slot "
@@ -770,6 +783,26 @@ public final class GameMenuController {
             return null;
         }
         return new EntityPosition(x, y);
+    }
+
+    private static void persistConsumedGreenhouseBoosts(
+            Game game) {
+        List<String> consumed =
+                game.drainConsumedGreenhouseBoosts();
+        if (consumed.isEmpty()) {
+            return;
+        }
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return;
+        }
+        boolean changed = false;
+        for (String plantName : consumed) {
+            changed |= user.consumePlantBoost(plantName);
+        }
+        if (changed) {
+            UserManager.saveAllUsers();
+        }
     }
 
     private static Game getCurrentGame() {

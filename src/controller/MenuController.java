@@ -32,8 +32,7 @@ public final class MenuController {
         if (!isKnownMenu(requestedName)) {
             return CommandResult.error("menu does not exist!");
         }
-        if (currentMenu.getName().equalsIgnoreCase(requestedName) ||
-                (currentMenu.getName().equals("GreenhouseMenu") && requestedName.equals("greenhouse"))) {
+        if (currentMenu.getName().equalsIgnoreCase(requestedName)) {
             return CommandResult.error("you are already in the " + requestedName + " menu!");
         }
 
@@ -100,6 +99,9 @@ public final class MenuController {
         if (currentMenu instanceof GameMenu) {
             if ("collection".equals(requestedName)) {
                 return new CollectionMenu((GameMenu) currentMenu);
+            }
+            if ("greenhouse".equals(requestedName)) {
+                return new GreenhouseMenu((GameMenu) currentMenu);
             }
             if ("main".equals(requestedName)) {
                 return new MainMenu();

@@ -9,6 +9,7 @@ import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantCategory;
 import model.game.entities.plants.PlantDefinition;
 import model.game.entities.plants.PlantFactory;
+import model.game.entities.plants.PlantFoodSupport;
 import model.game.entities.plants.PlantTag;
 
 public class PlantCollectionItem {
@@ -69,6 +70,11 @@ public class PlantCollectionItem {
 
     public String getPlantFoodEffect() {
         return definition.getPlantFoodEffect();
+    }
+
+    public boolean hasPlantFoodAbility() {
+        BasePlant prototype = createEntity(new EntityPosition(0, 0));
+        return PlantFoodSupport.supports(prototype);
     }
 
     public String getLevelTwoUpgrade() {

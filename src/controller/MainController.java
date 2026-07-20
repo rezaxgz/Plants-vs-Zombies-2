@@ -1,8 +1,11 @@
 package controller;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 
 import model.App;
@@ -260,12 +263,24 @@ public final class MainController {
             List<String> boostedPlantNames,
             String preface) {
         Game game = level.createGame();
+        User user = App.getInstance().getLoggedInUser();
+        Set<String> paidBoosts = new LinkedHashSet<>();
+        if (boostedPlantNames != null) {
+            paidBoosts.addAll(boostedPlantNames);
+        }
+        List<String> armedGreenhouseBoosts = new ArrayList<>();
+        if (user != null && selectedPlantLevels != null) {
+            addGreenhouseBoosts(user, selectedPlantLevels.keySet(),
+                    paidBoosts, armedGreenhouseBoosts);
+        }
         if (selectedPlantLevels != null
                 && !selectedPlantLevels.isEmpty()) {
-            game.configurePlantLoadout(
-                    selectedPlantLevels, boostedPlantNames);
+            game.configurePlantLoadout(selectedPlantLevels,
+                    new ArrayList<>(paidBoosts),
+                    armedGreenhouseBoosts);
         }
-        User user = App.getInstance().getLoggedInUser();
+
+        int startingPlantFood = transferStartingPlantFood(user, game);
         if (user != null) {
             user.getGameProgerss().recordGameStarted();
             UserManager.saveAllUsers();
@@ -286,7 +301,65 @@ public final class MainController {
         if (preface != null && !preface.isBlank()) {
             result.addPreCommandResult(preface);
         }
+        if (!armedGreenhouseBoosts.isEmpty()) {
+            result.addPreCommandResult(
+                    "Greenhouse boost ready for this level: "
+                            + String.join(", ", armedGreenhouseBoosts)
+                            + ". It will be consumed when that plant is first used.");
+        }
+        if (startingPlantFood > 0) {
+            result.addPreCommandResult("Transferred "
+                    + startingPlantFood
+                    + " shop-purchased plant food to this level.");
+        }
         return withNotifications(result);
+    }
+
+    private static void addGreenhouseBoosts(User user,
+            Set<String> selectedPlantNames,
+            Set<String> paidBoosts,
+            List<String> greenhouseBoosts) {
+        for (String plantName : selectedPlantNames) {
+            if (containsPlantName(paidBoosts, plantName)
+                    || !user.hasPlantBoost(plantName)) {
+                continue;
+            }
+            greenhouseBoosts.add(plantName);
+        }
+    }
+
+    private static int transferStartingPlantFood(
+            User user, Game game) {
+        if (user == null || user.getPlantFoodCount() <= 0) {
+            return 0;
+        }
+        int transferred = Math.min(
+                game.getMaximumPlantFoodCount(),
+                user.getPlantFoodCount());
+        game.loadStartingPlantFood(transferred);
+        user.setPlantFoodCount(
+                user.getPlantFoodCount() - transferred);
+        return transferred;
+    }
+
+    private static boolean containsPlantName(
+            Set<String> plantNames, String requestedName) {
+        String normalizedRequested = normalizePlantName(requestedName);
+        for (String plantName : plantNames) {
+            if (normalizePlantName(plantName)
+                    .equals(normalizedRequested)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizePlantName(String plantName) {
+        if (plantName == null) {
+            return "";
+        }
+        return plantName.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]", "");
     }
 
     private static String formatLevels(

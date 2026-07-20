@@ -1,155 +1,198 @@
 package controller;
 
-import model.App;
-import model.CommandResult;
-import model.collections.plants.PlantCollectionItem;
-import model.greenHouse.*;
-import model.user.User;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.regex.Matcher;
 
-public class GreenhouseMenuController {
+import model.App;
+import model.CommandResult;
+import model.auth.UserManager;
+import model.collections.plants.PlantCollectionItem;
+import model.greenHouse.GreenhouseBoard;
+import model.greenHouse.PlantedPlant;
+import model.greenHouse.Pot;
+import model.menu.GreenhouseMenu;
+import model.menu.Menu;
+import model.menu.ShopMenu;
+import model.user.User;
+
+public final class GreenhouseMenuController {
     private static final Random RANDOM = new Random();
+    private static final long MARIGOLD_GROWTH_HOURS = 2;
+    private static final long PLANT_GROWTH_HOURS = 8;
+    private static final int MARIGOLD_REWARD_COINS = 500;
+
+    private GreenhouseMenuController() {
+    }
 
     public static CommandResult handleShowGreenhouse(Matcher matcher) {
         User user = App.getInstance().getLoggedInUser();
-        if (user == null)
+        if (user == null) {
             return CommandResult.error("You must be logged in.");
+        }
 
         GreenhouseBoard board = user.getGreenHouse().getBoard();
-        StringBuilder sb = new StringBuilder("Greenhouse Status:\n");
-
+        StringBuilder output = new StringBuilder("Greenhouse Status:\n");
         for (int y = 1; y <= GreenhouseBoard.ROWS; y++) {
             for (int x = 1; x <= GreenhouseBoard.COLUMNS; x++) {
-                Pot pot = board.getPotAt(x, y);
-                sb.append(String.format("Pot (%d,%d): ", x, y));
-
-                if (pot.isLocked()) {
-                    sb.append("Locked");
-                } else if (pot.isEmpty()) {
-                    sb.append("Empty");
-                } else {
-                    PlantedPlant p = pot.getPlant();
-                    if (p.isGrown()) {
-                        sb.append(p.getPlantName()).append(" [ready]");
-                    } else {
-                        sb.append(p.getPlantName()).append(" [growing: ")
-                                .append(p.getRemainingHoursCeil()).append(" hours left]");
-                    }
-                }
-                sb.append("\n");
+                appendPotStatus(output, board.getPotAt(x, y), x, y);
             }
         }
-        return CommandResult.success(sb.toString().trim());
+        return CommandResult.success(output.toString().trim());
+    }
+
+    private static void appendPotStatus(StringBuilder output,
+            Pot pot, int x, int y) {
+        output.append(String.format("Pot (%d,%d): ", x, y));
+        if (pot.isLocked()) {
+            output.append("Locked");
+        } else if (pot.isEmpty()) {
+            output.append("Empty");
+        } else {
+            PlantedPlant plant = pot.getPlant();
+            output.append(plant.getPlantName());
+            if (plant.isGrown()) {
+                output.append(" [ready]");
+            } else {
+                output.append(" [growing: ")
+                        .append(plant.getRemainingHoursCeil())
+                        .append(" hours left]");
+            }
+        }
+        output.append(System.lineSeparator());
     }
 
     public static CommandResult handlePlantPot(Matcher matcher) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
         int x = Integer.parseInt(matcher.group("x"));
         int y = Integer.parseInt(matcher.group("y"));
-
-        User user = App.getInstance().getLoggedInUser();
         Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
-
-        if (pot == null)
+        if (pot == null) {
             return CommandResult.error("invalid coordinates");
-        if (pot.isLocked())
+        }
+        if (pot.isLocked()) {
             return CommandResult.error("this pot is locked");
-        if (!pot.isEmpty())
+        }
+        if (!pot.isEmpty()) {
             return CommandResult.error("this pot is already occupied");
-
-        boolean isMarigold = RANDOM.nextDouble() < 0.5;
-        String plantName = "marigold";
-        long duration = 2;
-
-        if (!isMarigold) {
-            List<PlantCollectionItem> unlocked = user.getPlantCollection().getUnlockedPlants();
-            if (unlocked != null && !unlocked.isEmpty()) {
-                plantName = unlocked.get(RANDOM.nextInt(unlocked.size())).getName();
-            } else {
-                plantName = "random_plant_placeholder";
-            }
-            duration = 8;
         }
 
-        pot.setPlant(new PlantedPlant(plantName, isMarigold, duration));
-        return CommandResult.success("planted " + plantName + " at (" + x + ", " + y + ")");
+        PlantedPlant plantedPlant = choosePlant(user);
+        pot.setPlant(plantedPlant);
+        UserManager.saveAllUsers();
+        return CommandResult.success("planted "
+                + plantedPlant.getPlantName() + " at ("
+                + x + ", " + y + ")");
+    }
+
+    private static PlantedPlant choosePlant(User user) {
+        List<PlantCollectionItem> eligiblePlants =
+                getEligibleGreenhousePlants(user);
+        boolean chooseMarigold = eligiblePlants.isEmpty()
+                || RANDOM.nextDouble() < 0.5;
+        if (chooseMarigold) {
+            return new PlantedPlant("marigold", true,
+                    MARIGOLD_GROWTH_HOURS);
+        }
+        PlantCollectionItem selected = eligiblePlants.get(
+                RANDOM.nextInt(eligiblePlants.size()));
+        return new PlantedPlant(selected.getName(), false,
+                PLANT_GROWTH_HOURS);
+    }
+
+    static List<PlantCollectionItem> getEligibleGreenhousePlants(User user) {
+        List<PlantCollectionItem> eligible = new ArrayList<>();
+        if (user == null) {
+            return eligible;
+        }
+        for (PlantCollectionItem plant
+                : user.getPlantCollection().getUnlockedPlants()) {
+            if (plant.hasPlantFoodAbility()) {
+                eligible.add(plant);
+            }
+        }
+        return eligible;
     }
 
     public static CommandResult handleCollect(Matcher matcher) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
         int x = Integer.parseInt(matcher.group("x"));
         int y = Integer.parseInt(matcher.group("y"));
-
-        User user = App.getInstance().getLoggedInUser();
         Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
-
-        if (pot == null || pot.isLocked() || pot.isEmpty())
+        if (pot == null || pot.isLocked() || pot.isEmpty()) {
             return CommandResult.error("no plant to collect here");
+        }
 
         PlantedPlant plant = pot.getPlant();
-        if (!plant.isGrown())
+        if (!plant.isGrown()) {
             return CommandResult.error("plant is not ready yet");
+        }
 
         pot.harvest();
-
+        String message;
         if (plant.isMarigold()) {
-            user.addCoins(500);
-            return CommandResult.success("harvested marigold! gained 500 coins");
+            user.addCoins(MARIGOLD_REWARD_COINS);
+            message = "harvested marigold! gained 500 coins";
         } else {
-            user.addPlantBoost(plant.getPlantName(), 1);
-            return CommandResult.success("harvested " + plant.getPlantName() + "! gained 1 boost");
+            boolean stored = user.addPlantBoost(plant.getPlantName());
+            message = stored
+                    ? "harvested " + plant.getPlantName()
+                            + "! stored 1 boost for a later level"
+                    : "harvested " + plant.getPlantName()
+                            + "; its greenhouse boost was already stored";
         }
+        UserManager.saveAllUsers();
+        return CommandResult.success(message);
     }
 
     public static CommandResult handleGrow(Matcher matcher) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
         int x = Integer.parseInt(matcher.group("x"));
         int y = Integer.parseInt(matcher.group("y"));
-
-        User user = App.getInstance().getLoggedInUser();
         Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
-
-        if (pot == null || pot.isLocked() || pot.isEmpty())
+        if (pot == null || pot.isLocked() || pot.isEmpty()) {
             return CommandResult.error("no growing plant here");
+        }
 
         PlantedPlant plant = pot.getPlant();
-        if (plant.isGrown())
+        if (plant.isGrown()) {
             return CommandResult.error("plant is already ready for harvest");
+        }
 
         int cost = plant.getRemainingHoursCeil();
-
         if (user.getDiamonds() < cost) {
             return CommandResult.error("not enough diamonds. need " + cost);
         }
 
         user.deductDiamonds(cost);
         plant.grow();
-        return CommandResult.success("spent " + cost + " diamonds. plant is now ready!");
+        UserManager.saveAllUsers();
+        return CommandResult.success("spent " + cost
+                + " diamonds. plant is now ready!");
     }
 
     public static CommandResult handleUnlock(Matcher matcher) {
-        int x = Integer.parseInt(matcher.group("x"));
-        int y = Integer.parseInt(matcher.group("y"));
-
-        User user = App.getInstance().getLoggedInUser();
-        Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
-
-        if (pot == null)
-            return CommandResult.error("invalid coordinates");
-        if (!pot.isLocked())
-            return CommandResult.error("pot is already unlocked");
-
-        int cost = 100;
-        if (user.getCoins() < cost)
-            return CommandResult.error("not enough coins to unlock (need " + cost + ")");
-
-        user.deductCoins(cost);
-        pot.unlock();
-        return CommandResult.success("unlocked pot at (" + x + ", " + y + ") for " + cost + " coins");
+        return CommandResult.error(
+                "Pots can only be unlocked through the 2000-coin shop item.");
     }
 
     public static CommandResult handleEnterShop(Matcher matcher) {
-        // Safe context change linking straight into the state controller view
-        App.getInstance().changeMenu(new model.menu.ShopMenu());
-        return CommandResult.success("Entered the shop. Type 'shop list' or 'shop daily' to see available goods.");
+        Menu currentMenu = App.getInstance().getCurrentMenu();
+        GreenhouseMenu greenhouseMenu = currentMenu instanceof GreenhouseMenu
+                ? (GreenhouseMenu) currentMenu : new GreenhouseMenu();
+        App.getInstance().changeMenu(new ShopMenu(greenhouseMenu));
+        return CommandResult.success(
+                "Entered the shop. Type 'shop list' or 'shop daily' "
+                        + "to see available goods.");
     }
 }
