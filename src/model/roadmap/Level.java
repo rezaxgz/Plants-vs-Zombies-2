@@ -6,8 +6,11 @@ import java.util.List;
 
 import model.Constants;
 import model.game.Board;
+import model.game.ChapterRuleset;
 import model.game.Game;
 import model.game.ZombieWave;
+import model.game.entities.EntityPosition;
+import model.game.entities.zombies.ZombieType;
 import model.game.special.TimedWarObjective;
 
 /**
@@ -19,6 +22,7 @@ public final class Level {
     private final LevelKind kind;
     private final SpecialLevelType specialLevelType;
     private final SpecialLevelConfig specialConfig;
+    private final ChapterRuleset chapterRuleset;
     private final int numberOfRows;
     private final int numberOfColumns;
     private final int initialSunCount;
@@ -31,8 +35,10 @@ public final class Level {
         this(1, name, LevelKind.NORMAL,
                 SpecialLevelType.NONE,
                 SpecialLevelConfig.none(),
+                ChapterRuleset.NONE,
                 numberOfRows, numberOfColumns,
-                initialSunCount, zombieWaves);
+                initialSunCount, Constants.DEFAULT_PLANT_SLOTS,
+                zombieWaves);
     }
 
     public Level(int number, String name,
@@ -43,8 +49,10 @@ public final class Level {
         this(number, name, kind,
                 SpecialLevelType.NONE,
                 SpecialLevelConfig.none(),
+                ChapterRuleset.NONE,
                 numberOfRows, numberOfColumns,
-                initialSunCount, zombieWaves);
+                initialSunCount, Constants.DEFAULT_PLANT_SLOTS,
+                zombieWaves);
     }
 
     public Level(int number, String name,
@@ -55,9 +63,24 @@ public final class Level {
             int initialSunCount,
             List<ZombieWave> zombieWaves) {
         this(number, name, kind, specialLevelType,
-                specialConfig, numberOfRows, numberOfColumns,
+                specialConfig, ChapterRuleset.NONE,
+                numberOfRows, numberOfColumns,
                 initialSunCount, Constants.DEFAULT_PLANT_SLOTS,
                 zombieWaves);
+    }
+
+    public Level(int number, String name,
+            LevelKind kind,
+            SpecialLevelType specialLevelType,
+            SpecialLevelConfig specialConfig,
+            ChapterRuleset chapterRuleset,
+            int numberOfRows, int numberOfColumns,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves) {
+        this(number, name, kind, specialLevelType,
+                specialConfig, chapterRuleset,
+                numberOfRows, numberOfColumns, initialSunCount,
+                Constants.DEFAULT_PLANT_SLOTS, zombieWaves);
     }
 
     public Level(int number, String name,
@@ -67,8 +90,22 @@ public final class Level {
             int numberOfRows, int numberOfColumns,
             int initialSunCount, int plantSlotCount,
             List<ZombieWave> zombieWaves) {
+        this(number, name, kind, specialLevelType,
+                specialConfig, ChapterRuleset.NONE,
+                numberOfRows, numberOfColumns, initialSunCount,
+                plantSlotCount, zombieWaves);
+    }
+
+    public Level(int number, String name,
+            LevelKind kind,
+            SpecialLevelType specialLevelType,
+            SpecialLevelConfig specialConfig,
+            ChapterRuleset chapterRuleset,
+            int numberOfRows, int numberOfColumns,
+            int initialSunCount, int plantSlotCount,
+            List<ZombieWave> zombieWaves) {
         validate(number, name, kind,
-                specialLevelType, specialConfig,
+                specialLevelType, specialConfig, chapterRuleset,
                 numberOfRows, numberOfColumns,
                 initialSunCount, plantSlotCount, zombieWaves);
         this.number = number;
@@ -76,6 +113,7 @@ public final class Level {
         this.kind = kind;
         this.specialLevelType = specialLevelType;
         this.specialConfig = specialConfig;
+        this.chapterRuleset = chapterRuleset;
         this.numberOfRows = numberOfRows;
         this.numberOfColumns = numberOfColumns;
         this.initialSunCount = initialSunCount;
@@ -89,12 +127,14 @@ public final class Level {
             int number, String name, LevelKind kind,
             SpecialLevelType specialLevelType,
             SpecialLevelConfig specialConfig,
+            ChapterRuleset chapterRuleset,
             int rows, int columns, int sun,
             int plantSlots, List<ZombieWave> waves) {
         if (number <= 0 || name == null
                 || name.isBlank() || kind == null
                 || specialLevelType == null
-                || specialConfig == null) {
+                || specialConfig == null
+                || chapterRuleset == null) {
             throw new IllegalArgumentException(
                     "level identity values are invalid");
         }
@@ -129,12 +169,55 @@ public final class Level {
                 specialLevelType
                         != SpecialLevelType
                                 .PLANT_WHAT_YOU_GET;
+        Board board = new Board(numberOfRows, numberOfColumns);
+        configureChapterBoard(board);
         Game game = new Game(
-                new Board(numberOfRows, numberOfColumns),
-                null, initialSunCount, freshWaves,
-                startWavesImmediately);
+                board, null, initialSunCount, freshWaves,
+                startWavesImmediately, chapterRuleset);
         configureSpecialRules(game);
         return game;
+    }
+
+    private void configureChapterBoard(Board board) {
+        switch (chapterRuleset) {
+            case ANCIENT_EGYPT:
+                configureAncientEgyptBoard(board);
+                break;
+            case FROSTBITE_CAVES:
+                configureFrostbiteBoard(board);
+                break;
+            case NONE:
+            case BIG_WAVE_BEACH:
+            case DARK_AGES:
+                break;
+            default:
+                throw new IllegalStateException(
+                        "unknown chapter ruleset");
+        }
+    }
+
+    private void configureAncientEgyptBoard(Board board) {
+        board.addGrave(new EntityPosition(0, 4));
+        board.addGrave(new EntityPosition(2, 5));
+        board.addGrave(new EntityPosition(4, 6));
+    }
+
+    private void configureFrostbiteBoard(Board board) {
+        board.enableFrostbiteCavesRules();
+        if (number >= 2) {
+            board.setSliderTile(
+                    new EntityPosition(1, 5), -1);
+            board.setSliderTile(
+                    new EntityPosition(3, 5), 1);
+        }
+        if (number >= 3) {
+            board.addFrozenZombie(
+                    ZombieType.ICEAGE,
+                    new EntityPosition(0, 6));
+            board.addFrozenZombie(
+                    ZombieType.ICEAGE_CONEHEAD,
+                    new EntityPosition(4, 7));
+        }
     }
 
     private void configureSpecialRules(Game game) {
@@ -214,6 +297,10 @@ public final class Level {
 
     public SpecialLevelConfig getSpecialConfig() {
         return specialConfig;
+    }
+
+    public ChapterRuleset getChapterRuleset() {
+        return chapterRuleset;
     }
 
     public int getNumberOfRows() {

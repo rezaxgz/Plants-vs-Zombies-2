@@ -27,6 +27,7 @@ import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
 import model.game.structure.BaseStructure;
+import model.game.structure.Grave;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
 /**
@@ -43,8 +44,9 @@ public final class GameStatusFormatter {
         appendGameHeader(output, game);
         output.append(System.lineSeparator())
                 .append("legend: terrain ")
-                .append("N=normal G=gravestone SL=slippery ")
-                .append("F=frozen W=water LB=low-beach ")
+                .append("N=normal G=gravestone SU=slider-up ")
+                .append("SD=slider-down SL=slippery F=frozen ")
+                .append("W=water LB=low-beach ")
                 .append("NE=necromancy C=crater; ")
                 .append("P=plants Z=zombies S=suns R=structures")
                 .append(" D=drops")
@@ -160,10 +162,7 @@ public final class GameStatusFormatter {
         BaseStructure structure =
                 board.getStructureAt(position);
         output.append("structure: ")
-                .append(structure == null
-                        ? "none"
-                        : structure.getClass()
-                                .getSimpleName())
+                .append(formatStructure(structure))
                 .append(System.lineSeparator());
         appendPlantDetails(
                 output, board.getPlantsAt(position));
@@ -243,6 +242,19 @@ public final class GameStatusFormatter {
                     .append(')');
         }
     }
+    private static String formatStructure(
+            BaseStructure structure) {
+        if (structure == null) {
+            return "none";
+        }
+        if (structure instanceof Grave) {
+            Grave grave = (Grave) structure;
+            return "Grave " + grave.getHitPoints() + "/"
+                    + Grave.DEFAULT_HIT_POINTS + " HP";
+        }
+        return structure.getClass().getSimpleName();
+    }
+
     private static void appendPlantDetails(
             StringBuilder output,
             List<BasePlant> plants) {
@@ -340,6 +352,13 @@ public final class GameStatusFormatter {
     }
     private static String zombieEffects(Zombie zombie) {
         List<String> effects = new ArrayList<>();
+        if (zombie.isEncasedInIce()) {
+            effects.add("encased in ice "
+                    + zombie.getFrozenShellHitPoints()
+                    + "/"
+                    + zombie.getFrozenShellMaximumHitPoints()
+                    + " HP");
+        }
         if (zombie.isFrozen()) {
             effects.add("frozen "
                     + formatSeconds(
@@ -499,6 +518,10 @@ public final class GameStatusFormatter {
                 return "N";
             case GRAVESTONE:
                 return "G";
+            case SLIDER_UP:
+                return "SU";
+            case SLIDER_DOWN:
+                return "SD";
             case SLIPPERY:
                 return "SL";
             case FROZEN:

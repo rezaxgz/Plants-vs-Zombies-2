@@ -81,6 +81,7 @@ public class Board {
     private static final double GRAPE_COLLISION_RADIUS = 0.35;
     private static final int GRAPESHOT_PROJECTILE_COUNT = 8;
     private static final int FINISH_EXPLOSION_DAMAGE = 1800;
+    private static final double FROZEN_SHELL_WARMING_DAMAGE_PER_SECOND = 60.0;
 
     private static final class ActiveFamilyBoost {
         private final PlantFamily family;
@@ -110,6 +111,7 @@ public class Board {
     private final List<Zombie> pendingSpawnedZombies;
     private final List<ActiveFamilyBoost> activeFamilyBoosts;
     private final List<PlantFamily> pendingPlantCooldownResets;
+    private boolean frostbiteCavesRules;
 
     public Board() {
         this(Constants.DEFAULT_BOARD_ROWS, Constants.DEFAULT_BOARD_COLUMNS);
@@ -352,6 +354,9 @@ public class Board {
                     continue;
                 }
                 EntityPosition position = tile.getPosition();
+                if (findEncasedZombieAt(position) != null) {
+                    continue;
+                }
                 double parameter = projectile.getIntersectionParameter(
                         position.getRow(), position.getColumn(), 0.45);
                 if (!Double.isNaN(parameter)) {
@@ -722,12 +727,22 @@ public class Board {
 
     private void resolveProjectileHits(Projectile projectile) {
         while (!projectile.isRemoved()) {
+            Grave grave = findFirstGraveHit(projectile);
             PushedObstacle pushedObstacle =
                     findFirstPushedObstacleHit(projectile);
             BasePlant octopusPlant =
                     findFirstOctopusCoveredPlantHit(projectile);
             BasePlant frozenPlant = findFirstFrozenPlantHit(projectile);
             Zombie target = findFirstZombieHit(projectile);
+
+            if (grave != null && isGraveBeforeOtherTargets(
+                    projectile, grave, octopusPlant, pushedObstacle,
+                    frozenPlant, target)) {
+                damageGrave(grave, Math.max(1,
+                        projectile.getImpactDamage()));
+                projectile.markForRemoval();
+                return;
+            }
 
             if (octopusPlant != null
                     && isOctopusBeforeOtherTargets(
@@ -773,6 +788,9 @@ public class Board {
             if (target == null) {
                 return;
             }
+            if (resolveFrozenZombieImpact(projectile, target)) {
+                return;
+            }
 
             extinguishProspectorDynamite(projectile, target);
             if (tryReflectProjectile(projectile, target)) {
@@ -787,6 +805,171 @@ public class Board {
                 return;
             }
         }
+    }
+
+    private Grave findFirstGraveHit(Projectile projectile) {
+        Grave firstGrave = null;
+        double firstParameter = Double.POSITIVE_INFINITY;
+        for (BaseStructure structure : getStructures()) {
+            if (!(structure instanceof Grave)) {
+                continue;
+            }
+            EntityPosition position = structure.getPosition();
+            double parameter = projectile.getIntersectionParameter(
+                    position.getRow(), position.getColumn(),
+                    PROJECTILE_COLLISION_RADIUS);
+            if (!Double.isNaN(parameter)
+                    && parameter > POSITION_EPSILON
+                    && parameter < firstParameter) {
+                firstParameter = parameter;
+                firstGrave = (Grave) structure;
+            }
+        }
+        return firstGrave;
+    }
+
+    private boolean isGraveBeforeOtherTargets(
+            Projectile projectile, Grave grave,
+            BasePlant octopusPlant, PushedObstacle pushedObstacle,
+            BasePlant frozenPlant, Zombie zombie) {
+        EntityPosition gravePosition = grave.getPosition();
+        double graveParameter = projectile.getIntersectionParameter(
+                gravePosition.getRow(), gravePosition.getColumn(),
+                PROJECTILE_COLLISION_RADIUS);
+        if (Double.isNaN(graveParameter)) {
+            return false;
+        }
+        return graveParameter <= minimumTargetParameter(
+                projectile, octopusPlant, pushedObstacle,
+                frozenPlant, zombie) + POSITION_EPSILON;
+    }
+
+    private double minimumTargetParameter(Projectile projectile,
+            BasePlant octopusPlant, PushedObstacle pushedObstacle,
+            BasePlant frozenPlant, Zombie zombie) {
+        double minimum = Double.POSITIVE_INFINITY;
+        if (octopusPlant != null) {
+            minimum = Math.min(minimum, collisionParameter(
+                    projectile, octopusPlant.getEntityPosition()));
+        }
+        if (pushedObstacle != null) {
+            minimum = Math.min(minimum,
+                    projectile.getIntersectionParameter(
+                            pushedObstacle.getLane(),
+                            pushedObstacle.getColumnPosition(),
+                            PROJECTILE_COLLISION_RADIUS));
+        }
+        if (frozenPlant != null) {
+            minimum = Math.min(minimum, collisionParameter(
+                    projectile, frozenPlant.getEntityPosition()));
+        }
+        if (zombie != null) {
+            minimum = Math.min(minimum,
+                    projectile.getIntersectionParameter(
+                            zombie.getLane(),
+                            zombie.getColumnPosition(),
+                            PROJECTILE_COLLISION_RADIUS));
+        }
+        return minimum;
+    }
+
+    private static double collisionParameter(Projectile projectile,
+            EntityPosition position) {
+        if (position == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double parameter = projectile.getIntersectionParameter(
+                position.getRow(), position.getColumn(),
+                PROJECTILE_COLLISION_RADIUS);
+        return Double.isNaN(parameter)
+                ? Double.POSITIVE_INFINITY : parameter;
+    }
+
+    private void damageGrave(Grave grave, int damage) {
+        grave.takeDamage(damage);
+        if (grave.isRemoved()) {
+            structures.remove(grave);
+            setTileType(grave.getPosition(), TileType.NORMAL);
+            pendingResults.add("Grave at " + grave.getPosition()
+                    + " was destroyed.");
+            return;
+        }
+        pendingResults.add("Grave at " + grave.getPosition()
+                + " absorbed " + damage + " projectile damage; "
+                + grave.getHitPoints() + " HP remains.");
+    }
+
+    private boolean resolveFrozenZombieImpact(
+            Projectile projectile, Zombie zombie) {
+        if (!damageFrozenZombieShell(zombie,
+                Math.max(1, projectile.getImpactDamage()),
+                projectile.hasFireEffect())) {
+            return false;
+        }
+        projectile.markForRemoval();
+        return true;
+    }
+
+    private boolean damageFrozenZombieShell(
+            Zombie zombie, int damage, boolean fireDamage) {
+        if (zombie == null || !zombie.isEncasedInIce()) {
+            return false;
+        }
+        boolean released = zombie.damageFrozenShell(
+                Math.max(1, damage), fireDamage);
+        reportFrozenZombieShellHit(zombie, damage, released,
+                fireDamage);
+        return true;
+    }
+
+    private void damageZombieOrFrozenShell(
+            Zombie zombie, int damage, boolean fireDamage) {
+        if (damageFrozenZombieShell(
+                zombie, damage, fireDamage)) {
+            return;
+        }
+        damageZombieOrFrozenShell(
+                zombie, damage, fireDamage);
+    }
+
+    private void reportFrozenZombieShellHit(
+            Zombie zombie, int damage, boolean released,
+            boolean fireDamage) {
+        if (released) {
+            releaseFrozenZombie(zombie);
+            return;
+        }
+        String impact = fireDamage
+                ? "a fire attack" : damage + " damage";
+        pendingResults.add("The ice around " + zombie.getName()
+                + " absorbed " + impact + "; "
+                + zombie.getFrozenShellHitPoints()
+                + " HP remains.");
+    }
+
+    private Zombie findEncasedZombieAt(EntityPosition position) {
+        if (position == null) {
+            return null;
+        }
+        for (Zombie zombie : getZombies()) {
+            if (zombie.isEncasedInIce()
+                    && zombie.getLane() == position.getRow()
+                    && (int) Math.floor(zombie.getColumnPosition())
+                            == position.getColumn()) {
+                return zombie;
+            }
+        }
+        return null;
+    }
+
+    private void releaseFrozenZombie(Zombie zombie) {
+        EntityPosition position = zombie.getEntityPosition();
+        Tile tile = getTileAt(position);
+        if (tile != null && tile.getTileType() == TileType.FROZEN) {
+            tile.setTileType(TileType.NORMAL);
+        }
+        pendingResults.add("The ice around " + zombie.getName()
+                + " at " + position + " was destroyed; the zombie is active.");
     }
 
     private BasePlant findFirstOctopusCoveredPlantHit(
@@ -1141,6 +1324,9 @@ public class Board {
             }
             if (projectile.hasReachedTarget()) {
                 Zombie target = projectile.getLockedTarget();
+                if (resolveFrozenZombieImpact(projectile, target)) {
+                    continue;
+                }
                 extinguishProspectorDynamite(projectile, target);
                 chillProjectileSourceIfBlockhead(projectile, target);
                 projectile.hit(target);
@@ -1169,6 +1355,9 @@ public class Board {
             Zombie target = findLobbedLandingTarget(projectile);
             if (target == null || isProtectedFromLobbers(target)) {
                 projectile.markForRemoval();
+                continue;
+            }
+            if (resolveFrozenZombieImpact(projectile, target)) {
                 continue;
             }
             extinguishProspectorDynamite(projectile, target);
@@ -1273,7 +1462,12 @@ public class Board {
             grape.bounceInside(numberOfRows, numberOfColumns);
             Zombie target = findFirstZombieHit(grape);
             if (target != null) {
-                grape.hit(target);
+                if (damageFrozenZombieShell(
+                        target, grape.getDamage(), false)) {
+                    grape.markForRemoval();
+                } else {
+                    grape.hit(target);
+                }
                 if (target.isDead()) {
                     reportZombieDeath(target);
                 }
@@ -1596,7 +1790,8 @@ public class Board {
                     || zombie.isSubmerged()) {
                 continue;
             }
-            zombie.takeDamage(explosive.getDamage());
+            damageZombieOrFrozenShell(
+                    zombie, explosive.getDamage(), false);
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
             }
@@ -1727,11 +1922,8 @@ public class Board {
                     || Math.abs(zombie.getColumnPosition() - center.getColumn()) > columnRadius) {
                 continue;
             }
-            if (fireDamage) {
-                zombie.applyFireDamage(damage);
-            } else {
-                zombie.takeDamage(damage);
-            }
+            damageZombieOrFrozenShell(
+                    zombie, damage, fireDamage);
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
             }
@@ -1742,7 +1934,8 @@ public class Board {
         for (Zombie zombie : getZombies()) {
             if (!zombie.isHypnotized() && !zombie.isSubmerged()
                     && zombie.getLane() == lane) {
-                zombie.applyFireDamage(damage);
+                damageZombieOrFrozenShell(
+                        zombie, damage, true);
                 if (zombie.isDead()) {
                     reportZombieDeath(zombie);
                 }
@@ -1758,7 +1951,8 @@ public class Board {
             if (zombie.isHypnotized() || zombie.isSubmerged()) {
                 continue;
             }
-            zombie.takeDamage(damage);
+            damageZombieOrFrozenShell(
+                    zombie, damage, false);
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
             }
@@ -1947,11 +2141,8 @@ public class Board {
         if (zombie == null || damage <= 0 || zombie.isDead()) {
             return;
         }
-        if (fireDamage) {
-            zombie.applyFireDamage(damage);
-        } else {
-            zombie.takeDamage(damage);
-        }
+        damageZombieOrFrozenShell(
+                zombie, damage, fireDamage);
         if (zombie.isDead()) {
             reportZombieDeath(zombie);
         }
@@ -2280,7 +2471,8 @@ public class Board {
                             - center.getColumn()) > radius) {
                 continue;
             }
-            zombie.applyFireDamage(damage);
+            damageZombieOrFrozenShell(
+                    zombie, damage, true);
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
             }
@@ -2364,6 +2556,10 @@ public class Board {
             if (zombie.getType().isBoss()) {
                 continue;
             }
+            if (zombie.isEncasedInIce()) {
+                warmFrozenZombie(zombie, deltaSeconds);
+                continue;
+            }
             if (zombie.isHypnotized()) {
                 updateHypnotizedZombie(zombie, deltaSeconds);
             } else {
@@ -2377,7 +2573,80 @@ public class Board {
                 updateTroglobiteIceBlocks(zombie);
                 updatePushedObjects(zombie);
             }
+            applySliderTile(zombie);
         }
+    }
+
+    private void warmFrozenZombie(Zombie zombie,
+            float deltaSeconds) {
+        if (deltaSeconds <= 0.0f
+                || !hasAdjacentFirePlant(zombie)) {
+            return;
+        }
+        boolean released = zombie.meltFrozenShell(
+                FROZEN_SHELL_WARMING_DAMAGE_PER_SECOND
+                        * deltaSeconds);
+        if (released) {
+            releaseFrozenZombie(zombie);
+        }
+    }
+
+    private boolean hasAdjacentFirePlant(Zombie zombie) {
+        EntityPosition center = zombie.getEntityPosition();
+        if (center == null) {
+            return false;
+        }
+        for (BasePlant plant : getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (position == null || plant.isDestroyed()
+                    || !plant.getTags().contains(PlantTag.FIRE)) {
+                continue;
+            }
+            int rowDistance = Math.abs(
+                    position.getRow() - center.getRow());
+            int columnDistance = Math.abs(
+                    position.getColumn() - center.getColumn());
+            if (rowDistance <= 1 && columnDistance <= 1
+                    && rowDistance + columnDistance > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applySliderTile(Zombie zombie) {
+        if (zombie.getType() == ZombieType.DODO
+                || zombie.isFlying()) {
+            zombie.clearSliderTrigger();
+            return;
+        }
+        int column = (int) Math.floor(
+                zombie.getColumnPosition());
+        EntityPosition position = new EntityPosition(
+                zombie.getLane(), column);
+        Tile tile = getTileAt(position);
+        if (tile == null
+                || (tile.getTileType() != TileType.SLIDER_UP
+                        && tile.getTileType()
+                                != TileType.SLIDER_DOWN)) {
+            zombie.clearSliderTrigger();
+            return;
+        }
+        if (!zombie.markSliderTriggered(column)) {
+            return;
+        }
+        int laneDelta = tile.getTileType()
+                == TileType.SLIDER_UP ? -1 : 1;
+        int targetLane = zombie.getLane() + laneDelta;
+        if (targetLane < 0 || targetLane >= numberOfRows) {
+            return;
+        }
+        int sourceLane = zombie.getLane();
+        zombie.moveToLane(targetLane);
+        pendingResults.add(zombie.getName()
+                + " slid from lane " + sourceLane
+                + " to lane " + targetLane + " at column "
+                + column + ".");
     }
 
     private void updatePushedObjects(Zombie zombie) {
@@ -3047,7 +3316,8 @@ public class Board {
     private void reflectEndurianDamage(Zombie zombie, Wallnut wallnut, float deltaSeconds) {
         int reflectedDamage = wallnut.calculateReflectedDamage(deltaSeconds);
         if (reflectedDamage > 0) {
-            zombie.takeDamage(reflectedDamage);
+            damageZombieOrFrozenShell(
+                    zombie, reflectedDamage, false);
         }
     }
 
@@ -3174,6 +3444,9 @@ public class Board {
     }
 
     public void addZombie(Zombie zombie) {
+        if (zombie != null && frostbiteCavesRules) {
+            zombie.setChapterColdImmune(true);
+        }
         addEntity(zombie);
         if (App.getInstance().getLoggedInUser() != null) {
             App.getInstance().getLoggedInUser().unlockZombie(zombie.getType().getAlias());
@@ -3553,6 +3826,67 @@ public class Board {
             return null;
         }
         return tiles.get(position.getRow() * numberOfColumns + position.getColumn());
+    }
+
+    public void enableFrostbiteCavesRules() {
+        frostbiteCavesRules = true;
+        for (Zombie zombie : getZombies()) {
+            zombie.setChapterColdImmune(true);
+        }
+    }
+
+    public boolean isFrostbiteCavesRulesEnabled() {
+        return frostbiteCavesRules;
+    }
+
+    public void setSliderTile(EntityPosition position, int laneDelta) {
+        if (!isPositionInsideBoard(position)) {
+            throw new IllegalArgumentException(
+                    "slider position is outside the board");
+        }
+        if (laneDelta != -1 && laneDelta != 1) {
+            throw new IllegalArgumentException(
+                    "slider lane delta must be -1 or 1");
+        }
+        setTileType(position, laneDelta < 0
+                ? TileType.SLIDER_UP : TileType.SLIDER_DOWN);
+    }
+
+    public boolean addGrave(EntityPosition position) {
+        return addStructure(new Grave(position));
+    }
+
+    private boolean hasZombieAt(EntityPosition position) {
+        for (Zombie zombie : getZombies()) {
+            if (zombie.getLane() == position.getRow()
+                    && (int) Math.floor(zombie.getColumnPosition())
+                            == position.getColumn()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Zombie addFrozenZombie(ZombieType type,
+            EntityPosition position) {
+        if (type == null || !isPositionInsideBoard(position)) {
+            throw new IllegalArgumentException(
+                    "frozen zombie type and position are required");
+        }
+        if (hasZombieAt(position)
+                || getStructureAt(position) != null) {
+            throw new IllegalArgumentException(
+                    "frozen zombie position is occupied");
+        }
+        Zombie zombie = new Zombie(type, 0,
+                position.getRow(), position.getColumn(), false);
+        zombie.encaseInIce();
+        addZombie(zombie);
+        setTileType(position, TileType.FROZEN);
+        pendingResults.add("Frozen " + zombie.getName()
+                + " is encased at " + position + " with "
+                + zombie.getFrozenShellHitPoints() + " ice HP.");
+        return zombie;
     }
 
     public void setTileType(EntityPosition position, TileType tileType) {

@@ -60,10 +60,13 @@ import model.user.User;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
+    private static final double TORNADO_SPAWN_CHANCE = 0.50;
+    private static final int MAX_TORNADO_ADVANCE_COLUMNS = 4;
     private static final int MAX_PLANT_FOOD = 3;
 
     private final Board board;
     private final GameType gameType;
+    private final ChapterRuleset chapterRuleset;
     private final LawnMowerSystem lawnMowerSystem;
     private ConveyorBeltSystem conveyorBeltSystem;
     private LockedPlantsSystem lockedPlantsSystem;
@@ -115,7 +118,17 @@ public class Game {
             boolean startWavesImmediately) {
         this(board, gameType, initialSunCount,
                 zombieWaves, new Random(),
-                startWavesImmediately);
+                startWavesImmediately, ChapterRuleset.NONE);
+    }
+
+    public Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves,
+            boolean startWavesImmediately,
+            ChapterRuleset chapterRuleset) {
+        this(board, gameType, initialSunCount,
+                zombieWaves, new Random(),
+                startWavesImmediately, chapterRuleset);
     }
 
     Game(Board board, GameType gameType,
@@ -123,7 +136,7 @@ public class Game {
             List<ZombieWave> zombieWaves,
             Random random) {
         this(board, gameType, initialSunCount,
-                zombieWaves, random, true);
+                zombieWaves, random, true, ChapterRuleset.NONE);
     }
 
     Game(Board board, GameType gameType,
@@ -131,6 +144,16 @@ public class Game {
             List<ZombieWave> zombieWaves,
             Random random,
             boolean startWavesImmediately) {
+        this(board, gameType, initialSunCount, zombieWaves,
+                random, startWavesImmediately, ChapterRuleset.NONE);
+    }
+
+    Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves,
+            Random random,
+            boolean startWavesImmediately,
+            ChapterRuleset chapterRuleset) {
         if (board == null) {
             throw new IllegalArgumentException("board cannot be null");
         }
@@ -140,9 +163,17 @@ public class Game {
         if (random == null) {
             throw new IllegalArgumentException("random cannot be null");
         }
+        if (chapterRuleset == null) {
+            throw new IllegalArgumentException(
+                    "chapterRuleset cannot be null");
+        }
 
         this.board = board;
         this.gameType = gameType;
+        this.chapterRuleset = chapterRuleset;
+        if (chapterRuleset == ChapterRuleset.FROSTBITE_CAVES) {
+            board.enableFrostbiteCavesRules();
+        }
         this.lawnMowerSystem =
                 new LawnMowerSystem(board.getNumberOfRows());
         this.sunCount = initialSunCount;
@@ -351,7 +382,8 @@ public class Game {
             for (ZombieAbility ability : zombie.getAbilities()) {
                 activateWeaselRelease(zombie, ability);
             }
-            if (zombie.isDead() || zombie.isHypnotized()) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.isEncasedInIce()) {
                 continue;
             }
             for (ZombieAbility ability : zombie.getAbilities()) {
@@ -772,22 +804,42 @@ public class Game {
             pendingResults.add("Wave " + waveNumber + " started.");
         }
 
-        double spawnColumn = board.getNumberOfColumns() - 0.001;
+        double normalSpawnColumn = board.getNumberOfColumns() - 0.001;
         List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
         for (ZombieType zombieType : wave.getZombieTypes()) {
             int lane = random.nextInt(board.getNumberOfRows());
             boolean glowing = random.nextDouble()
                     < Constants.GLOWING_ZOMBIE_CHANCE;
+            int tornadoAdvance = chooseTornadoAdvance(wave);
+            double spawnColumn = normalSpawnColumn - tornadoAdvance;
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);
             spawnedZombies.add(zombie);
             board.addZombie(zombie);
-            pendingResults.add(buildSpawnMessage(zombie));
+            pendingResults.add(buildSpawnMessage(zombie, tornadoAdvance));
         }
         zombieWaveNumber = waveNumber;
     }
 
-    private static String buildSpawnMessage(Zombie zombie) {
+    private int chooseTornadoAdvance(ZombieWave wave) {
+        if (chapterRuleset != ChapterRuleset.ANCIENT_EGYPT
+                || !wave.isFinalWave()
+                || random.nextDouble() >= TORNADO_SPAWN_CHANCE) {
+            return 0;
+        }
+        return 1 + random.nextInt(MAX_TORNADO_ADVANCE_COLUMNS);
+    }
+
+    private static String buildSpawnMessage(
+            Zombie zombie, int tornadoAdvance) {
+        if (tornadoAdvance > 0) {
+            return "Zombie " + zombie.getName()
+                    + " arrived by tornado at wave "
+                    + zombie.getWaveNumber() + " in lane "
+                    + zombie.getLane() + ", " + tornadoAdvance
+                    + " columns ahead, which costed "
+                    + zombie.getType().getWavePointCost() + ".";
+        }
         return "Zombie " + zombie.getName() + " spawned at wave "
                 + zombie.getWaveNumber() + " in lane " + zombie.getLane()
                 + " which costed " + zombie.getType().getWavePointCost() + ".";
@@ -1671,6 +1723,10 @@ public class Game {
 
     public Board getBoard() {
         return board;
+    }
+
+    public ChapterRuleset getChapterRuleset() {
+        return chapterRuleset;
     }
 
     public GameType getGameType() {
