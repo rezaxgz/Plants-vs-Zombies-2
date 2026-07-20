@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import model.Constants;
+import model.game.ChapterRuleset;
 import model.game.ZombieWave;
 import model.game.entities.EntityPosition;
 import model.game.special.ProtectedPlantSpec;
@@ -124,6 +125,7 @@ public final class ChapterCatalog {
                 number, name, kind,
                 specialLevelType,
                 configFor(specialLevelType),
+                ChapterRuleset.fromTheme(theme),
                 Constants.DEFAULT_BOARD_ROWS,
                 Constants.DEFAULT_BOARD_COLUMNS,
                 sun, waves);
@@ -206,6 +208,7 @@ public final class ChapterCatalog {
                 4, name, LevelKind.BOSS,
                 SpecialLevelType.NONE,
                 SpecialLevelConfig.none(),
+                ChapterRuleset.fromTheme(theme),
                 Constants.DEFAULT_BOARD_ROWS,
                 Constants.DEFAULT_BOARD_COLUMNS,
                 250, waves);

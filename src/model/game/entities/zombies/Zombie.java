@@ -24,6 +24,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class Zombie extends Entity {
     public static final double ATTACK_REACH = 0.15;
     public static final double DEFAULT_SPEED = 0.185;
+    public static final int DEFAULT_FROZEN_SHELL_HIT_POINTS = 600;
 
     private ZombieType type;
     private int waveNumber;
@@ -53,6 +54,11 @@ public class Zombie extends Entity {
     private boolean flying;
     private boolean submerged;
     private boolean hypnotized;
+    private boolean chapterColdImmune;
+    private int frozenShellHitPoints;
+    private int frozenShellMaximumHitPoints;
+    private int lastTriggeredSliderColumn = Integer.MIN_VALUE;
+    private double frozenShellMeltRemainder;
     private double hypnotizedDamageMultiplier = 1.0;
     private int alliedAttackDpsOverride;
     private double pendingZombieAttackDamage;
@@ -502,6 +508,87 @@ public class Zombie extends Entity {
         }
     }
 
+    public void setChapterColdImmune(boolean chapterColdImmune) {
+        this.chapterColdImmune = chapterColdImmune;
+        if (chapterColdImmune) {
+            clearColdEffects();
+        }
+    }
+
+    public void encaseInIce() {
+        encaseInIce(DEFAULT_FROZEN_SHELL_HIT_POINTS);
+    }
+
+    public void encaseInIce(int hitPoints) {
+        if (hitPoints <= 0) {
+            throw new IllegalArgumentException(
+                    "frozen shell hit points must be positive");
+        }
+        frozenShellHitPoints = hitPoints;
+        frozenShellMaximumHitPoints = hitPoints;
+        frozenShellMeltRemainder = 0.0;
+        clearColdEffects();
+    }
+
+    public boolean damageFrozenShell(int damage, boolean fireDamage) {
+        if (damage < 0) {
+            throw new IllegalArgumentException("damage cannot be negative");
+        }
+        if (!isEncasedInIce()) {
+            return false;
+        }
+        int appliedDamage = fireDamage
+                ? frozenShellHitPoints : Math.max(1, damage);
+        frozenShellHitPoints = Math.max(0,
+                frozenShellHitPoints - appliedDamage);
+        if (frozenShellHitPoints == 0) {
+            frozenShellMeltRemainder = 0.0;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean meltFrozenShell(double damage) {
+        if (!Double.isFinite(damage) || damage < 0.0) {
+            throw new IllegalArgumentException(
+                    "melt damage must be finite and non-negative");
+        }
+        if (!isEncasedInIce() || damage == 0.0) {
+            return false;
+        }
+        frozenShellMeltRemainder += damage;
+        int wholeDamage = (int) Math.floor(frozenShellMeltRemainder);
+        if (wholeDamage == 0) {
+            return false;
+        }
+        frozenShellMeltRemainder -= wholeDamage;
+        return damageFrozenShell(wholeDamage, false);
+    }
+
+    public boolean isEncasedInIce() {
+        return frozenShellHitPoints > 0;
+    }
+
+    public int getFrozenShellHitPoints() {
+        return Math.max(0, frozenShellHitPoints);
+    }
+
+    public int getFrozenShellMaximumHitPoints() {
+        return Math.max(0, frozenShellMaximumHitPoints);
+    }
+
+    public boolean markSliderTriggered(int column) {
+        if (lastTriggeredSliderColumn == column) {
+            return false;
+        }
+        lastTriggeredSliderColumn = column;
+        return true;
+    }
+
+    public void clearSliderTrigger() {
+        lastTriggeredSliderColumn = Integer.MIN_VALUE;
+    }
+
     public void applyFireDamage(int damage) {
         if (damage < 0) {
             throw new IllegalArgumentException("damage cannot be negative");
@@ -529,6 +616,9 @@ public class Zombie extends Entity {
     }
 
     public boolean isColdImmune() {
+        if (chapterColdImmune) {
+            return true;
+        }
         switch (type) {
             case ICEAGE:
             case ICEAGE_CONEHEAD:
@@ -593,7 +683,7 @@ public class Zombie extends Entity {
                 speed *= ((JuggleAbility) ability).getSpeedMultiplier();
             }
         }
-        if (frozen || stunned)
+        if (frozen || stunned || isEncasedInIce())
             return 0;
         if (chilled)
             speed *= 0.5;
@@ -616,7 +706,7 @@ public class Zombie extends Entity {
      * Get effective eat DPS (modified by enrage).
      */
     public int getEffectiveEatDPS() {
-        if (frozen || stunned) {
+        if (frozen || stunned || isEncasedInIce()) {
             return 0;
         }
         int dps = hypnotized && alliedAttackDpsOverride > 0

@@ -27,6 +27,7 @@ import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
 import model.game.structure.BaseStructure;
+import model.game.structure.Grave;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
 /**
@@ -43,8 +44,14 @@ public final class GameStatusFormatter {
         appendGameHeader(output, game);
         output.append(System.lineSeparator())
                 .append("legend: terrain ")
-                .append("N=normal G=gravestone SL=slippery ")
-                .append("F=frozen W=water LB=low-beach ")
+                .append("N=normal G=empty-grave GS=sun-grave ")
+                .append("GP=plant-food-grave NG=necromancy-grave ")
+                .append("NGS=necromancy-sun-grave ")
+                .append("NGP=necromancy-plant-food-grave ")
+                .append("SU=slider-up ")
+                .append("SD=slider-down SL=slippery F=frozen ")
+                .append("W=water LB=low-beach ")
+                .append("LBW=submerged-low-beach ")
                 .append("NE=necromancy C=crater; ")
                 .append("P=plants Z=zombies S=suns R=structures")
                 .append(" D=drops")
@@ -68,7 +75,7 @@ public final class GameStatusFormatter {
                         board.getStructureAt(position) == null
                                 ? 0 : 1;
                 output.append('[')
-                        .append(terrainCode(
+                        .append(terrainCode(board, position,
                                 tile.getTileType()))
                         .append(" P").append(plants)
                         .append(" Z").append(zombies)
@@ -155,15 +162,12 @@ public final class GameStatusFormatter {
         output.append("tile ").append(position)
                 .append(System.lineSeparator())
                 .append("terrain: ")
-                .append(tile.getTileType())
+                .append(formatTerrain(board, position, tile))
                 .append(System.lineSeparator());
         BaseStructure structure =
                 board.getStructureAt(position);
         output.append("structure: ")
-                .append(structure == null
-                        ? "none"
-                        : structure.getClass()
-                                .getSimpleName())
+                .append(formatStructure(structure))
                 .append(System.lineSeparator());
         appendPlantDetails(
                 output, board.getPlantsAt(position));
@@ -206,7 +210,13 @@ public final class GameStatusFormatter {
                 .append("game status: ")
                 .append(game.getStatus())
                 .append(System.lineSeparator())
-                .append("lawn mowers: ");
+                .append("sky suns: ")
+                .append(game.areSkySunsDisabled()
+                        ? "disabled (" + game.getSkySunDisabledReason() + ")"
+                        : "enabled")
+                .append(System.lineSeparator());
+        appendTideStatus(output, game.getBoard());
+        output.append("lawn mowers: ");
         List<LawnMower> mowers = game.getLawnMowers();
         for (int index = 0;
                 index < mowers.size(); index++) {
@@ -243,6 +253,23 @@ public final class GameStatusFormatter {
                     .append(')');
         }
     }
+    private static String formatStructure(
+            BaseStructure structure) {
+        if (structure == null) {
+            return "none";
+        }
+        if (structure instanceof Grave) {
+            Grave grave = (Grave) structure;
+            return "Grave " + grave.getHitPoints() + "/"
+                    + Grave.DEFAULT_HIT_POINTS + " HP | type: "
+                    + (grave.isNecromancyGrave()
+                            ? "necromancy" : "ordinary")
+                    + " | contents: "
+                    + grave.getReward().getDescription();
+        }
+        return structure.getClass().getSimpleName();
+    }
+
     private static void appendPlantDetails(
             StringBuilder output,
             List<BasePlant> plants) {
@@ -279,8 +306,12 @@ public final class GameStatusFormatter {
     private static String plantState(BasePlant plant) {
         List<String> states = new ArrayList<>();
         if (plant.isFrozen()) {
-            states.add("frozen; ice layer "
-                    + plant.getIceLayerHitsRemaining());
+            states.add("frozen; ice "
+                    + plant.getIceShellHitPoints() + "/"
+                    + plant.getIceShellMaximumHitPoints() + " HP");
+        } else if (plant.getFreezeLevel() > 0) {
+            states.add("freeze level " + plant.getFreezeLevel()
+                    + "/" + BasePlant.MAX_FREEZE_LEVEL);
         }
         if (plant.isCoveredByOctopus()) {
             states.add("octopus; hits "
@@ -340,6 +371,13 @@ public final class GameStatusFormatter {
     }
     private static String zombieEffects(Zombie zombie) {
         List<String> effects = new ArrayList<>();
+        if (zombie.isEncasedInIce()) {
+            effects.add("encased in ice "
+                    + zombie.getFrozenShellHitPoints()
+                    + "/"
+                    + zombie.getFrozenShellMaximumHitPoints()
+                    + " HP");
+        }
         if (zombie.isFrozen()) {
             effects.add("frozen "
                     + formatSeconds(
@@ -492,13 +530,55 @@ public final class GameStatusFormatter {
             plants.add(plant);
         }
     }
-    private static String terrainCode(
-            TileType tileType) {
+    private static void appendTideStatus(
+            StringBuilder output, Board board) {
+        if (!board.isBigWaveBeachRulesEnabled()) {
+            return;
+        }
+        output.append("tide: ")
+                .append(board.getWaterColumnCount())
+                .append('/')
+                .append(board.getMaximumWaterColumnCount())
+                .append(" rightmost columns; limit begins at column ")
+                .append(board.getWaterBoundaryColumn())
+                .append(System.lineSeparator());
+    }
+
+    private static String formatTerrain(Board board,
+            EntityPosition position, Tile tile) {
+        if (board.isSubmergedLowBeachTile(position)) {
+            return "WATER (submerged LOW_BEACH)";
+        }
+        BaseStructure structure = board.getStructureAt(position);
+        if (structure instanceof Grave) {
+            Grave grave = (Grave) structure;
+            return "GRAVESTONE ("
+                    + (grave.isNecromancyGrave()
+                            ? "necromancy" : "ordinary")
+                    + "; contents: "
+                    + grave.getReward().getDescription() + ")";
+        }
+        return tile.getTileType().toString();
+    }
+
+    private static String terrainCode(Board board,
+            EntityPosition position, TileType tileType) {
+        if (board.isSubmergedLowBeachTile(position)) {
+            return "LBW";
+        }
+        BaseStructure structure = board.getStructureAt(position);
+        if (structure instanceof Grave) {
+            return graveTerrainCode((Grave) structure);
+        }
         switch (tileType) {
             case NORMAL:
                 return "N";
             case GRAVESTONE:
                 return "G";
+            case SLIDER_UP:
+                return "SU";
+            case SLIDER_DOWN:
+                return "SD";
             case SLIPPERY:
                 return "SL";
             case FROZEN:
@@ -516,6 +596,21 @@ public final class GameStatusFormatter {
                         "unknown tile type: " + tileType);
         }
     }
+    private static String graveTerrainCode(Grave grave) {
+        String prefix = grave.isNecromancyGrave() ? "NG" : "G";
+        switch (grave.getReward()) {
+            case SUN:
+                return prefix + "S";
+            case PLANT_FOOD:
+                return prefix + "P";
+            case NONE:
+                return prefix;
+            default:
+                throw new IllegalStateException(
+                        "unknown grave reward");
+        }
+    }
+
     private static String formatSeconds(double seconds) {
         return String.format(
                 Locale.ROOT, "%.1fs", seconds);
