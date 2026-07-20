@@ -1,7 +1,15 @@
 package model.game.entities.other;
 
-import model.game.entities.Entity;
+import model.game.entities.EntityPosition;
 
-public class Diamond extends Entity {
+public final class Diamond extends CollectibleDrop {
+    public static final int AMOUNT = 1;
 
+    public Diamond() {
+        this(new EntityPosition(0, 0));
+    }
+
+    public Diamond(EntityPosition position) {
+        super(position);
+    }
 }

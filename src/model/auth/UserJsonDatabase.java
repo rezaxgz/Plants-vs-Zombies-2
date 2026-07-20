@@ -125,6 +125,7 @@ final class UserJsonDatabase {
         int coins = getInt(storedUser, "coins", 0);
         int diamonds = getInt(storedUser, "diamonds", 0);
         int greenhousePotsUnlocked = getInt(storedUser, "greenhousePotsUnlocked", 0);
+        int potCount = getInt(storedUser, "potCount", 0);
         int plantFoodCount = getInt(storedUser, "plantFoodCount", 0);
 
         Object ghObj = storedUser.get("greenHouse");
@@ -178,6 +179,7 @@ final class UserJsonDatabase {
         user.setDailyOfferDate(dailyOfferDate);
         user.setDailyOfferPlant(dailyOfferPlant);
         user.setDailyOfferPurchased(dailyOfferPurchased);
+        user.setPotCount(potCount);
 
         return user;
     }
@@ -376,6 +378,7 @@ final class UserJsonDatabase {
         appendNumberProperty(json, indent, "coins", user.getCoins(), true);
         appendNumberProperty(json, indent, "diamonds", user.getDiamonds(), true);
         appendNumberProperty(json, indent, "greenhousePotsUnlocked", user.getGreenhousePotsUnlocked(), true);
+        appendNumberProperty(json, indent, "potCount", user.getPotCount(), true);
         appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), true);
         appendSettings(json, user.getSettings(), indent);
         appendAdventureProgress(json, user.getAdventureProgress(), indent);

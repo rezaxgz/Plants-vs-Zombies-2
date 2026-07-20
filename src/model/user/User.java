@@ -39,6 +39,7 @@ public class User {
 
     // greenhouse variables
     private int greenhousePotsUnlocked;
+    private int potCount;
     private int plantFoodCount;
     private GreenHouse greenHouse;
     private Map<String, Integer> plantBoosts;
@@ -220,6 +221,24 @@ public class User {
 
     public void setGreenhousePotsUnlocked(int greenhousePotsUnlocked) {
         this.greenhousePotsUnlocked = greenhousePotsUnlocked;
+    }
+
+    public int getPotCount() {
+        return potCount;
+    }
+
+    public void setPotCount(int potCount) {
+        if (potCount < 0) {
+            throw new IllegalArgumentException("potCount cannot be negative");
+        }
+        this.potCount = potCount;
+    }
+
+    public void addPots(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("amount cannot be negative");
+        }
+        potCount += amount;
     }
 
     public int getPlantFoodCount() {

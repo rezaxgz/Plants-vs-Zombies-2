@@ -6,10 +6,14 @@ import java.util.regex.Matcher;
 
 import model.App;
 import model.CommandResult;
+import model.auth.UserManager;
 import model.game.Game;
 import model.game.PlantFoodResult;
 import model.game.PlantPlacementResult;
+import model.game.RewardCollectionResult;
+import model.game.SunCollectionResult;
 import model.game.entities.EntityPosition;
+import model.game.entities.other.PlantFoodDrop;
 import model.game.entities.plants.BasePlant;
 import model.game.entities.plants.PlantFactory;
 import model.game.entities.zombies.Zombie;
@@ -20,6 +24,7 @@ import model.game.special.ProtectedPlantStatus;
 import model.menu.GameMenu;
 import model.menu.Menu;
 import model.roadmap.AdventureSession;
+import model.user.User;
 
 public final class GameMenuController {
     private GameMenuController() {
@@ -73,18 +78,83 @@ public final class GameMenuController {
             return CommandResult.error("sun location is outside the board!").addPreCommandResults(preCommandResults);
         }
 
-        boolean hasDroppingSun = game.getBoard().getSunsAt(new EntityPosition(x, y)).stream()
-                .anyMatch(sun -> sun.isDropping());
-        int collectedAmount = game.collectSunAt(x, y);
-        if (collectedAmount <= 0) {
-            String message = hasDroppingSun
-                    ? "sun at (" + x + ", " + y + ") has not reached the ground yet!"
-                    : "there is no sun at (" + x + ", " + y + ")";
-            return CommandResult.error(message).addPreCommandResults(preCommandResults);
+        SunCollectionResult collection = game.collectSunsAt(
+                new EntityPosition(x, y));
+        if (!collection.hasCollectedAnything()) {
+            return CommandResult.error("there is no sun at (" + x + ", " + y + ")")
+                    .addPreCommandResults(preCommandResults);
         }
 
-        return CommandResult.success("collected " + collectedAmount + " sun at (" + x + ", " + y + ")")
+        String message = "collected " + collection.getCollectedSunAmount()
+                + " sun at (" + x + ", " + y + ")";
+        if (collection.getRadioactiveExplosionCount() > 0) {
+            message += "; " + collection.getRadioactiveExplosionCount()
+                    + " radioactive sun exploded";
+        }
+        return CommandResult.success(message)
                 .addPreCommandResults(preCommandResults).addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleCollectPlantFood(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+        List<String> preCommandResults = game.drainResults();
+        EntityPosition position = parseBoardPosition(game, matcher);
+        if (position == null) {
+            return CommandResult.error("plant food location is invalid!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        boolean hasPlantFood = game.getBoard().getCollectibleDropsAt(position)
+                .stream().anyMatch(drop -> drop instanceof PlantFoodDrop);
+        if (!hasPlantFood) {
+            return CommandResult.error("there is no plant food at " + position + "!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        if (game.getPlantFoodCount() >= game.getMaximumPlantFoodCount()) {
+            return CommandResult.error("plant food storage is full!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        int collected = game.collectPlantFoodDropsAt(position);
+        return CommandResult.success("collected " + collected
+                + " plant food; you have " + game.getPlantFoodCount()
+                + " plant foods now")
+                .addPreCommandResults(preCommandResults)
+                .addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleCollectReward(Matcher matcher) {
+        Game game = getCurrentGame();
+        User user = App.getInstance().getLoggedInUser();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+        if (user == null) {
+            return CommandResult.error("you must be logged in to collect rewards!");
+        }
+        List<String> preCommandResults = game.drainResults();
+        EntityPosition position = parseBoardPosition(game, matcher);
+        if (position == null) {
+            return CommandResult.error("reward location is invalid!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        boolean hasReward = game.getBoard().getCollectibleDropsAt(position).stream()
+                .anyMatch(drop -> !(drop instanceof PlantFoodDrop));
+        if (!hasReward) {
+            return CommandResult.error("there is no reward at " + position + "!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        RewardCollectionResult result = game.collectRewardDropsAt(position, user);
+        UserManager.saveAllUsers();
+        String message = "collected " + result.getDropCount() + " reward drop(s): "
+                + result.getCoins() + " coins, " + result.getDiamonds()
+                + " diamonds, " + result.getPots() + " pots; totals: "
+                + user.getCoins() + " coins, " + user.getDiamonds()
+                + " diamonds, " + user.getPotCount() + " pots";
+        return CommandResult.success(message)
+                .addPreCommandResults(preCommandResults)
+                .addPostCommandResults(game.drainResults());
     }
 
     public static CommandResult handleCheatAddSuns(Matcher matcher) {
@@ -586,6 +656,9 @@ public final class GameMenuController {
 
     private static void appendEffectInfo(StringBuilder output, Zombie zombie) {
         output.append("effects:").append(System.lineSeparator());
+        if (zombie.isGlowing()) {
+            output.append("glowing").append(System.lineSeparator());
+        }
         if (zombie.isFrozen()) {
             appendTimedEffect(output, "frozen", zombie.getFrozenDuration());
         }
@@ -633,6 +706,39 @@ public final class GameMenuController {
                 .addPostCommandResults(progressResults);
     }
 
+    public static CommandResult handleSpawnZombie(Matcher matcher) {
+        Game game = getCurrentGame();
+        if (game == null) {
+            return CommandResult.error("game is not active!");
+        }
+        List<String> preCommandResults = game.drainResults();
+        int x;
+        int y;
+        try {
+            x = Integer.parseInt(matcher.group("x"));
+            y = Integer.parseInt(matcher.group("y"));
+        } catch (NumberFormatException exception) {
+            return CommandResult.error("zombie location is invalid!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        if (x < 0 || x >= game.getBoard().getNumberOfColumns()
+                || y < 0 || y >= game.getBoard().getNumberOfRows()) {
+            return CommandResult.error("zombie location is outside the board!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        Zombie zombie = game.spawnZombie(matcher.group("type").trim(), x, y);
+        if (zombie == null) {
+            return CommandResult.error("zombie type does not exist!")
+                    .addPreCommandResults(preCommandResults);
+        }
+        UserManager.saveAllUsers();
+        return CommandResult.success("spawned " + zombie.getName() + " at ("
+                + x + ", " + y + ")"
+                + (zombie.isGlowing() ? " as a glowing zombie" : ""))
+                .addPreCommandResults(preCommandResults)
+                .addPostCommandResults(game.drainResults());
+    }
+
     private static List<String>
             synchronizeAdventureProgress() {
         Menu currentMenu =
@@ -649,6 +755,21 @@ public final class GameMenuController {
     private static boolean isInsideBoard(Game game, int x, int y) {
         return x >= 0 && y >= 0 && x < game.getBoard().getNumberOfRows()
                 && y < game.getBoard().getNumberOfColumns();
+    }
+
+    private static EntityPosition parseBoardPosition(Game game, Matcher matcher) {
+        int x;
+        int y;
+        try {
+            x = Integer.parseInt(matcher.group("x"));
+            y = Integer.parseInt(matcher.group("y"));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+        if (!isInsideBoard(game, x, y)) {
+            return null;
+        }
+        return new EntityPosition(x, y);
     }
 
     private static Game getCurrentGame() {

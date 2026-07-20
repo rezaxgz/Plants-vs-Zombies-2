@@ -6,12 +6,13 @@ import model.game.entities.EntityPosition;
 
 public class Sun extends Entity {
     private final float lifeSpanSeconds;
-    private final int sunAmount;
-    private final SunType type;
+    private int sunAmount;
+    private SunType type;
     private final boolean persistent;
     private float remainingFallSeconds;
     private double elapsedGroundSeconds;
     private boolean collected;
+    private boolean landedEventPending;
 
     public Sun(int sunAmount, EntityPosition entityPosition) {
         this(sunAmount, entityPosition, Constants.DEFAULT_SUN_LIFESPAN_SECONDS);
@@ -24,7 +25,7 @@ public class Sun extends Entity {
     private Sun(int sunAmount, EntityPosition entityPosition, float lifeSpanSeconds,
             SunType type, float fallSeconds, boolean persistent) {
         super(entityPosition);
-        if (sunAmount <= 0) {
+        if (sunAmount < 0 || type != SunType.RADIOACTIVE && sunAmount == 0) {
             throw new IllegalArgumentException("sunAmount must be positive");
         }
         if (!Float.isFinite(lifeSpanSeconds) || lifeSpanSeconds <= 0.0f) {
@@ -69,6 +70,7 @@ public class Sun extends Entity {
             } else {
                 groundTimeThisUpdate = deltaSeconds - remainingFallSeconds;
                 remainingFallSeconds = 0.0f;
+                land();
             }
         }
 
@@ -78,13 +80,38 @@ public class Sun extends Entity {
         }
     }
 
+    private void land() {
+        landedEventPending = true;
+        if (type == SunType.RADIOACTIVE) {
+            type = SunType.NORMAL;
+            sunAmount = SunType.NORMAL.getAmount();
+        }
+    }
+
     public int collect() {
-        if (collected || isRemoved() || isDropping()) {
+        if (collected || isRemoved()) {
             return 0;
         }
         collected = true;
         markForRemoval();
         return sunAmount;
+    }
+
+    public boolean collectRadioactiveWhileDropping() {
+        if (collected || isRemoved() || !isRadioactive() || !isDropping()) {
+            return false;
+        }
+        collected = true;
+        markForRemoval();
+        return true;
+    }
+
+    public boolean consumeLandedEvent() {
+        if (!landedEventPending) {
+            return false;
+        }
+        landedEventPending = false;
+        return true;
     }
 
     public boolean shouldDespawn() {
@@ -102,17 +129,18 @@ public class Sun extends Entity {
     }
 
     public boolean isCollectable() {
-        return !isDropping() && !collected && !isRemoved();
+        return !collected && !isRemoved();
+    }
+
+    public boolean isRadioactive() {
+        return type == SunType.RADIOACTIVE;
     }
 
     /**
      * Ra may steal a sun only after it has actually rested on the lawn.
-     * This prevents a sun that lands during the current update from being
-     * stolen while it is still visually falling.
      */
     public boolean isStealableFromGround() {
-        return isCollectable()
-                && elapsedGroundSeconds > 0.0;
+        return isCollectable() && !isDropping() && elapsedGroundSeconds > 0.0;
     }
 
     public double getElapsedGroundSeconds() {
@@ -125,6 +153,10 @@ public class Sun extends Entity {
 
     public float getLifeSpanSeconds() {
         return lifeSpanSeconds;
+    }
+
+    public float getRemainingFallSeconds() {
+        return Math.max(0.0f, remainingFallSeconds);
     }
 
     public boolean isCollected() {

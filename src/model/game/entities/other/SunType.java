@@ -2,7 +2,8 @@ package model.game.entities.other;
 
 public enum SunType {
     NORMAL("normal", 25),
-    SPECIAL("special", 100);
+    SPECIAL("special", 100),
+    RADIOACTIVE("radioactive", 0);
 
     private final String displayName;
     private final int amount;
