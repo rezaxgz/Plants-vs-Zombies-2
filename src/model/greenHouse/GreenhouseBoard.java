@@ -24,4 +24,16 @@ public class GreenhouseBoard {
     public Pot[][] getPots() {
         return pots;
     }
+
+    public int getUnlockedPotCount() {
+        int count = 0;
+        for (Pot[] row : pots) {
+            for (Pot pot : row) {
+                if (pot != null && !pot.isLocked()) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
 }

@@ -59,15 +59,16 @@ public final class AdventureSession {
             return false;
         }
 
-        updateUserStatistics(chapter, levelNumber);
+        User user = App.getInstance().getLoggedInUser();
+        updateUserStatistics(user, chapter, levelNumber);
         addCompletionNotifications(chapter, levelNumber);
+        addPersistentUnlockNews(user, chapter, levelNumber);
         UserManager.saveAllUsers();
         return true;
     }
 
-    private static void updateUserStatistics(
+    private static void updateUserStatistics(User user,
             Chapter chapter, int levelNumber) {
-        User user = App.getInstance().getLoggedInUser();
         if (user == null || chapter == null) {
             return;
         }
@@ -92,6 +93,63 @@ public final class AdventureSession {
             pendingNotifications.add(
                     "unlocked chapter " + next.getDisplayName() + ".");
         }
+    }
+
+    private static void addPersistentUnlockNews(User user,
+            Chapter chapter, int levelNumber) {
+        if (user == null || chapter == null) {
+            return;
+        }
+        if (levelNumber < chapter.getLevelCount()) {
+            addLevelUnlockNews(user, chapter,
+                    chapter.getLevel(levelNumber + 1));
+            return;
+        }
+
+        Chapter nextChapter = ChapterCatalog.getNextChapter(chapter);
+        if (nextChapter == null) {
+            user.addNewsIfAbsent(
+                    "Adventure Complete!",
+                    "You completed every currently available adventure chapter.");
+            return;
+        }
+
+        user.addNewsIfAbsent(
+                "New Chapter Unlocked!",
+                nextChapter.getDisplayName()
+                        + " is now available in the game menu.");
+        addLevelUnlockNews(user, nextChapter, nextChapter.getLevel(1));
+    }
+
+    private static void addLevelUnlockNews(User user,
+            Chapter chapter, Level level) {
+        if (level == null) {
+            return;
+        }
+        String title = getLevelUnlockTitle(level);
+        StringBuilder description = new StringBuilder()
+                .append(chapter.getDisplayName())
+                .append(" level ")
+                .append(level.getNumber())
+                .append(" (\"")
+                .append(level.getName())
+                .append("\") is now available");
+        if (level.getSpecialLevelType().isSpecial()) {
+            description.append(". Special rules: ")
+                    .append(level.getSpecialLevelType().getDisplayName());
+        }
+        description.append('.');
+        user.addNewsIfAbsent(title, description.toString());
+    }
+
+    private static String getLevelUnlockTitle(Level level) {
+        if (level.getSpecialLevelType().isSpecial()) {
+            return "Special Level Unlocked!";
+        }
+        if (level.getKind() == LevelKind.BOSS) {
+            return "Boss Level Unlocked!";
+        }
+        return "New Level Unlocked!";
     }
 
     public List<String> drainNotifications() {

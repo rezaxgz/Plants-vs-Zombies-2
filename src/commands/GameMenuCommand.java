@@ -6,6 +6,8 @@ import controller.SpecialLevelCommandController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
+    OPEN_GREENHOUSE("^menu\\s+greenhouse$",
+            GameMenuController::handleOpenGreenhouse),
     ADVANCE_TIME("^advance\\s+time\\s+-t\\s+(?<count>\\d+)\\s+ticks$",
             GameMenuController::handleAdvanceTime),
     COLLECT_SUN("^collect\\s+sun\\s+-l\\s+\\(\\s*(?<x>\\d+)\\s*,\\s*(?<y>\\d+)\\s*\\)$",

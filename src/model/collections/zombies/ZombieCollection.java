@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 
 import model.App;
+import model.auth.UserManager;
 import model.game.entities.zombies.ZombieType;
 
 public class ZombieCollection {
@@ -92,8 +93,10 @@ public class ZombieCollection {
         if (App.getInstance().getLoggedInUser() == null) {
             return;
         }
-        App.getInstance().getLoggedInUser().addNews(
-                "New Zombie Encountered!",
-                "A new threat has appeared: " + zombieName + ".");
+        App.getInstance().getLoggedInUser()
+                .addNewsIfAbsent(
+                        "New Zombie Encountered!",
+                        "A new threat has appeared: " + zombieName + ".");
+        UserManager.saveAllUsers();
     }
 }

@@ -94,6 +94,8 @@ public class Game {
     private final Map<String, Integer> plantLoadoutLevels = new LinkedHashMap<>();
     private final Map<String, String> plantLoadoutNames = new LinkedHashMap<>();
     private final Set<String> boostedPlantTypes = new LinkedHashSet<>();
+    private final Set<String> greenhouseBoostTypes = new LinkedHashSet<>();
+    private final List<String> consumedGreenhouseBoosts = new ArrayList<>();
     private boolean plantLoadoutConfigured;
     private final Random random;
 
@@ -1339,6 +1341,18 @@ public class Game {
         return true;
     }
 
+    public void loadStartingPlantFood(int count) {
+        if (count < 0 || count > MAX_PLANT_FOOD) {
+            throw new IllegalArgumentException(
+                    "starting plant food must be between 0 and 3");
+        }
+        plantFoodCount = count;
+        if (count > 0) {
+            pendingResults.add("Started the level with " + count
+                    + " stored plant food" + (count == 1 ? "." : "s."));
+        }
+    }
+
     public PlantFoodResult feedPlantAt(EntityPosition position) {
         if (plantFoodCount <= 0) {
             return PlantFoodResult.NO_PLANT_FOOD;
@@ -1529,6 +1543,14 @@ public class Game {
     public void configurePlantLoadout(
             Map<String, Integer> selectedPlantLevels,
             List<String> boostedPlantNames) {
+        configurePlantLoadout(selectedPlantLevels,
+                boostedPlantNames, Collections.emptyList());
+    }
+
+    public void configurePlantLoadout(
+            Map<String, Integer> selectedPlantLevels,
+            List<String> boostedPlantNames,
+            List<String> greenhouseBoostNames) {
         if (selectedPlantLevels == null
                 || selectedPlantLevels.isEmpty()) {
             throw new IllegalArgumentException(
@@ -1537,19 +1559,31 @@ public class Game {
         plantLoadoutLevels.clear();
         plantLoadoutNames.clear();
         boostedPlantTypes.clear();
+        greenhouseBoostTypes.clear();
+        consumedGreenhouseBoosts.clear();
         for (Map.Entry<String, Integer> entry
                 : selectedPlantLevels.entrySet()) {
             addPlantToLoadout(entry.getKey(), entry.getValue());
         }
-        if (boostedPlantNames != null) {
-            for (String plantName : boostedPlantNames) {
-                String key = requestedPlantKey(plantName);
-                if (plantLoadoutLevels.containsKey(key)) {
-                    boostedPlantTypes.add(key);
-                }
+        addConfiguredBoosts(boostedPlantNames,
+                boostedPlantTypes);
+        addConfiguredBoosts(greenhouseBoostNames,
+                greenhouseBoostTypes);
+        boostedPlantTypes.addAll(greenhouseBoostTypes);
+        plantLoadoutConfigured = true;
+    }
+
+    private void addConfiguredBoosts(List<String> plantNames,
+            Set<String> destination) {
+        if (plantNames == null) {
+            return;
+        }
+        for (String plantName : plantNames) {
+            String key = requestedPlantKey(plantName);
+            if (plantLoadoutLevels.containsKey(key)) {
+                destination.add(key);
             }
         }
-        plantLoadoutConfigured = true;
     }
 
     private void addPlantToLoadout(String plantName, int level) {
@@ -1627,11 +1661,26 @@ public class Game {
     }
 
     private void applyLoadoutBoost(BasePlant plant) {
-        if (!boostedPlantTypes.contains(getLoadoutKey(plant))) {
+        String key = getLoadoutKey(plant);
+        if (!boostedPlantTypes.contains(key)) {
             return;
         }
         board.usePlantFoodAt(plant.getEntityPosition());
         pendingResults.addAll(board.drainResults());
+        if (greenhouseBoostTypes.remove(key)) {
+            String plantName = plantLoadoutNames.getOrDefault(
+                    key, plant.getName());
+            consumedGreenhouseBoosts.add(plantName);
+            pendingResults.add("Stored greenhouse boost for "
+                    + plantName + " was consumed on first use.");
+        }
+    }
+
+    public List<String> drainConsumedGreenhouseBoosts() {
+        List<String> drained = new ArrayList<>(
+                consumedGreenhouseBoosts);
+        consumedGreenhouseBoosts.clear();
+        return drained;
     }
 
     public void enableSaveOurSeeds(

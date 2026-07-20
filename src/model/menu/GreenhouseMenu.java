@@ -1,13 +1,33 @@
 package model.menu;
 
+import model.App;
+
 public class GreenhouseMenu extends Menu {
+    private final GameMenu parentGameMenu;
+
+    public GreenhouseMenu() {
+        this(null);
+    }
+
+    public GreenhouseMenu(GameMenu parentGameMenu) {
+        this.parentGameMenu = parentGameMenu;
+    }
+
+    public GameMenu getParentGameMenu() {
+        return parentGameMenu;
+    }
+
     @Override
     public String getName() {
-        return "GreenhouseMenu";
+        return "greenhouse";
     }
 
     @Override
     public void exit() {
-        // Exit is handled by MenuController routing back to MainMenu
+        if (parentGameMenu != null) {
+            App.getInstance().changeMenu(parentGameMenu);
+        } else {
+            App.getInstance().changeMenu(new MainMenu());
+        }
     }
 }
