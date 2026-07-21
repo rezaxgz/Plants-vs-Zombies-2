@@ -24,6 +24,7 @@ import model.roadmap.Chapter;
 import model.roadmap.ChapterCatalog;
 import model.roadmap.Level;
 import model.roadmap.SpecialLevelType;
+import model.game.special.TimedWarObjective;
 import model.user.User;
 
 /**
@@ -31,6 +32,66 @@ import model.user.User;
  */
 public final class MainController {
     private MainController() {
+    }
+
+    public static CommandResult handleStartTimedWarChallenge(
+            Matcher matcher) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error(
+                    "login is required to start Timed War!");
+        }
+
+        TimedWarObjective objective =
+                parseTimedWarObjective(
+                        matcher.group("objective"));
+        Chapter frostbite =
+                ChapterCatalog.findById("frostbite-caves");
+        Level template = frostbite == null
+                ? null : frostbite.getLevel(3);
+        if (template == null) {
+            return CommandResult.error(
+                    "Timed War template is unavailable!");
+        }
+
+        Level challenge =
+                template.withTimedWarObjective(objective);
+        Map<String, Integer> loadout =
+                createTimedWarChallengeLoadout(
+                        user, objective);
+        if (objective == TimedWarObjective.PRODUCE_SUN
+                && !loadout.containsKey("Sunflower")) {
+            return CommandResult.error(
+                    "Sun Production Timed War requires "
+                            + "an unlocked Sunflower!");
+        }
+
+        int difficultyLevel =
+                user.getSettings().getDifficultyLevel();
+        Game game = challenge.createGame(difficultyLevel);
+        game.configurePlantLoadout(loadout, List.of());
+        user.getGameProgerss().recordGameStarted();
+        UserManager.saveAllUsers();
+        App.getInstance().changeMenu(new GameMenu(game));
+
+        String message = "Timed War challenge started"
+                + System.lineSeparator()
+                + "objective: " + objective
+                + System.lineSeparator()
+                + "target: "
+                + challenge.getSpecialConfig().getTarget()
+                + System.lineSeparator()
+                + "time: "
+                + challenge.getSpecialConfig()
+                        .getDurationSeconds()
+                + " seconds"
+                + System.lineSeparator()
+                + "selected plants: "
+                + String.join(", ", loadout.keySet())
+                + System.lineSeparator()
+                + "use 'show special level status'";
+        return CommandResult.success(message)
+                .addPostCommandResults(game.drainResults());
     }
 
     public static CommandResult handleStartScoredGame(
@@ -202,6 +263,20 @@ public final class MainController {
                             "level is locked!"));
         }
 
+        TimedWarObjective objective =
+                parseTimedWarObjective(
+                        matcher.group("objective"));
+        if (objective != null) {
+            if (level.getSpecialLevelType()
+                    != SpecialLevelType.TIMED_WAR) {
+                return withNotifications(
+                        CommandResult.error(
+                                "the -o objective option is only "
+                                        + "available for Timed War levels!"));
+            }
+            level = level.withTimedWarObjective(objective);
+        }
+
         return startAdventureLevel(
                 chapter, level);
     }
@@ -281,6 +356,53 @@ public final class MainController {
                 + "use show available plants, add plant -t <type>, "
                 + "boost plant -t <type>, and start game";
         return withNotifications(CommandResult.success(message));
+    }
+
+    private static TimedWarObjective
+            parseTimedWarObjective(String rawObjective) {
+        if (rawObjective == null
+                || rawObjective.isBlank()) {
+            return null;
+        }
+        String normalized = rawObjective.trim()
+                .toLowerCase()
+                .replace('-', '_');
+        if ("kill".equals(normalized)) {
+            return TimedWarObjective.KILL_ZOMBIES;
+        }
+        return TimedWarObjective.PRODUCE_SUN;
+    }
+
+    private static Map<String, Integer>
+            createTimedWarChallengeLoadout(
+                    User user,
+                    TimedWarObjective objective) {
+        Map<String, Integer> loadout =
+                new LinkedHashMap<>();
+
+        if (objective == TimedWarObjective.PRODUCE_SUN) {
+            PlantCollectionItem sunflower =
+                    user.getPlantCollection()
+                            .findPlant("Sunflower");
+            if (sunflower != null
+                    && sunflower.isUnlocked()) {
+                loadout.put(
+                        sunflower.getName(),
+                        sunflower.getCurrentLevel());
+            }
+        }
+
+        for (PlantCollectionItem plant :
+                user.getPlantCollection()
+                        .getUnlockedPlants()) {
+            loadout.putIfAbsent(
+                    plant.getName(),
+                    plant.getCurrentLevel());
+            if (loadout.size() >= 8) {
+                break;
+            }
+        }
+        return loadout;
     }
 
     private static Map<String, Integer>
