@@ -21,11 +21,41 @@ public class Armor {
     }
 
     public Armor(ArmorType type, int healthMultiplier) {
+        this(type, (double) healthMultiplier);
+    }
+
+    public Armor(ArmorType type, double healthMultiplier) {
+        if (type == null || !Double.isFinite(healthMultiplier)
+                || healthMultiplier <= 0.0) {
+            throw new IllegalArgumentException(
+                    "armor type and multiplier are invalid");
+        }
         this.type = type;
-        this.maximumHealth = type.getBaseHealth() * healthMultiplier;
+        this.maximumHealth = Math.max(1,
+                (int) Math.round(
+                        type.getBaseHealth() * healthMultiplier));
         this.currentHealth = maximumHealth;
         this.destroyed = false;
         this.dropped = false;
+    }
+
+    public void rescaleHealth(
+            double oldMultiplier, double newMultiplier) {
+        if (!Double.isFinite(oldMultiplier) || oldMultiplier <= 0.0
+                || !Double.isFinite(newMultiplier)
+                || newMultiplier <= 0.0) {
+            throw new IllegalArgumentException(
+                    "armor multipliers must be positive");
+        }
+        double healthRatio = maximumHealth == 0
+                ? 0.0 : (double) currentHealth / maximumHealth;
+        maximumHealth = Math.max(1,
+                (int) Math.round(
+                        maximumHealth / oldMultiplier
+                                * newMultiplier));
+        currentHealth = Math.max(0,
+                (int) Math.round(maximumHealth * healthRatio));
+        destroyed = currentHealth == 0;
     }
 
     /**

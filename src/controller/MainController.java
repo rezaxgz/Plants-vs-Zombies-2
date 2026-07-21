@@ -262,8 +262,11 @@ public final class MainController {
             Map<String, Integer> selectedPlantLevels,
             List<String> boostedPlantNames,
             String preface) {
-        Game game = level.createGame();
         User user = App.getInstance().getLoggedInUser();
+        int difficultyLevel = user == null
+                ? 3 : user.getSettings().getDifficultyLevel();
+        Game game = level.createGame(difficultyLevel);
+        configureUnlockedConveyorPool(user, level, game);
         Set<String> paidBoosts = new LinkedHashSet<>();
         if (boostedPlantNames != null) {
             paidBoosts.addAll(boostedPlantNames);
@@ -313,6 +316,30 @@ public final class MainController {
                     + " shop-purchased plant food to this level.");
         }
         return withNotifications(result);
+    }
+
+    private static void configureUnlockedConveyorPool(
+            User user, Level level, Game game) {
+        if (user == null || game == null
+                || level.getSpecialLevelType()
+                        != SpecialLevelType.CONVEYOR_BELT) {
+            return;
+        }
+
+        List<String> unlockedPool = new ArrayList<>();
+        for (String plantName :
+                level.getSpecialConfig().getPlantPool()) {
+            PlantCollectionItem item =
+                    user.getPlantCollection().findPlant(plantName);
+            if (item != null && item.isUnlocked()) {
+                unlockedPool.add(item.getName());
+            }
+        }
+        if (unlockedPool.isEmpty()) {
+            throw new IllegalStateException(
+                    "Conveyor Belt requires at least one unlocked plant");
+        }
+        game.replaceConveyorPlantPool(unlockedPool);
     }
 
     private static void addGreenhouseBoosts(User user,

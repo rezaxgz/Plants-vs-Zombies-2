@@ -1,23 +1,42 @@
 package model.game;
 
-import model.game.entities.zombies.ZombieType;
-
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+
+import model.game.entities.zombies.ZombieType;
 
 /**
- * Represents a wave of zombies with support for all zombie types.
+ * Immutable wave definition with exact default-difficulty wave budgeting.
  */
-public class ZombieWave {
+public final class ZombieWave {
     private final List<ZombieType> zombieTypes;
+    private final List<ZombieType> availableTypes;
     private final int difficulty;
     private final boolean finalWave;
     private final int maximumHealth;
     private int remainingHealth;
 
-    public ZombieWave(List<ZombieType> zombieTypes, int difficulty, boolean finalWave) {
-        this.zombieTypes = Collections.unmodifiableList(new ArrayList<>(zombieTypes));
+    public ZombieWave(List<ZombieType> zombieTypes,
+            int difficulty, boolean finalWave) {
+        this(zombieTypes, distinctNonFlagTypes(zombieTypes),
+                difficulty, finalWave);
+    }
+
+    private ZombieWave(List<ZombieType> zombieTypes,
+            List<ZombieType> availableTypes,
+            int difficulty, boolean finalWave) {
+        if (zombieTypes == null || availableTypes == null
+                || difficulty < 0) {
+            throw new IllegalArgumentException(
+                    "wave values are invalid");
+        }
+        this.zombieTypes = Collections.unmodifiableList(
+                new ArrayList<>(zombieTypes));
+        this.availableTypes = Collections.unmodifiableList(
+                new ArrayList<>(availableTypes));
         this.difficulty = difficulty;
         this.finalWave = finalWave;
         this.maximumHealth = calculateTotalHealth();
@@ -35,74 +54,139 @@ public class ZombieWave {
         return total;
     }
 
-    public static ZombieWave basicWave(int difficulty, boolean finalWave) {
-        List<ZombieType> types = new ArrayList<>();
-        int remaining = difficulty;
-
-        // Add flag zombie for final wave
-        if (finalWave) {
-            types.add(ZombieType.FLAG);
-            remaining -= ZombieType.FLAG.getWavePointCost();
-        }
-
-        // Fill with basic zombies
-        while (remaining >= ZombieType.BASIC.getWavePointCost()) {
-            types.add(ZombieType.BASIC);
-            remaining -= ZombieType.BASIC.getWavePointCost();
-        }
-
-        return new ZombieWave(types, difficulty, finalWave);
+    public static ZombieWave basicWave(
+            int difficulty, boolean finalWave) {
+        return buildWave(
+                List.of(ZombieType.BASIC),
+                ZombieType.FLAG, difficulty, finalWave, 1.0);
     }
 
-    /**
-     * Create a themed wave for a specific world/chapter.
-     */
-    public static ZombieWave themedWave(String chapter, int difficulty, boolean finalWave) {
-        List<ZombieType> types = new ArrayList<>();
-        int remaining = difficulty;
+    public static ZombieWave themedWave(String chapter,
+            int difficulty, boolean finalWave) {
+        List<ZombieType> pool = List.of(getChapterZombies(chapter));
+        return buildWave(pool, getFlagZombie(chapter),
+                difficulty, finalWave, 1.0);
+    }
 
-        // Add flag for final wave
-        if (finalWave) {
-            types.add(getFlagZombie(chapter));
-            remaining -= getFlagZombie(chapter).getWavePointCost();
+    private static ZombieWave buildWave(
+            List<ZombieType> sourcePool, ZombieType flagType,
+            int difficulty, boolean finalWave,
+            double costMultiplier) {
+        if (difficulty <= 0 || sourcePool == null
+                || sourcePool.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "wave difficulty and pool must be positive");
         }
 
-        // Fill with chapter-appropriate zombies
-        ZombieType[] chapterZombies = getChapterZombies(chapter);
+        List<ZombieType> pool =
+                new ArrayList<>(distinctNonFlagTypes(sourcePool));
+        Collections.shuffle(pool);
 
-        while (remaining > 0) {
-            List<ZombieType> affordable =
-                    new ArrayList<>();
-            for (ZombieType candidate :
-                    chapterZombies) {
-                if (candidate.getWavePointCost()
-                        <= remaining) {
-                    affordable.add(candidate);
+        List<ZombieType> result = new ArrayList<>();
+        int remaining = difficulty;
+        if (finalWave) {
+            int flagCost = effectiveCost(flagType, costMultiplier);
+            if (flagCost > remaining) {
+                throw new IllegalArgumentException(
+                        "final-wave difficulty is lower than flag cost");
+            }
+            result.add(flagType);
+            remaining -= flagCost;
+        }
+
+        result.addAll(fillBudget(pool, remaining, costMultiplier));
+        return new ZombieWave(result, pool, difficulty, finalWave);
+    }
+
+    private static List<ZombieType> fillBudget(
+            List<ZombieType> pool, int budget,
+            double costMultiplier) {
+        if (budget == 0) {
+            return List.of();
+        }
+
+        int[] previousType = new int[budget + 1];
+        boolean[] reachable = new boolean[budget + 1];
+        java.util.Arrays.fill(previousType, -1);
+        reachable[0] = true;
+
+        for (int spent = 0; spent <= budget; spent++) {
+            if (!reachable[spent]) {
+                continue;
+            }
+            for (int index = 0; index < pool.size(); index++) {
+                int next = spent
+                        + effectiveCost(pool.get(index), costMultiplier);
+                if (next <= budget && !reachable[next]) {
+                    reachable[next] = true;
+                    previousType[next] = index;
                 }
             }
-
-            if (affordable.isEmpty()) {
-                break;
-            }
-
-            ZombieType chosen = affordable.get(
-                    (int) (Math.random()
-                            * affordable.size()));
-            types.add(chosen);
-            remaining -= chosen.getWavePointCost();
         }
 
-        return new ZombieWave(types, difficulty, finalWave);
+        int chosenBudget = budget;
+        while (chosenBudget > 0 && !reachable[chosenBudget]) {
+            chosenBudget--;
+        }
+        if (chosenBudget == 0) {
+            throw new IllegalStateException(
+                    "no zombie combination fits wave budget " + budget);
+        }
+
+        List<ZombieType> result = new ArrayList<>();
+        int cursor = chosenBudget;
+        while (cursor > 0) {
+            int typeIndex = previousType[cursor];
+            if (typeIndex < 0) {
+                throw new IllegalStateException(
+                        "wave budget reconstruction failed");
+            }
+            ZombieType type = pool.get(typeIndex);
+            result.add(type);
+            cursor -= effectiveCost(type, costMultiplier);
+        }
+        return result;
+    }
+
+    private static int effectiveCost(
+            ZombieType type, double multiplier) {
+        return Math.max(1,
+                (int) Math.round(type.getWavePointCost() * multiplier));
+    }
+
+    public ZombieWave forDifficulty(int difficultyLevel) {
+        DifficultyRules rules =
+                DifficultyRules.forLevel(difficultyLevel);
+        ZombieType flag = findFlagType();
+        return buildWave(availableTypes, flag, difficulty,
+                finalWave, rules.getZombieWaveCostMultiplier());
+    }
+
+    private ZombieType findFlagType() {
+        for (ZombieType type : zombieTypes) {
+            if (type == ZombieType.FLAG) {
+                return type;
+            }
+        }
+        return ZombieType.FLAG;
+    }
+
+    private static List<ZombieType> distinctNonFlagTypes(
+            List<ZombieType> types) {
+        Set<ZombieType> result = new LinkedHashSet<>();
+        if (types != null) {
+            for (ZombieType type : types) {
+                if (type != null && type != ZombieType.FLAG
+                        && !type.isBoss()) {
+                    result.add(type);
+                }
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     private static ZombieType getFlagZombie(String chapter) {
-        switch (chapter.toLowerCase()) {
-            case "egypt": return ZombieType.FLAG;
-            case "iceage": return ZombieType.FLAG;
-            case "beach": return ZombieType.FLAG;
-            case "dark": return ZombieType.FLAG;
-            default: return ZombieType.FLAG;
-        }
+        return ZombieType.FLAG;
     }
 
     private static ZombieType[] getChapterZombies(String chapter) {
@@ -117,7 +201,8 @@ public class ZombieWave {
             case "iceage":
                 return new ZombieType[]{
                     ZombieType.ICEAGE, ZombieType.ICEAGE_CONEHEAD,
-                    ZombieType.ICEAGE_BUCKETHEAD, ZombieType.ICEAGE_BLOCKHEAD,
+                    ZombieType.ICEAGE_BUCKETHEAD,
+                    ZombieType.ICEAGE_BLOCKHEAD,
                     ZombieType.HUNTER, ZombieType.TROGLOBITE,
                     ZombieType.DODO, ZombieType.WEASEL_HOARDER
                 };
@@ -131,31 +216,60 @@ public class ZombieWave {
             case "dark":
                 return new ZombieType[]{
                     ZombieType.DARK, ZombieType.DARK_CONEHEAD,
-                    ZombieType.DARK_BUCKETHEAD, ZombieType.DARK_SHOULDER_ARMOR,
+                    ZombieType.DARK_BUCKETHEAD,
+                    ZombieType.DARK_SHOULDER_ARMOR,
                     ZombieType.DARK_BRICKHEAD, ZombieType.WIZARD,
                     ZombieType.JUGGLER, ZombieType.DARK_KING
                 };
             default:
-                return new ZombieType[]{ZombieType.BASIC, ZombieType.CONEHEAD, ZombieType.BUCKETHEAD};
+                return new ZombieType[]{
+                    ZombieType.BASIC, ZombieType.CONEHEAD,
+                    ZombieType.BUCKETHEAD
+                };
         }
     }
 
     public ZombieWave copy() {
-        return new ZombieWave(
-                zombieTypes, difficulty, finalWave);
+        return new ZombieWave(zombieTypes, availableTypes,
+                difficulty, finalWave);
     }
 
-    public List<ZombieType> getZombieTypes() { return zombieTypes; }
-    public int getDifficulty() { return difficulty; }
-    public boolean isFinalWave() { return finalWave; }
-    public int getMaximumHealth() { return maximumHealth; }
-    public int getRemainingHealth() { return remainingHealth; }
+    public List<ZombieType> getZombieTypes() {
+        return zombieTypes;
+    }
+
+    public int getDifficulty() {
+        return difficulty;
+    }
+
+    public boolean isFinalWave() {
+        return finalWave;
+    }
+
+    public int getMaximumHealth() {
+        return maximumHealth;
+    }
+
+    public int getRemainingHealth() {
+        return remainingHealth;
+    }
+
+    public int getEffectiveWaveCost(int difficultyLevel) {
+        double multiplier = DifficultyRules.forLevel(difficultyLevel)
+                .getZombieWaveCostMultiplier();
+        int total = 0;
+        for (ZombieType type : zombieTypes) {
+            total += effectiveCost(type, multiplier);
+        }
+        return total;
+    }
 
     public void recordDamage(int damage) {
         remainingHealth = Math.max(0, remainingHealth - damage);
     }
 
     public boolean isDamagedEnough(double threshold) {
-        return remainingHealth * 4 <= maximumHealth * (4 - threshold);
+        return remainingHealth * 4
+                <= maximumHealth * (4 - threshold);
     }
 }
