@@ -98,6 +98,7 @@ public class Game {
     private final List<String> consumedGreenhouseBoosts = new ArrayList<>();
     private boolean plantLoadoutConfigured;
     private final Random random;
+    private final DifficultyRules difficultyRules;
 
     private int sunCount;
     private int plantFoodCount;
@@ -137,8 +138,20 @@ public class Game {
             boolean startWavesImmediately,
             ChapterRuleset chapterRuleset) {
         this(board, gameType, initialSunCount,
+                zombieWaves, startWavesImmediately,
+                chapterRuleset, 3);
+    }
+
+    public Game(Board board, GameType gameType,
+            int initialSunCount,
+            List<ZombieWave> zombieWaves,
+            boolean startWavesImmediately,
+            ChapterRuleset chapterRuleset,
+            int difficultyLevel) {
+        this(board, gameType, initialSunCount,
                 zombieWaves, new Random(),
-                startWavesImmediately, chapterRuleset);
+                startWavesImmediately, chapterRuleset,
+                difficultyLevel);
     }
 
     Game(Board board, GameType gameType,
@@ -146,7 +159,8 @@ public class Game {
             List<ZombieWave> zombieWaves,
             Random random) {
         this(board, gameType, initialSunCount,
-                zombieWaves, random, true, ChapterRuleset.NONE);
+                zombieWaves, random, true,
+                ChapterRuleset.NONE, 3);
     }
 
     Game(Board board, GameType gameType,
@@ -155,7 +169,8 @@ public class Game {
             Random random,
             boolean startWavesImmediately) {
         this(board, gameType, initialSunCount, zombieWaves,
-                random, startWavesImmediately, ChapterRuleset.NONE);
+                random, startWavesImmediately,
+                ChapterRuleset.NONE, 3);
     }
 
     Game(Board board, GameType gameType,
@@ -163,7 +178,8 @@ public class Game {
             List<ZombieWave> zombieWaves,
             Random random,
             boolean startWavesImmediately,
-            ChapterRuleset chapterRuleset) {
+            ChapterRuleset chapterRuleset,
+            int difficultyLevel) {
         if (board == null) {
             throw new IllegalArgumentException("board cannot be null");
         }
@@ -181,6 +197,8 @@ public class Game {
         this.board = board;
         this.gameType = gameType;
         this.chapterRuleset = chapterRuleset;
+        this.difficultyRules =
+                DifficultyRules.forLevel(difficultyLevel);
         if (chapterRuleset == ChapterRuleset.FROSTBITE_CAVES) {
             board.enableFrostbiteCavesRules();
         } else if (chapterRuleset == ChapterRuleset.DARK_AGES) {
@@ -197,10 +215,13 @@ public class Game {
         validateNoBossWaves(this.zombieWaves);
         this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
         this.random = random;
+        for (Zombie zombie : board.getZombies()) {
+            applyDifficultyToZombie(zombie);
+        }
         this.zombieWavesStarted =
                 startWavesImmediately;
         this.nextSkySunDropAtSeconds =
-                getSkySunDropIntervalSeconds(0.0);
+                getAdjustedSkySunDropIntervalSeconds(0.0);
         startNextWaveIfPossible();
     }
 
@@ -243,6 +264,7 @@ public class Game {
             return;
         }
 
+        deltaSeconds = difficultyRules.scaleGameDelta(deltaSeconds);
         updateConveyorBelt(deltaSeconds);
         updatePlantCooldowns(deltaSeconds);
         prepareLoveYourPlants();
@@ -712,6 +734,7 @@ public class Game {
     }
 
     private void trackSpawnedZombie(Zombie zombie) {
+        applyDifficultyToZombie(zombie);
         int waveIndex = zombie.getWaveNumber() - 1;
         if (waveIndex < 0 || waveIndex >= spawnedZombiesByWave.size()) {
             return;
@@ -787,7 +810,9 @@ public class Game {
         }
         while (elapsedSeconds + TIME_EPSILON >= nextSkySunDropAtSeconds) {
             dropSkySun();
-            nextSkySunDropAtSeconds += getSkySunDropIntervalSeconds(nextSkySunDropAtSeconds);
+            nextSkySunDropAtSeconds +=
+                    getAdjustedSkySunDropIntervalSeconds(
+                            nextSkySunDropAtSeconds);
         }
     }
 
@@ -853,6 +878,7 @@ public class Game {
             double spawnColumn = normalSpawnColumn - tornadoAdvance;
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);
+            applyDifficultyToZombie(zombie);
             spawnedZombies.add(zombie);
             board.addZombie(zombie);
             pendingResults.add(buildSpawnMessage(zombie, tornadoAdvance));
@@ -1207,6 +1233,12 @@ public class Game {
                 + position + ".");
     }
 
+    private double getAdjustedSkySunDropIntervalSeconds(
+            double timePassedSeconds) {
+        return difficultyRules.scaleSkySunInterval(
+                getSkySunDropIntervalSeconds(timePassedSeconds));
+    }
+
     public static double getSkySunDropIntervalSeconds(double timePassedSeconds) {
         if (!Double.isFinite(timePassedSeconds) || timePassedSeconds < 0.0) {
             throw new IllegalArgumentException("timePassedSeconds must be finite and non-negative");
@@ -1415,10 +1447,21 @@ public class Game {
                 < Constants.GLOWING_ZOMBIE_CHANCE;
         Zombie zombie = new Zombie(type, Math.max(1, zombieWaveNumber),
                 row, column, glowing);
+        applyDifficultyToZombie(zombie);
         board.addZombie(zombie);
         pendingResults.add("Zombie " + zombie.getName()
                 + " spawned by cheat at (" + column + ", " + row + ").");
         return zombie;
+    }
+
+    private void applyDifficultyToZombie(Zombie zombie) {
+        if (zombie != null) {
+            zombie.applyDifficulty(difficultyRules.getLevel());
+        }
+    }
+
+    public int getDifficultyLevel() {
+        return difficultyRules.getLevel();
     }
 
     public void enableConveyorBelt(
@@ -1431,6 +1474,20 @@ public class Game {
         conveyorBeltSystem =
                 new ConveyorBeltSystem(
                         availablePlantTypes);
+        pendingResults.addAll(
+                conveyorBeltSystem.drainMessages());
+    }
+
+    public void replaceConveyorPlantPool(
+            List<String> availablePlantTypes) {
+        if (conveyorBeltSystem == null) {
+            throw new IllegalStateException(
+                    "this game has no Conveyor Belt");
+        }
+        conveyorBeltSystem =
+                new ConveyorBeltSystem(availablePlantTypes);
+        pendingResults.add("Conveyor Belt pool updated from the "
+                + "player's unlocked plants.");
         pendingResults.addAll(
                 conveyorBeltSystem.drainMessages());
     }

@@ -1,6 +1,7 @@
 package model.game.entities.zombies;
 
 import model.Constants;
+import model.game.DifficultyRules;
 import model.game.entities.Entity;
 import model.game.entities.EntityPosition;
 import model.game.entities.other.PushedObstacle;
@@ -62,6 +63,7 @@ public class Zombie extends Entity {
     private double hypnotizedDamageMultiplier = 1.0;
     private int alliedAttackDpsOverride;
     private double pendingZombieAttackDamage;
+    private int difficultyLevel = 3;
     private int poisonDamagePerTick;
     private double poisonTickIntervalSeconds;
     private double poisonDurationSeconds;
@@ -337,6 +339,28 @@ public class Zombie extends Entity {
 
     public void heal(int amount) {
         hitPoints = Math.min(hitPoints + amount, maximumHitPoints);
+    }
+
+    public void applyDifficulty(int newDifficultyLevel) {
+        DifficultyRules oldRules =
+                DifficultyRules.forLevel(difficultyLevel);
+        DifficultyRules newRules =
+                DifficultyRules.forLevel(newDifficultyLevel);
+        double oldHealth =
+                oldRules.getZombieHealthMultiplier();
+        double newHealth =
+                newRules.getZombieHealthMultiplier();
+        double healthRatio = maximumHitPoints == 0
+                ? 0.0 : (double) hitPoints / maximumHitPoints;
+        maximumHitPoints = Math.max(1,
+                (int) Math.round(maximumHitPoints
+                        / oldHealth * newHealth));
+        hitPoints = Math.max(0,
+                (int) Math.round(maximumHitPoints * healthRatio));
+        if (armor != null) {
+            armor.rescaleHealth(oldHealth, newHealth);
+        }
+        difficultyLevel = newDifficultyLevel;
     }
 
     public void kill() {
@@ -711,6 +735,9 @@ public class Zombie extends Entity {
         }
         int dps = hypnotized && alliedAttackDpsOverride > 0
                 ? alliedAttackDpsOverride : type.getEatDPS();
+        dps = Math.max(1, (int) Math.round(
+                dps * DifficultyRules.forLevel(difficultyLevel)
+                        .getZombieDamageMultiplier()));
         if (chilled) {
             dps = (int) Math.floor(dps * 0.5);
         }
@@ -797,6 +824,16 @@ public class Zombie extends Entity {
         if (newType.getDefaultArmor() != null
                 && newType.getDefaultArmor() != ArmorType.NONE) {
             armor = new Armor(newType.getDefaultArmor());
+        }
+        DifficultyRules rules =
+                DifficultyRules.forLevel(difficultyLevel);
+        maximumHitPoints = Math.max(1,
+                (int) Math.round(maximumHitPoints
+                        * rules.getZombieHealthMultiplier()));
+        hitPoints = maximumHitPoints;
+        if (armor != null) {
+            armor.rescaleHealth(1.0,
+                    rules.getZombieHealthMultiplier());
         }
         abilities = new ArrayList<>();
         initializeAbilities(newType.getAbilitySpecs());

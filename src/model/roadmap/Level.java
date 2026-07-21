@@ -160,10 +160,15 @@ public final class Level {
     }
 
     public Game createGame() {
+        return createGame(3);
+    }
+
+    public Game createGame(int difficultyLevel) {
         List<ZombieWave> freshWaves =
                 new ArrayList<>();
         for (ZombieWave wave : zombieWaves) {
-            freshWaves.add(wave.copy());
+            freshWaves.add(
+                    wave.forDifficulty(difficultyLevel));
         }
 
         boolean startWavesImmediately =
@@ -174,7 +179,8 @@ public final class Level {
         configureChapterBoard(board);
         Game game = new Game(
                 board, null, initialSunCount, freshWaves,
-                startWavesImmediately, chapterRuleset);
+                startWavesImmediately, chapterRuleset,
+                difficultyLevel);
         configureSpecialRules(game);
         return game;
     }
