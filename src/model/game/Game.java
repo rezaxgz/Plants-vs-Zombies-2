@@ -194,6 +194,7 @@ public class Game {
         this.zombieWaves = zombieWaves == null
                 ? new ArrayList<>()
                 : new ArrayList<>(zombieWaves);
+        validateNoBossWaves(this.zombieWaves);
         this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
         this.random = random;
         this.zombieWavesStarted =
@@ -201,6 +202,18 @@ public class Game {
         this.nextSkySunDropAtSeconds =
                 getSkySunDropIntervalSeconds(0.0);
         startNextWaveIfPossible();
+    }
+
+    private static void validateNoBossWaves(
+            List<ZombieWave> waves) {
+        for (ZombieWave wave : waves) {
+            for (ZombieType type : wave.getZombieTypes()) {
+                if (type.isBoss()) {
+                    throw new IllegalArgumentException(
+                            "Zomboss enemies are not enabled in levels yet");
+                }
+            }
+        }
     }
 
     private static List<List<Zombie>> createWaveTracking(int waveCount) {
@@ -243,18 +256,20 @@ public class Game {
             return;
         }
 
-        LawnMowerResolution mowerResolution =
-                lawnMowerSystem.resolve(board);
-        pendingResults.addAll(mowerResolution.getMessages());
-        processZombieDeathDrops(mowerResolution.getKilledZombies());
-        trackBoardSpawnedZombies();
-
-        if (mowerResolution.isBrainEaten()) {
-            pendingResults.addAll(board.drainResults());
-            elapsedSeconds += deltaSeconds;
-            loseGame();
-            return;
+        if (usesLawnMowers()) {
+            LawnMowerResolution mowerResolution =
+                    lawnMowerSystem.resolve(board);
+            pendingResults.addAll(mowerResolution.getMessages());
+            processZombieDeathDrops(
+                    mowerResolution.getKilledZombies());
+            if (mowerResolution.isBrainEaten()) {
+                pendingResults.addAll(board.drainResults());
+                elapsedSeconds += deltaSeconds;
+                loseGame();
+                return;
+            }
         }
+        trackBoardSpawnedZombies();
 
         activateAutomaticZombieAbilities(zombieSnapshot);
         returnStolenSunFromDeadZombies(zombieSnapshot);
@@ -270,7 +285,8 @@ public class Game {
             return;
         }
 
-        if (hasZombieReachedHouse()) {
+        if (usesLawnMowers()
+                && hasZombieReachedHouse()) {
             loseGame();
             return;
         }
@@ -1388,7 +1404,7 @@ public class Game {
 
     public Zombie spawnZombie(String requestedType, int column, int row) {
         ZombieType type = ZombieType.findByName(requestedType);
-        if (type == null) {
+        if (type == null || type.isBoss()) {
             return null;
         }
         if (row < 0 || row >= board.getNumberOfRows()
@@ -2009,6 +2025,13 @@ public class Game {
         return true;
     }
 
+    /**
+     * Reverse-defense minigames can replace lawn mowers with their own goal.
+     */
+    protected boolean usesLawnMowers() {
+        return true;
+    }
+
     protected final void addPendingResult(String message) {
         if (message != null && !message.isBlank()) {
             pendingResults.add(message);
@@ -2020,6 +2043,14 @@ public class Game {
             return;
         }
         status = GameStatus.WON;
+        addPendingResult(message);
+    }
+
+    protected final void completeGameAsLost(String message) {
+        if (status != GameStatus.ACTIVE) {
+            return;
+        }
+        status = GameStatus.LOST;
         addPendingResult(message);
     }
 

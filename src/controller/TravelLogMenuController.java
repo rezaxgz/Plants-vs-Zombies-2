@@ -9,6 +9,9 @@ import java.util.regex.Matcher;
 import model.App;
 import model.CommandResult;
 import model.auth.UserManager;
+import model.game.minigame.IZombie;
+import model.game.minigame.IZombieCard;
+import model.game.minigame.IZombieLevel;
 import model.game.minigame.VaseBreaker;
 import model.game.minigame.VaseBreakerLevel;
 import model.game.minigame.WallnutBowling;
@@ -24,6 +27,8 @@ public final class TravelLogMenuController {
     private static final String VASE_BREAKER_NAME = "Vase Breaker";
     private static final String WALLNUT_BOWLING_ID = "wallnutbowling";
     private static final String WALLNUT_BOWLING_NAME = "Wall-nut Bowling";
+    private static final String I_ZOMBIE_ID = "izombie";
+    private static final String I_ZOMBIE_NAME = "I, Zombie";
 
     private TravelLogMenuController() {
     }
@@ -89,6 +94,11 @@ public final class TravelLogMenuController {
                 WallnutBowlingLevel.LEVEL_COUNT,
                 "show wallnut bowling levels",
                 "start wallnut bowling -l <1-3>");
+        appendMinigameSummary(output, progress,
+                I_ZOMBIE_ID, I_ZOMBIE_NAME,
+                IZombieLevel.LEVEL_COUNT,
+                "show i-zombie levels",
+                "start i-zombie -l <1-3>");
         UserManager.saveAllUsers();
         return CommandResult.success(output.toString());
     }
@@ -171,6 +181,44 @@ public final class TravelLogMenuController {
         return CommandResult.success(output.toString());
     }
 
+    public static CommandResult handleShowIZombieLevels(
+            Matcher matcher) {
+        User user = getLoggedInUser();
+        if (user == null) {
+            return loginRequired();
+        }
+        GameProgerss progress = user.getGameProgerss();
+        StringBuilder output = new StringBuilder(
+                I_ZOMBIE_NAME + " levels");
+        for (IZombieLevel level : IZombieLevel.values()) {
+            output.append(System.lineSeparator())
+                    .append(level.getNumber()).append(". ")
+                    .append(level.getName()).append(" | ")
+                    .append(levelStatus(progress, I_ZOMBIE_ID,
+                            level.getNumber(), IZombieLevel.LEVEL_COUNT))
+                    .append(" | plants: ")
+                    .append(level.getPlantCount())
+                    .append(" | red line after column ")
+                    .append(level.getRedLineColumn())
+                    .append(" | zombie cards: ");
+            appendIZombieCards(output, level);
+        }
+        return CommandResult.success(output.toString());
+    }
+
+    private static void appendIZombieCards(
+            StringBuilder output, IZombieLevel level) {
+        for (int index = 0;
+                index < level.getZombieCards().size(); index++) {
+            IZombieCard card = level.getZombieCards().get(index);
+            output.append(card.getType().name())
+                    .append('(').append(card.getCost()).append(')');
+            if (index < level.getZombieCards().size() - 1) {
+                output.append(", ");
+            }
+        }
+    }
+
     public static CommandResult handleStartVaseBreaker(Matcher matcher) {
         User user = getLoggedInUser();
         if (user == null) {
@@ -241,6 +289,41 @@ public final class TravelLogMenuController {
                 .addPostCommandResults(game.drainResults());
     }
 
+    public static CommandResult handleStartIZombie(
+            Matcher matcher) {
+        User user = getLoggedInUser();
+        if (user == null) {
+            return loginRequired();
+        }
+        user.addMinigameUnlockNews(I_ZOMBIE_NAME + " level 1");
+        int levelNumber = parseLevelNumber(matcher);
+        IZombieLevel level = IZombieLevel.find(levelNumber);
+        if (level == null) {
+            return CommandResult.error(
+                    "I, Zombie has exactly three levels: 1, 2, and 3.");
+        }
+        if (!isLevelUnlocked(user, I_ZOMBIE_ID, levelNumber,
+                IZombieLevel.LEVEL_COUNT)) {
+            return lockedLevel(I_ZOMBIE_NAME, levelNumber);
+        }
+
+        IZombie game = new IZombie(level);
+        startMinigame(user, game, I_ZOMBIE_ID, I_ZOMBIE_NAME,
+                levelNumber, IZombieLevel.LEVEL_COUNT);
+        String instructions = "started I, Zombie level " + levelNumber
+                + " - " + level.getName()
+                + System.lineSeparator()
+                + "initial sun: 150 | plants are left of the red line"
+                + System.lineSeparator()
+                + "commands: show i-zombie status | show zombie cards"
+                + System.lineSeparator()
+                + "place zombie -t <type> -l (<row>, <column>)"
+                + System.lineSeparator()
+                + "advance time -t <count> ticks | show map";
+        return CommandResult.success(instructions)
+                .addPostCommandResults(game.drainResults());
+    }
+
     private static int parseLevelNumber(Matcher matcher) {
         try {
             return Integer.parseInt(matcher.group("level"));
@@ -295,6 +378,7 @@ public final class TravelLogMenuController {
     private static void addInitialMinigameNews(User user) {
         user.addMinigameUnlockNews(VASE_BREAKER_NAME + " level 1");
         user.addMinigameUnlockNews(WALLNUT_BOWLING_NAME + " level 1");
+        user.addMinigameUnlockNews(I_ZOMBIE_NAME + " level 1");
     }
 
     private static User getLoggedInUser() {
