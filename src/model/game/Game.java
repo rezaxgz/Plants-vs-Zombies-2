@@ -124,12 +124,12 @@ public class Game {
     }
 
     public Game(Board board, GameType gameType,
-            int initialSunCount,
-            List<ZombieWave> zombieWaves,
-            boolean startWavesImmediately) {
+                int initialSunCount,
+                List<ZombieWave> zombieWaves,
+                boolean startWavesImmediately) {
         this(board, gameType, initialSunCount,
                 zombieWaves, new Random(),
-                startWavesImmediately, ChapterRuleset.NONE);
+                startWavesImmediately, ChapterRuleset.NONE, 3);
     }
 
     public Game(Board board, GameType gameType,
