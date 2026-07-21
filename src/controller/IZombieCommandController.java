@@ -40,10 +40,10 @@ public final class IZombieCommandController {
                 .append(game.getRedLineColumn())
                 .append(System.lineSeparator())
                 .append("brains eaten: ")
-                .append(game.getEatenBrainCount()).append('/5')
+                .append(game.getEatenBrainCount()).append("/5")
                 .append(System.lineSeparator())
                 .append("sun producers alive: ")
-                .append(game.getLivingSunProducerCount()).append('/5')
+                .append(game.getLivingSunProducerCount()).append("/5")
                 .append(System.lineSeparator())
                 .append("sun-production interval: ")
                 .append(String.format(Locale.ROOT, "%.1fs",
