@@ -1,9 +1,13 @@
 package commands;
 
 import controller.MainController;
+import controller.ProjectValidationController;
 import model.CommandResult;
 
 public enum MainMenuCommand implements Command<CommandResult> {
+    RUN_PROJECT_CHECKS(
+            "^run\\s+project\\s+checks$",
+            ProjectValidationController::handleRunChecks),
     START_TIMED_WAR_CHALLENGE(
             "^start\\s+timed(?:-|\\s+)war\\s+-o\\s+"
                     + "(?<objective>kill|sun|produce-sun|produce_sun)$",

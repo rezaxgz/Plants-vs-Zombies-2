@@ -141,6 +141,13 @@ public final class ZombieWave {
             }
         }
 
+        if (!reachable[budget]
+                && Math.abs(costMultiplier - 1.0) < 0.000001) {
+            throw new IllegalStateException(
+                    "no exact zombie combination fits default wave budget "
+                            + budget);
+        }
+
         int chosenBudget = budget;
         while (chosenBudget > 0 && !reachable[chosenBudget]) {
             chosenBudget--;
