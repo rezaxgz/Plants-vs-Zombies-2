@@ -14,6 +14,8 @@ import model.auth.UserManager;
 import model.collections.plants.PlantCollectionItem;
 import model.game.Game;
 import model.game.plantSelector.PlantSelection;
+import model.game.scored.DailyScoredGameFactory;
+import model.game.scored.ScoredGame;
 import model.menu.GameMenu;
 import model.menu.PlantSelectionMenu;
 import model.roadmap.AdventureProgress;
@@ -29,6 +31,43 @@ import model.user.User;
  */
 public final class MainController {
     private MainController() {
+    }
+
+    public static CommandResult handleStartScoredGame(
+            Matcher matcher) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error(
+                    "login is required to start Scored Game!");
+        }
+
+        ScoredGame game = DailyScoredGameFactory.create();
+        Map<String, Integer> loadout =
+                createScoredGameLoadout(user);
+        game.configurePlantLoadout(
+                loadout, List.of());
+        user.getGameProgerss().recordGameStarted();
+        UserManager.saveAllUsers();
+        App.getInstance().changeMenu(new GameMenu(game));
+
+        String message = "daily Scored Game started"
+                + System.lineSeparator()
+                + "challenge date: " + game.getChallengeDate()
+                + " UTC"
+                + System.lineSeparator()
+                + "selected plants: "
+                + String.join(", ", loadout.keySet())
+                + System.lineSeparator()
+                + "use 'show score' and "
+                + "'show score rules'";
+        return CommandResult.success(message)
+                .addPostCommandResults(game.drainResults());
+    }
+
+    public static CommandResult handleShowScoredGameRules(
+            Matcher matcher) {
+        return CommandResult.success(
+                ScoredGame.getRulesDescription());
     }
 
     public static CommandResult handleShowChapters(
@@ -242,6 +281,25 @@ public final class MainController {
                 + "use show available plants, add plant -t <type>, "
                 + "boost plant -t <type>, and start game";
         return withNotifications(CommandResult.success(message));
+    }
+
+    private static Map<String, Integer>
+            createScoredGameLoadout(User user) {
+        Map<String, Integer> loadout =
+                new LinkedHashMap<>();
+        for (PlantCollectionItem plant :
+                user.getPlantCollection().getUnlockedPlants()) {
+            loadout.put(
+                    plant.getName(), plant.getCurrentLevel());
+            if (loadout.size() >= 8) {
+                break;
+            }
+        }
+        if (loadout.isEmpty()) {
+            throw new IllegalStateException(
+                    "Scored Game requires an unlocked plant");
+        }
+        return loadout;
     }
 
     private static Map<String, Integer> createForcedLoadout(

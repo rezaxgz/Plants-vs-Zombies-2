@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 import model.game.entities.zombies.ZombieType;
@@ -58,29 +59,45 @@ public final class ZombieWave {
             int difficulty, boolean finalWave) {
         return buildWave(
                 List.of(ZombieType.BASIC),
-                ZombieType.FLAG, difficulty, finalWave, 1.0);
+                ZombieType.FLAG, difficulty, finalWave,
+                1.0, new Random());
     }
 
     public static ZombieWave themedWave(String chapter,
             int difficulty, boolean finalWave) {
         List<ZombieType> pool = List.of(getChapterZombies(chapter));
         return buildWave(pool, getFlagZombie(chapter),
-                difficulty, finalWave, 1.0);
+                difficulty, finalWave, 1.0, new Random());
+    }
+
+    public static ZombieWave seededWave(
+            List<ZombieType> sourcePool,
+            int difficulty, boolean finalWave,
+            int difficultyLevel, Random random) {
+        if (random == null) {
+            throw new IllegalArgumentException(
+                    "random cannot be null");
+        }
+        double multiplier = DifficultyRules
+                .forLevel(difficultyLevel)
+                .getZombieWaveCostMultiplier();
+        return buildWave(sourcePool, ZombieType.FLAG,
+                difficulty, finalWave, multiplier, random);
     }
 
     private static ZombieWave buildWave(
             List<ZombieType> sourcePool, ZombieType flagType,
             int difficulty, boolean finalWave,
-            double costMultiplier) {
+            double costMultiplier, Random random) {
         if (difficulty <= 0 || sourcePool == null
-                || sourcePool.isEmpty()) {
+                || sourcePool.isEmpty() || random == null) {
             throw new IllegalArgumentException(
-                    "wave difficulty and pool must be positive");
+                    "wave difficulty, pool, and random are required");
         }
 
         List<ZombieType> pool =
                 new ArrayList<>(distinctNonFlagTypes(sourcePool));
-        Collections.shuffle(pool);
+        Collections.shuffle(pool, random);
 
         List<ZombieType> result = new ArrayList<>();
         int remaining = difficulty;
@@ -151,7 +168,8 @@ public final class ZombieWave {
     private static int effectiveCost(
             ZombieType type, double multiplier) {
         return Math.max(1,
-                (int) Math.round(type.getWavePointCost() * multiplier));
+                (int) Math.round(
+                        type.getWavePointCost() * multiplier));
     }
 
     public ZombieWave forDifficulty(int difficultyLevel) {
@@ -159,7 +177,9 @@ public final class ZombieWave {
                 DifficultyRules.forLevel(difficultyLevel);
         ZombieType flag = findFlagType();
         return buildWave(availableTypes, flag, difficulty,
-                finalWave, rules.getZombieWaveCostMultiplier());
+                finalWave,
+                rules.getZombieWaveCostMultiplier(),
+                new Random());
     }
 
     private ZombieType findFlagType() {

@@ -4,6 +4,12 @@ import controller.MainController;
 import model.CommandResult;
 
 public enum MainMenuCommand implements Command<CommandResult> {
+    START_SCORED_GAME(
+            "^start\\s+scored(?:-|\\s+)game$",
+            MainController::handleStartScoredGame),
+    SHOW_SCORED_GAME_RULES(
+            "^show\\s+scored(?:-|\\s+)game\\s+rules$",
+            MainController::handleShowScoredGameRules),
     SHOW_CHAPTERS("^show\\s+chapters$",
             MainController::handleShowChapters),
     SHOW_LEVELS(
