@@ -10,11 +10,8 @@ import model.CommandResult;
 
 public class CommandRegistry {
     private final Map<String, List<Command<CommandResult>>> menus = new HashMap<>();
-    private final List<Command<CommandResult>> commonCommands;
 
     public CommandRegistry() {
-        commonCommands = commandsFrom(MenuCommand.class);
-
         registerMenu("main", MainMenuCommand.class);
         registerMenu("game", GameMenuCommand.class);
         registerMenu("plantselection", PlantSelectionMenuCommand.class);
@@ -45,9 +42,11 @@ public class CommandRegistry {
     }
 
     public List<Command<CommandResult>> getCommands(String menuId) {
-        List<Command<CommandResult>> commands = new ArrayList<>(
-                menus.getOrDefault(menuId, List.of()));
-        commands.addAll(commonCommands);
+        List<Command<CommandResult>> commands = new ArrayList<>();
+        commands.add(MenuCommand.SHOW_CURRENT);
+        commands.add(MenuCommand.EXIT);
+        commands.addAll(menus.getOrDefault(menuId, List.of()));
+        commands.add(MenuCommand.ENTER);
         return Collections.unmodifiableList(commands);
     }
 }

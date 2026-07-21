@@ -45,7 +45,12 @@ public final class DifficultyRules {
     }
 
     public double getSkySunIntervalMultiplier() {
-        return increaseMultiplier;
+        /*
+         * Game delta is already multiplied by difficulty. Squaring
+         * here keeps sky-sun frequency as an independent effect:
+         * the real-time interval changes by difficulty / 3.
+         */
+        return increaseMultiplier * increaseMultiplier;
     }
 
     public double getZombieWaveCostMultiplier() {

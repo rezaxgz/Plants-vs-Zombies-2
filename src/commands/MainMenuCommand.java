@@ -1,9 +1,23 @@
 package commands;
 
 import controller.MainController;
+import controller.ProjectValidationController;
 import model.CommandResult;
 
 public enum MainMenuCommand implements Command<CommandResult> {
+    RUN_PROJECT_CHECKS(
+            "^run\\s+project\\s+checks$",
+            ProjectValidationController::handleRunChecks),
+    START_TIMED_WAR_CHALLENGE(
+            "^start\\s+timed(?:-|\\s+)war\\s+-o\\s+"
+                    + "(?<objective>kill|sun|produce-sun|produce_sun)$",
+            MainController::handleStartTimedWarChallenge),
+    START_SCORED_GAME(
+            "^start\\s+scored(?:-|\\s+)game$",
+            MainController::handleStartScoredGame),
+    SHOW_SCORED_GAME_RULES(
+            "^show\\s+scored(?:-|\\s+)game\\s+rules$",
+            MainController::handleShowScoredGameRules),
     SHOW_CHAPTERS("^show\\s+chapters$",
             MainController::handleShowChapters),
     SHOW_LEVELS(
@@ -14,7 +28,9 @@ public enum MainMenuCommand implements Command<CommandResult> {
                     + "(?<chapter>.+)$",
             MainController::handleEnterChapter),
     START_LEVEL(
-            "^start\\s+level\\s+-l\\s+(?<level>\\d+)$",
+            "^start\\s+level\\s+-l\\s+(?<level>\\d+)"
+                    + "(?:\\s+-o\\s+(?<objective>"
+                    + "kill|sun|produce-sun|produce_sun))?$",
             MainController::handleStartLevel),
     SHOW_CURRENT_LEVEL("^show\\s+current\\s+level$",
             MainController::handleShowCurrentLevel),

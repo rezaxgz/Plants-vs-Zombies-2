@@ -31,6 +31,7 @@ import model.game.minigame.BowlingWallnut;
 import model.game.minigame.IZombie;
 import model.game.minigame.VaseBreaker;
 import model.game.minigame.WallnutBowling;
+import model.game.scored.ScoredGame;
 import model.game.structure.BaseStructure;
 import model.game.structure.Grave;
 import model.game.structure.Vase;
@@ -247,11 +248,27 @@ public final class GameStatusFormatter {
         appendVaseBreakerStatus(output, game);
         appendWallnutBowlingStatus(output, game);
         appendIZombieStatus(output, game);
+        appendScoredGameStatus(output, game);
         if (game instanceof IZombie) {
             appendBrainSummary(output, (IZombie) game);
         } else {
             appendLawnMowerSummary(output, game);
         }
+    }
+
+    private static void appendScoredGameStatus(
+            StringBuilder output, Game game) {
+        if (!(game instanceof ScoredGame)) {
+            return;
+        }
+        ScoredGame scoredGame = (ScoredGame) game;
+        output.append("daily scored challenge: ")
+                .append(scoredGame.getChallengeDate())
+                .append(" UTC")
+                .append(System.lineSeparator())
+                .append("MowPoint: ")
+                .append(scoredGame.getScore())
+                .append(System.lineSeparator());
     }
 
     private static void appendLawnMowerSummary(

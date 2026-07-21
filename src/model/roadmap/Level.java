@@ -18,6 +18,13 @@ import model.game.special.TimedWarObjective;
  * Replayable level definition. Every game receives fresh wave state.
  */
 public final class Level {
+    private static final double TIMED_WAR_KILL_SECONDS =
+            30.0;
+    private static final int TIMED_WAR_KILL_TARGET = 10;
+    private static final double TIMED_WAR_SUN_SECONDS =
+            60.0;
+    private static final int TIMED_WAR_SUN_TARGET = 200;
+
     private final int number;
     private final String name;
     private final LevelKind kind;
@@ -339,6 +346,48 @@ public final class Level {
                             .getDurationSeconds(),
                     specialConfig.getTarget());
         }
+    }
+
+    public Level withTimedWarObjective(
+            TimedWarObjective objective) {
+        if (objective == null) {
+            throw new IllegalArgumentException(
+                    "Timed War objective cannot be null");
+        }
+        if (specialLevelType
+                != SpecialLevelType.TIMED_WAR) {
+            throw new IllegalStateException(
+                    "this level is not a Timed War level");
+        }
+
+        boolean sunProduction =
+                objective
+                        == TimedWarObjective.PRODUCE_SUN;
+        double duration = sunProduction
+                ? TIMED_WAR_SUN_SECONDS
+                : TIMED_WAR_KILL_SECONDS;
+        int objectiveTarget = sunProduction
+                ? TIMED_WAR_SUN_TARGET
+                : TIMED_WAR_KILL_TARGET;
+        String objectiveName = sunProduction
+                ? "Sun Production"
+                : "Zombie Elimination";
+
+        return new Level(
+                number,
+                name + " [" + objectiveName + "]",
+                kind,
+                specialLevelType,
+                SpecialLevelConfig.timedWar(
+                        objective,
+                        duration,
+                        objectiveTarget),
+                chapterRuleset,
+                numberOfRows,
+                numberOfColumns,
+                initialSunCount,
+                plantSlotCount,
+                zombieWaves);
     }
 
     public int getNumber() {

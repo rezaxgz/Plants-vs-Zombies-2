@@ -1,8 +1,11 @@
 package model.menu;
 
-public class LeaderboardMenu extends Menu {
+import model.App;
+
+public final class LeaderboardMenu extends Menu {
     @Override
     public void exit() {
+        App.getInstance().changeMenu(new MainMenu());
     }
 
     @Override

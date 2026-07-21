@@ -3,12 +3,19 @@ package commands;
 import controller.GameMenuController;
 import controller.GameStatusCommandController;
 import controller.IZombieCommandController;
+import controller.ScoredGameCommandController;
 import controller.SpecialLevelCommandController;
 import controller.VaseBreakerCommandController;
 import controller.WallnutBowlingCommandController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
+    SHOW_SCORED_GAME_SCORE(
+            "^show\\s+(?:scored(?:-|\\s+)game\\s+)?score$",
+            ScoredGameCommandController::handleShowScore),
+    SHOW_SCORED_GAME_RULES(
+            "^show\\s+(?:scored(?:-|\\s+)game\\s+)?score\\s+rules$",
+            ScoredGameCommandController::handleShowRules),
     OPEN_GREENHOUSE("^menu\\s+greenhouse$",
             GameMenuController::handleOpenGreenhouse),
     OPEN_TRAVEL_LOG("^menu\\s+travel(?:-|\\s+)log$",

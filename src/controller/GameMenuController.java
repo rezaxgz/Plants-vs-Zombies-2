@@ -190,6 +190,10 @@ public final class GameMenuController {
         if (game == null) {
             return CommandResult.error("game is not active!");
         }
+        if (!game.allowsCheats()) {
+            return CommandResult.error(
+                    "cheats are disabled in this game mode!");
+        }
 
         List<String> preCommandResults = game.drainResults();
         int count;
@@ -218,6 +222,10 @@ public final class GameMenuController {
         if (game == null) {
             return CommandResult.error("game is not active!");
         }
+        if (!game.allowsCheats()) {
+            return CommandResult.error(
+                    "cheats are disabled in this game mode!");
+        }
 
         List<String> preCommandResults = game.drainResults();
         if (!game.addPlantFood()) {
@@ -234,6 +242,10 @@ public final class GameMenuController {
         Game game = getCurrentGame();
         if (game == null) {
             return CommandResult.error("game is not active!");
+        }
+        if (!game.allowsCheats()) {
+            return CommandResult.error(
+                    "cheats are disabled in this game mode!");
         }
         List<String> preCommandResults = game.drainResults();
         game.removePlantCooldowns();
@@ -727,6 +739,10 @@ public final class GameMenuController {
         if (game == null) {
             return CommandResult.error("game is not active!");
         }
+        if (!game.allowsCheats()) {
+            return CommandResult.error(
+                    "cheats are disabled in this game mode!");
+        }
 
         List<String> preCommandResults = game.drainResults();
         if (game.isGameOver()) {
@@ -750,6 +766,10 @@ public final class GameMenuController {
         Game game = getCurrentGame();
         if (game == null) {
             return CommandResult.error("game is not active!");
+        }
+        if (!game.allowsCheats()) {
+            return CommandResult.error(
+                    "cheats are disabled in this game mode!");
         }
         List<String> preCommandResults = game.drainResults();
         int x;

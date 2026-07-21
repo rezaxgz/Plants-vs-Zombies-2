@@ -75,7 +75,7 @@ public final class ChapterCatalog {
                         firstSpecial, theme,
                         initialSunFor(
                                 firstSpecial, 200),
-                        600, 750, 1500),
+                        800, 1000, 2000),
                 createRegularLevel(
                         3, displayName + " - "
                                 + secondSpecial
@@ -84,7 +84,7 @@ public final class ChapterCatalog {
                         secondSpecial, theme,
                         initialSunFor(
                                 secondSpecial, 250),
-                        800, 1000, 2000),
+                        1200, 1500, 3000),
                 createDeferredFinalLevel(
                         displayName
                                 + " - Final Challenge",
@@ -199,11 +199,11 @@ public final class ChapterCatalog {
             String name, String theme) {
         List<ZombieWave> waves = List.of(
                 ZombieWave.themedWave(
-                        theme, 1000, false),
+                        theme, 1600, false),
                 ZombieWave.themedWave(
-                        theme, 1250, false),
+                        theme, 2000, false),
                 ZombieWave.themedWave(
-                        theme, 2500, true));
+                        theme, 4000, true));
         return new Level(
                 4, name, LevelKind.NORMAL,
                 SpecialLevelType.NONE,

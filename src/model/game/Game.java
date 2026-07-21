@@ -173,7 +173,7 @@ public class Game {
                 ChapterRuleset.NONE, 3);
     }
 
-    Game(Board board, GameType gameType,
+    protected Game(Board board, GameType gameType,
             int initialSunCount,
             List<ZombieWave> zombieWaves,
             Random random,
@@ -742,6 +742,7 @@ public class Game {
         List<Zombie> waveZombies = spawnedZombiesByWave.get(waveIndex);
         if (!waveZombies.contains(zombie)) {
             waveZombies.add(zombie);
+            onZombieSpawned(zombie);
         }
     }
 
@@ -881,6 +882,7 @@ public class Game {
             applyDifficultyToZombie(zombie);
             spawnedZombies.add(zombie);
             board.addZombie(zombie);
+            onZombieSpawned(zombie);
             pendingResults.add(buildSpawnMessage(zombie, tornadoAdvance));
         }
         zombieWaveNumber = waveNumber;
@@ -1181,20 +1183,25 @@ public class Game {
     }
 
     private void processZombieDeathDrops(List<Zombie> zombies) {
+        List<Zombie> newlyDead = new ArrayList<>();
+        for (Zombie zombie : zombies) {
+            if (zombie != null && zombie.isDead()
+                    && !zombie.areDeathDropsProcessed()) {
+                newlyDead.add(zombie);
+            }
+        }
+        if (!newlyDead.isEmpty()) {
+            onZombieDeaths(Collections.unmodifiableList(
+                    new ArrayList<>(newlyDead)));
+        }
+
         if (!shouldProcessZombieDeathDrops()) {
-            for (Zombie zombie : zombies) {
-                if (zombie != null && zombie.isDead()
-                        && !zombie.areDeathDropsProcessed()) {
-                    zombie.markDeathDropsProcessed();
-                }
+            for (Zombie zombie : newlyDead) {
+                zombie.markDeathDropsProcessed();
             }
             return;
         }
-        for (Zombie zombie : zombies) {
-            if (zombie == null || !zombie.isDead()
-                    || zombie.areDeathDropsProcessed()) {
-                continue;
-            }
+        for (Zombie zombie : newlyDead) {
             zombie.markDeathDropsProcessed();
             EntityPosition position = getDropPosition(zombie);
             if (zombie.isGlowing()) {
@@ -1202,7 +1209,8 @@ public class Game {
                 pendingResults.add("The glowing zombie dropped a plant food at "
                         + position + ".");
             }
-            if (random.nextDouble() < Constants.ZOMBIE_REWARD_DROP_CHANCE) {
+            if (random.nextDouble()
+                    < Constants.ZOMBIE_REWARD_DROP_CHANCE) {
                 dropZombieReward(position);
             }
         }
@@ -1449,6 +1457,7 @@ public class Game {
                 row, column, glowing);
         applyDifficultyToZombie(zombie);
         board.addZombie(zombie);
+        onZombieSpawned(zombie);
         pendingResults.add("Zombie " + zombie.getName()
                 + " spawned by cheat at (" + column + ", " + row + ").");
         return zombie;
@@ -1951,6 +1960,14 @@ public class Game {
         return plantWhatYouGetSystem != null;
     }
 
+    protected final void beginZombieWaves() {
+        if (zombieWavesStarted) {
+            return;
+        }
+        zombieWavesStarted = true;
+        startNextWaveIfPossible();
+    }
+
     public boolean startZombieWaves() {
         if (plantWhatYouGetSystem == null
                 || !plantWhatYouGetSystem
@@ -2062,6 +2079,18 @@ public class Game {
     public boolean isGameOver() {
         return status != GameStatus.ACTIVE
                 || gameType != null && gameType.checkForSpecialGameEnd();
+    }
+
+    protected void onZombieSpawned(Zombie zombie) {
+        // Extension hook for scored and event game modes.
+    }
+
+    protected void onZombieDeaths(List<Zombie> zombies) {
+        // Extension hook for scored and event game modes.
+    }
+
+    public boolean allowsCheats() {
+        return true;
     }
 
     /**

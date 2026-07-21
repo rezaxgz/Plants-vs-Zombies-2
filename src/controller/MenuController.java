@@ -53,7 +53,8 @@ public final class MenuController {
     }
 
     public static CommandResult handleShowCurrent(Matcher matcher) {
-        return CommandResult.success(App.getInstance().getCurrentMenu().getName());
+        String menuName = App.getInstance().getCurrentMenu().getName();
+        return CommandResult.success("current menu: " + menuName);
     }
 
     public static CommandResult handleExit(Matcher matcher) {

@@ -8,6 +8,7 @@ import model.App;
 import model.auth.UserManager;
 import model.game.Game;
 import model.game.GameStatus;
+import model.game.scored.ScoredGame;
 import model.roadmap.AdventureSession;
 import model.roadmap.Level;
 import model.user.GameProgerss;
@@ -130,7 +131,17 @@ public class GameMenu extends Menu {
     }
 
     public void synchronizeProgress() {
-        if (progressSynchronized || game.getStatus() != GameStatus.WON) {
+        if (progressSynchronized
+                || game.getStatus() == GameStatus.ACTIVE) {
+            return;
+        }
+        if (game instanceof ScoredGame) {
+            synchronizeScoredGameProgress(
+                    (ScoredGame) game);
+            progressSynchronized = true;
+            return;
+        }
+        if (game.getStatus() != GameStatus.WON) {
             return;
         }
         if (chapterId != null) {
@@ -144,6 +155,29 @@ public class GameMenu extends Menu {
 
     public void synchronizeAdventureProgress() {
         synchronizeProgress();
+    }
+
+    private void synchronizeScoredGameProgress(
+            ScoredGame scoredGame) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return;
+        }
+        GameProgerss progress = user.getGameProgerss();
+        int previousHighScore = progress.getHighestScore();
+        int score = scoredGame.getScore();
+        progress.setHighestScore(score);
+        if (score > previousHighScore) {
+            pendingProgressResults.add(
+                    "New Scored Game high score: "
+                            + score + " MowPoint.");
+        } else {
+            pendingProgressResults.add(
+                    "Scored Game finished with "
+                            + score + " MowPoint; high score remains "
+                            + previousHighScore + ".");
+        }
+        UserManager.saveAllUsers();
     }
 
     private void synchronizeMinigameProgress() {
