@@ -2,6 +2,7 @@ package commands;
 
 import controller.GameMenuController;
 import controller.GameStatusCommandController;
+import controller.IZombieCommandController;
 import controller.SpecialLevelCommandController;
 import controller.VaseBreakerCommandController;
 import controller.WallnutBowlingCommandController;
@@ -12,6 +13,19 @@ public enum GameMenuCommand implements Command<CommandResult> {
             GameMenuController::handleOpenGreenhouse),
     OPEN_TRAVEL_LOG("^menu\\s+travel(?:-|\\s+)log$",
             GameMenuController::handleOpenTravelLog),
+    SHOW_I_ZOMBIE_STATUS(
+            "^show\\s+i(?:-|\\s*)zombie(?:\\s+status)?$",
+            IZombieCommandController::handleShowStatus),
+    SHOW_I_ZOMBIE_CARDS(
+            "^show\\s+(?:i(?:-|\\s*)zombie\\s+)?zombie\\s+cards$",
+            IZombieCommandController::handleShowCards),
+    SHOW_I_ZOMBIE_BRAINS("^show\\s+brains$",
+            IZombieCommandController::handleShowStatus),
+    PLACE_I_ZOMBIE(
+            "^place\\s+zombie\\s+-t\\s+(?<type>.+?)\\s+-l\\s+"
+                    + "\\(\\s*(?<x>-?\\d+)\\s*,\\s*"
+                    + "(?<y>-?\\d+)\\s*\\)$",
+            IZombieCommandController::handlePlaceZombie),
     SHOW_VASES("^show\\s+vases$",
             VaseBreakerCommandController::handleShowVases),
     SHOW_BOWLING_WALLNUTS(

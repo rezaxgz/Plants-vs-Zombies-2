@@ -205,7 +205,7 @@ public final class ChapterCatalog {
                 ZombieWave.themedWave(
                         theme, 1800, true));
         return new Level(
-                4, name, LevelKind.BOSS,
+                4, name, LevelKind.NORMAL,
                 SpecialLevelType.NONE,
                 SpecialLevelConfig.none(),
                 ChapterRuleset.fromTheme(theme),

@@ -16,6 +16,9 @@ public enum TravelLogMenuCommand implements Command<CommandResult> {
     SHOW_WALLNUT_BOWLING_LEVELS(
             "^show\\s+wall(?:-|\\s*)nut\\s+bowling\\s+levels$",
             TravelLogMenuController::handleShowWallnutBowlingLevels),
+    SHOW_I_ZOMBIE_LEVELS(
+            "^show\\s+i(?:-|\\s*)zombie\\s+levels$",
+            TravelLogMenuController::handleShowIZombieLevels),
     START_VASE_BREAKER(
             "^(?:start\\s+vase(?:-|\\s*)breaker|"
                     + "start\\s+minigame\\s+-m\\s+vase(?:-|\\s*)breaker)"
@@ -27,6 +30,11 @@ public enum TravelLogMenuCommand implements Command<CommandResult> {
                     + "wall(?:-|\\s*)nut(?:-|\\s*)bowling)"
                     + "\\s+-l\\s+(?<level>\\d+)$",
             TravelLogMenuController::handleStartWallnutBowling),
+    START_I_ZOMBIE(
+            "^(?:start\\s+i(?:-|\\s*)zombie|"
+                    + "start\\s+minigame\\s+-m\\s+i(?:-|\\s*)zombie)"
+                    + "\\s+-l\\s+(?<level>\\d+)$",
+            TravelLogMenuController::handleStartIZombie),
     PAGE(
             "^travel\\s+log\\s+page\\s+(?<page>\\d+)$",
             TravelLogMenuController::handlePage);

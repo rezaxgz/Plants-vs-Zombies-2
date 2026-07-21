@@ -28,6 +28,7 @@ import model.game.entities.plants.wallnut.WallnutPlantType;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.armor.Armor;
 import model.game.minigame.BowlingWallnut;
+import model.game.minigame.IZombie;
 import model.game.minigame.VaseBreaker;
 import model.game.minigame.WallnutBowling;
 import model.game.structure.BaseStructure;
@@ -96,7 +97,7 @@ public final class GameStatusFormatter {
                         .append(" B").append(bowlingWallnuts)
                         .append(']');
                 if (column < board.getNumberOfColumns() - 1) {
-                    if (isBowlingRedLineAfter(game, column)) {
+                    if (isMinigameRedLineAfter(game, column)) {
                         output.append(" ||RED|| ");
                     } else {
                         output.append(' ');
@@ -200,11 +201,19 @@ public final class GameStatusFormatter {
                 output, board.getSunsAt(position));
         appendDropDetails(
                 output, board.getCollectibleDropsAt(position));
-        LawnMower mower = game.getLawnMowerAtRow(
-                position.getRow());
-        output.append("row lawn mower: ")
-                .append(mower.isAvailable()
-                        ? "ready" : "used");
+        if (game instanceof IZombie) {
+            IZombie iZombie = (IZombie) game;
+            output.append("row brain: ")
+                    .append(iZombie.isBrainAvailable(
+                            position.getRow())
+                                    ? "available" : "eaten");
+        } else {
+            LawnMower mower = game.getLawnMowerAtRow(
+                    position.getRow());
+            output.append("row lawn mower: ")
+                    .append(mower.isAvailable()
+                            ? "ready" : "used");
+        }
         return output.toString();
     }
     private static void appendGameHeader(
@@ -237,17 +246,38 @@ public final class GameStatusFormatter {
         appendTideStatus(output, game.getBoard());
         appendVaseBreakerStatus(output, game);
         appendWallnutBowlingStatus(output, game);
+        appendIZombieStatus(output, game);
+        if (game instanceof IZombie) {
+            appendBrainSummary(output, (IZombie) game);
+        } else {
+            appendLawnMowerSummary(output, game);
+        }
+    }
+
+    private static void appendLawnMowerSummary(
+            StringBuilder output, Game game) {
         output.append("lawn mowers: ");
         List<LawnMower> mowers = game.getLawnMowers();
-        for (int index = 0;
-                index < mowers.size(); index++) {
+        for (int index = 0; index < mowers.size(); index++) {
             LawnMower mower = mowers.get(index);
-            output.append("row ")
-                    .append(mower.getRow())
-                    .append('=')
-                    .append(mower.isAvailable()
+            output.append("row ").append(mower.getRow())
+                    .append('=').append(mower.isAvailable()
                             ? "ready" : "used");
             if (index < mowers.size() - 1) {
+                output.append(", ");
+            }
+        }
+    }
+
+    private static void appendBrainSummary(
+            StringBuilder output, IZombie game) {
+        output.append("brains: ");
+        for (int row = 0;
+                row < game.getBoard().getNumberOfRows(); row++) {
+            output.append("row ").append(row).append('=')
+                    .append(game.isBrainAvailable(row)
+                            ? "available" : "eaten");
+            if (row < game.getBoard().getNumberOfRows() - 1) {
                 output.append(", ");
             }
         }
@@ -298,6 +328,30 @@ public final class GameStatusFormatter {
                 .append(System.lineSeparator());
     }
 
+    private static void appendIZombieStatus(
+            StringBuilder output, Game game) {
+        if (!(game instanceof IZombie)) {
+            return;
+        }
+        IZombie iZombie = (IZombie) game;
+        output.append("I, Zombie level: ")
+                .append(iZombie.getLevel().getNumber())
+                .append(" - ").append(iZombie.getLevel().getName())
+                .append(System.lineSeparator())
+                .append("red line: plants in columns 0 through ")
+                .append(iZombie.getRedLineColumn())
+                .append("; zombie placement starts at column ")
+                .append(iZombie.getRedLineColumn() + 1)
+                .append(System.lineSeparator())
+                .append("sun producers alive: ")
+                .append(iZombie.getLivingSunProducerCount())
+                .append('/').append(iZombie.getBoard().getNumberOfRows())
+                .append(System.lineSeparator())
+                .append("remaining plants: ")
+                .append(iZombie.getRemainingPlantCount())
+                .append(System.lineSeparator());
+    }
+
     private static void appendExactBowlingWallnutPositions(
             StringBuilder output, Game game) {
         if (!(game instanceof WallnutBowling)) {
@@ -317,10 +371,14 @@ public final class GameStatusFormatter {
         }
     }
 
-    private static boolean isBowlingRedLineAfter(
+    private static boolean isMinigameRedLineAfter(
             Game game, int column) {
-        return game instanceof WallnutBowling
-                && ((WallnutBowling) game).getRedLineColumn() == column;
+        if (game instanceof WallnutBowling) {
+            return ((WallnutBowling) game)
+                    .getRedLineColumn() == column;
+        }
+        return game instanceof IZombie
+                && ((IZombie) game).getRedLineColumn() == column;
     }
 
     private static List<BowlingWallnut> getBowlingWallnutsAt(
