@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import view.validation.ProjectSelfTestView;
+
 /**
  * Immutable result of the built-in project regression checks.
  */
@@ -37,18 +39,7 @@ public final class ProjectSelfTestReport {
     }
 
     public String format() {
-        StringBuilder output =
-                new StringBuilder("Project regression checks");
-        for (String line : lines) {
-            output.append(System.lineSeparator())
-                    .append(line);
-        }
-        output.append(System.lineSeparator())
-                .append("Result: ")
-                .append(passedCount)
-                .append('/')
-                .append(totalCount)
-                .append(" checks passed");
-        return output.toString();
+        return ProjectSelfTestView.formatReport(
+                passedCount, totalCount, lines);
     }
 }

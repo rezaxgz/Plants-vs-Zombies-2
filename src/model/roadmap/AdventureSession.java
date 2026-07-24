@@ -7,6 +7,7 @@ import java.util.List;
 import model.App;
 import model.auth.UserManager;
 import model.user.User;
+import view.roadmap.AdventureView;
 
 /**
  * Current adventure selection and unlock notifications.
@@ -127,19 +128,9 @@ public final class AdventureSession {
             return;
         }
         String title = getLevelUnlockTitle(level);
-        StringBuilder description = new StringBuilder()
-                .append(chapter.getDisplayName())
-                .append(" level ")
-                .append(level.getNumber())
-                .append(" (\"")
-                .append(level.getName())
-                .append("\") is now available");
-        if (level.getSpecialLevelType().isSpecial()) {
-            description.append(". Special rules: ")
-                    .append(level.getSpecialLevelType().getDisplayName());
-        }
-        description.append('.');
-        user.addNewsIfAbsent(title, description.toString());
+        String description = AdventureView.buildLevelUnlockDescription(
+                chapter, level);
+        user.addNewsIfAbsent(title, description);
     }
 
     private static String getLevelUnlockTitle(Level level) {

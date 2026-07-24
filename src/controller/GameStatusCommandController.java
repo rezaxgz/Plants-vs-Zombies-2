@@ -7,9 +7,9 @@ import model.App;
 import model.CommandResult;
 import model.game.Game;
 import model.game.entities.EntityPosition;
-import model.game.presentation.GameStatusFormatter;
 import model.menu.GameMenu;
 import model.menu.Menu;
+import view.game.GameStatusView;
 
 /**
  * Read-only game commands required for map and status inspection.
@@ -26,7 +26,7 @@ public final class GameStatusCommandController {
 
         List<String> pendingResults = game.drainResults();
         return CommandResult.success(
-                GameStatusFormatter.formatMap(game))
+                GameStatusView.formatMap(game))
                 .addPreCommandResults(pendingResults);
     }
 
@@ -39,7 +39,7 @@ public final class GameStatusCommandController {
 
         List<String> pendingResults = game.drainResults();
         return CommandResult.success(
-                GameStatusFormatter.formatPlantStatuses(game))
+                GameStatusView.formatPlantStatuses(game))
                 .addPreCommandResults(pendingResults);
     }
 
@@ -71,7 +71,7 @@ public final class GameStatusCommandController {
         }
 
         return CommandResult.success(
-                GameStatusFormatter.formatTileStatus(
+                GameStatusView.formatTileStatus(
                         game, position))
                 .addPreCommandResults(pendingResults);
     }
