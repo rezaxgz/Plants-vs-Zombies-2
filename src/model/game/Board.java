@@ -76,6 +76,7 @@ import model.game.structure.Grave;
 import model.game.structure.GraveReward;
 import model.game.tile.Tile;
 import model.game.tile.TileType;
+import view.game.ZombieView;
 
 public class Board {
     private static final double POSITION_EPSILON = 0.000001;
@@ -3583,12 +3584,7 @@ public class Board {
         }
         zombie.markDeathReported();
         zombie.markForRemoval();
-        pendingResults.add("Zombie of type " + zombie.getName() + " is dead at ("
-                + formatColumn(zombie.getColumnPosition()) + ", " + zombie.getLane() + ")");
-    }
-
-    private static String formatColumn(double column) {
-        return String.format(java.util.Locale.ROOT, "%.2f", column);
+        pendingResults.add(ZombieView.buildDeathMessage(zombie));
     }
 
     public List<String> drainResults() {

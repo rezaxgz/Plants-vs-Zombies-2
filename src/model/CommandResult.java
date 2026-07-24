@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import view.CommandResultView;
+
 public class CommandResult {
     private final String message;
     private final boolean isSuccsesful;
@@ -44,11 +46,8 @@ public class CommandResult {
     }
 
     public String getMessage() {
-        List<String> outputLines = new ArrayList<>();
-        outputLines.addAll(preCommandResults);
-        addNonBlank(outputLines, message);
-        outputLines.addAll(postCommandResults);
-        return String.join(System.lineSeparator(), outputLines);
+        return CommandResultView.buildMessage(
+                preCommandResults, message, postCommandResults);
     }
 
     public boolean isSuccsesful() {

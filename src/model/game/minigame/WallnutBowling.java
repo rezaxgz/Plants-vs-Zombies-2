@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Random;
 
 import model.game.Board;
@@ -15,6 +14,7 @@ import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.special.ConveyorPlacementResult;
 import model.game.special.ConveyorPlantPacket;
+import view.game.WallnutBowlingView;
 
 /**
  * Fully playable Wall-nut Bowling minigame.
@@ -139,7 +139,7 @@ public final class WallnutBowling extends Game {
             int boundaryTurn = wallnut.advance(deltaSeconds,
                     getBoard().getNumberOfRows());
             if (boundaryTurn > 0) {
-                addPendingResult(formatWallnut(wallnut)
+                addPendingResult(WallnutBowlingView.formatWallnut(wallnut)
                         + " hit the top or bottom edge and turned "
                         + boundaryTurn + " degrees "
                         + wallnut.getDirectionDescription() + ".");
@@ -198,7 +198,7 @@ public final class WallnutBowling extends Game {
         target.takeDamage(NORMAL_WALLNUT_DAMAGE);
         int turnDegrees = wallnut.turnAfterZombieImpact(
                 getBoard().getNumberOfRows(), random);
-        addPendingResult(formatWallnut(wallnut) + " hit "
+        addPendingResult(WallnutBowlingView.formatWallnut(wallnut) + " hit "
                 + target.getName() + " for " + NORMAL_WALLNUT_DAMAGE
                 + " damage and turned " + turnDegrees + " degrees "
                 + wallnut.getDirectionDescription() + ".");
@@ -221,7 +221,7 @@ public final class WallnutBowling extends Game {
             }
         }
         wallnut.markForRemoval();
-        addPendingResult(formatWallnut(wallnut) + " hit "
+        addPendingResult(WallnutBowlingView.formatWallnut(wallnut) + " hit "
                 + firstTarget.getName() + " and exploded for "
                 + EXPLOSION_DAMAGE + " damage across a 3x3 area, hitting "
                 + affected + " zombie(s).");
@@ -231,7 +231,7 @@ public final class WallnutBowling extends Game {
             Zombie target) {
         wallnut.recordHit(target);
         target.kill();
-        addPendingResult(formatWallnut(wallnut) + " crushed "
+        addPendingResult(WallnutBowlingView.formatWallnut(wallnut) + " crushed "
                 + target.getName() + " and kept rolling straight.");
     }
 
@@ -245,13 +245,8 @@ public final class WallnutBowling extends Game {
             return;
         }
         wallnut.markForRemoval();
-        addPendingResult(formatWallnut(wallnut)
+        addPendingResult(WallnutBowlingView.formatWallnut(wallnut)
                 + " rolled out of the right side of the lawn.");
-    }
-
-    private static String formatWallnut(BowlingWallnut wallnut) {
-        return wallnut.getType().getDisplayName() + " #"
-                + wallnut.getId();
     }
 
     @Override
@@ -302,13 +297,6 @@ public final class WallnutBowling extends Game {
     }
 
     public String describeRollingWallnut(BowlingWallnut wallnut) {
-        return wallnut.getType().getDisplayName() + " #" + wallnut.getId()
-                + " | position: ("
-                + String.format(Locale.ROOT, "%.2f",
-                        wallnut.getRowPosition())
-                + ", " + String.format(Locale.ROOT, "%.2f",
-                        wallnut.getColumnPosition())
-                + ") | direction: " + wallnut.getDirectionDescription()
-                + " | turns: " + wallnut.getTurnCount();
+        return WallnutBowlingView.describeRollingWallnut(wallnut);
     }
 }

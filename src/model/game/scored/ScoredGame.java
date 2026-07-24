@@ -15,6 +15,7 @@ import model.game.defense.LawnMower;
 import model.game.entities.zombies.Zombie;
 import model.game.entities.zombies.ZombieType;
 import model.game.entities.zombies.armor.ArmorType;
+import view.game.ScoredGameView;
 
 /**
  * Daily deterministic score challenge. MowPoint is recorded at game end.
@@ -179,22 +180,6 @@ public final class ScoredGame extends Game {
     }
 
     public static String getRulesDescription() {
-        return "Daily Scored Game rules"
-                + System.lineSeparator()
-                + "1. Base kill: points equal to at least the zombie wave cost."
-                + System.lineSeparator()
-                + "2. Quick kill: +150 within 8 seconds of spawning."
-                + System.lineSeparator()
-                + "3. Long-range kill: +75 in the right half of the lawn."
-                + System.lineSeparator()
-                + "4. Armored kill: +100 for a zombie with armor."
-                + System.lineSeparator()
-                + "5. Multi-kill: +125 for each extra zombie in one batch."
-                + System.lineSeparator()
-                + "Win bonus: +250 for each unused lawn mower."
-                + System.lineSeparator()
-                + "The UTC date fixes the waves and spawn randomness."
-                + System.lineSeparator()
-                + "Cheats are disabled and difficulty is fixed at 3.";
+        return ScoredGameView.formatRules();
     }
 }

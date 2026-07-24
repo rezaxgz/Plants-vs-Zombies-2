@@ -1,5 +1,7 @@
 package model.security;
 
+import view.security.QuestionView;
+
 public enum Question {
     FIRST_SCHOOL(1, "What was the name of your first school?"),
     CHILDHOOD_FRIEND(2, "What was the name of your childhood best friend?"),
@@ -13,6 +15,10 @@ public enum Question {
     Question(int number, String text) {
         this.number = number;
         this.text = text;
+    }
+
+    public int getNumber() {
+        return number;
     }
 
     public String getText() {
@@ -29,13 +35,6 @@ public enum Question {
     }
 
     public static String getAllQuestions() {
-        StringBuilder output = new StringBuilder();
-        for (Question question : values()) {
-            if (output.length() > 0) {
-                output.append(System.lineSeparator());
-            }
-            output.append(question.number).append(". ").append(question.text);
-        }
-        return output.toString();
+        return QuestionView.formatQuestions(values());
     }
 }

@@ -1,5 +1,7 @@
 package model.game.scored;
 
+import view.game.ScoredGameView;
+
 /**
  * Mutable score categories for the five required scoring patterns.
  */
@@ -66,18 +68,6 @@ public final class ScoreBreakdown {
     }
 
     public String format() {
-        return "base kills: " + baseKillPoints
-                + System.lineSeparator()
-                + "quick kills: " + quickKillPoints
-                + System.lineSeparator()
-                + "long-range kills: " + longRangePoints
-                + System.lineSeparator()
-                + "armored kills: " + armoredKillPoints
-                + System.lineSeparator()
-                + "multi-kills: " + multiKillPoints
-                + System.lineSeparator()
-                + "finish bonus: " + finishBonusPoints
-                + System.lineSeparator()
-                + "total MowPoint: " + getTotalPoints();
+        return ScoredGameView.formatBreakdown(this);
     }
 }

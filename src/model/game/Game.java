@@ -61,6 +61,7 @@ import model.game.special.TimedWarObjective;
 import model.game.special.TimedWarState;
 import model.game.special.TimedWarSystem;
 import model.user.User;
+import view.game.ZombieView;
 
 public class Game {
     private static final double TIME_EPSILON = 0.000001;
@@ -883,7 +884,8 @@ public class Game {
             spawnedZombies.add(zombie);
             board.addZombie(zombie);
             onZombieSpawned(zombie);
-            pendingResults.add(buildSpawnMessage(zombie, tornadoAdvance));
+            pendingResults.add(ZombieView.buildSpawnMessage(
+                    zombie, tornadoAdvance));
         }
         zombieWaveNumber = waveNumber;
     }
@@ -1078,21 +1080,6 @@ public class Game {
             return 0;
         }
         return 1 + random.nextInt(MAX_TORNADO_ADVANCE_COLUMNS);
-    }
-
-    private static String buildSpawnMessage(
-            Zombie zombie, int tornadoAdvance) {
-        if (tornadoAdvance > 0) {
-            return "Zombie " + zombie.getName()
-                    + " arrived by tornado at wave "
-                    + zombie.getWaveNumber() + " in lane "
-                    + zombie.getLane() + ", " + tornadoAdvance
-                    + " columns ahead, which costed "
-                    + zombie.getType().getWavePointCost() + ".";
-        }
-        return "Zombie " + zombie.getName() + " spawned at wave "
-                + zombie.getWaveNumber() + " in lane " + zombie.getLane()
-                + " which costed " + zombie.getType().getWavePointCost() + ".";
     }
 
     private boolean hasZombieReachedHouse() {

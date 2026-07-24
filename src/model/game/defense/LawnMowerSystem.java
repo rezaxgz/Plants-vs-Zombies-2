@@ -6,6 +6,7 @@ import java.util.List;
 
 import model.game.Board;
 import model.game.entities.zombies.Zombie;
+import view.game.LawnMowerView;
 
 /**
  * Owns one lawn mower per row and resolves zombies reaching the house.
@@ -52,7 +53,8 @@ public final class LawnMowerSystem {
             List<Zombie> rowKills =
                     killNonBossZombiesInRow(snapshot, row);
             killed.addAll(rowKills);
-            messages.add(buildTriggerMessage(row, rowKills));
+            messages.add(LawnMowerView.buildTriggerMessage(
+                    row, rowKills));
         }
 
         return new LawnMowerResolution(
@@ -101,27 +103,6 @@ public final class LawnMowerSystem {
             killed.add(zombie);
         }
         return killed;
-    }
-
-    private static String buildTriggerMessage(
-            int row, List<Zombie> killed) {
-        StringBuilder message = new StringBuilder();
-        message.append("The lawn mower in the row ")
-                .append(row)
-                .append(" is triggered and killed these zombies:");
-
-        if (killed.isEmpty()) {
-            message.append(System.lineSeparator())
-                    .append("- none");
-            return message.toString();
-        }
-
-        for (Zombie zombie : killed) {
-            message.append(System.lineSeparator())
-                    .append("- ")
-                    .append(zombie.getName());
-        }
-        return message.toString();
     }
 
     public List<LawnMower> getMowers() {

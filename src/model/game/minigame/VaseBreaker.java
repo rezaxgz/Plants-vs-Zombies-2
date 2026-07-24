@@ -18,6 +18,7 @@ import model.game.structure.BaseStructure;
 import model.game.structure.Vase;
 import model.game.structure.VaseContentType;
 import model.game.structure.VaseType;
+import view.game.VaseBreakerView;
 
 /**
  * Fully playable Vase Breaker minigame.
@@ -102,7 +103,7 @@ public final class VaseBreaker extends Game {
     private VaseBreakResult releaseVaseContents(Vase vase) {
         EntityPosition position = vase.getPosition();
         if (vase.getContentType() == VaseContentType.EMPTY) {
-            addPendingResult(formatBrokenVase(vase)
+            addPendingResult(VaseBreakerView.formatBrokenVase(vase)
                     + " It was empty.");
             return VaseBreakResult.SUCCESS_EMPTY;
         }
@@ -112,16 +113,16 @@ public final class VaseBreaker extends Game {
                     level.getSeedPacketLifeSpanSeconds());
             seedPackets.add(packet);
             getBoard().addEntity(packet);
-            addPendingResult(formatBrokenVase(vase) + " A "
+            addPendingResult(VaseBreakerView.formatBrokenVase(vase) + " A "
                     + packet.getPlantType() + " seed packet dropped at "
                     + position + " and will disappear in "
-                    + formatSeconds(packet.getLifeSpanSeconds()) + " seconds.");
+                    + VaseBreakerView.formatSeconds(packet.getLifeSpanSeconds()) + " seconds.");
             return VaseBreakResult.SUCCESS_SEED_PACKET;
         }
 
         Zombie zombie = createVaseZombie(vase);
         getBoard().addZombie(zombie);
-        addPendingResult(formatBrokenVase(vase) + " "
+        addPendingResult(VaseBreakerView.formatBrokenVase(vase) + " "
                 + zombie.getName() + " emerged at " + position + ".");
         return VaseBreakResult.SUCCESS_ZOMBIE;
     }
@@ -132,11 +133,6 @@ public final class VaseBreaker extends Game {
         EntityPosition position = vase.getPosition();
         return new Zombie(zombieType, 0, position.getRow(),
                 position.getColumn(), false);
-    }
-
-    private static String formatBrokenVase(Vase vase) {
-        return vase.getType().getDisplayName() + " at "
-                + vase.getPosition() + " broke.";
     }
 
     public VaseSeedPlantingResult plantFromSeed(
@@ -305,10 +301,6 @@ public final class VaseBreaker extends Game {
     private ZombieType randomZombieType() {
         List<ZombieType> pool = level.getZombiePool();
         return pool.get(random.nextInt(pool.size()));
-    }
-
-    private static String formatSeconds(float seconds) {
-        return String.format(java.util.Locale.ROOT, "%.1f", seconds);
     }
 
     @FunctionalInterface
