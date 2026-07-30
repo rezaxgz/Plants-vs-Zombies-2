@@ -7,9 +7,20 @@ import controller.ScoredGameCommandController;
 import controller.SpecialLevelCommandController;
 import controller.VaseBreakerCommandController;
 import controller.WallnutBowlingCommandController;
+import controller.WalletController;
 import model.CommandResult;
 
 public enum GameMenuCommand implements Command<CommandResult> {
+    OPEN_LEADERBOARD("^menu\\s+leaderboard$",
+            GameMenuController::handleOpenLeaderboard),
+    SHOW_COIN_WALLET("^menu\\s+coin(?:-|\\s+)wallet$",
+            WalletController::handleShowCoins),
+    SHOW_GEM_WALLET("^menu\\s+gem(?:-|\\s+)wallet$",
+            WalletController::handleShowDiamonds),
+    CHEAT_ADD_CURRENCY(
+            "^menu\\s+cheat\\s+add\\s+(?<count>\\d+)\\s+"
+                    + "(?<currency>coin(?:s)?|diamond(?:s)?)$",
+            WalletController::handleCheatAddCurrency),
     SHOW_SCORED_GAME_SCORE(
             "^show\\s+(?:scored(?:-|\\s+)game\\s+)?score$",
             ScoredGameCommandController::handleShowScore),

@@ -18,6 +18,7 @@ import model.game.minigame.WallnutBowling;
 import model.game.minigame.WallnutBowlingLevel;
 import model.menu.GameMenu;
 import model.quest.Quest;
+import model.quest.QuestType;
 import model.user.GameProgerss;
 import model.user.User;
 
@@ -34,11 +35,40 @@ public final class TravelLogMenuController {
     }
 
     public static CommandResult handlePage(Matcher matcher) {
-        int pageNumber = Integer.parseInt(matcher.group("page"));
-        User currentUser = App.getInstance().getLoggedInUser();
-        if (currentUser == null) {
+        String pageName = normalizePageName(matcher.group("page"));
+        if ("minigame".equals(pageName)
+                || "minigames".equals(pageName)) {
+            return handleMinigamesPage(matcher);
+        }
+
+        QuestType questType = parseQuestType(pageName);
+        if (questType == null) {
             return CommandResult.error(
-                    "You must be logged in to view the Travel Log.");
+                    "Invalid Travel Log page. Available pages: "
+                            + "main, epic, daily, minigame.");
+        }
+
+        User user = getLoggedInUser();
+        if (user == null) {
+            return loginRequired();
+        }
+        List<Quest> quests = questsOfType(user, questType);
+        CommandResult result = CommandResult.success(
+                "--- Travel Log: " + formatPageName(questType) + " ---");
+        appendQuestList(result, quests, questType);
+        return result;
+    }
+
+    public static CommandResult handleNumberedPage(Matcher matcher) {
+        int pageNumber;
+        try {
+            pageNumber = Integer.parseInt(matcher.group("pageNumber"));
+        } catch (NumberFormatException exception) {
+            return CommandResult.error("Invalid page number.");
+        }
+        User currentUser = getLoggedInUser();
+        if (currentUser == null) {
+            return loginRequired();
         }
 
         List<Quest> activeQuests = new ArrayList<>(
@@ -58,6 +88,61 @@ public final class TravelLogMenuController {
         return result;
     }
 
+    private static List<Quest> questsOfType(User user, QuestType type) {
+        List<Quest> quests = new ArrayList<>();
+        for (Quest quest : user.getQuestProgress().getActiveQuests()) {
+            if (quest.getType() == type) {
+                quests.add(quest);
+            }
+        }
+        Collections.sort(quests);
+        return quests;
+    }
+
+    private static void appendQuestList(CommandResult result,
+            List<Quest> quests, QuestType type) {
+        for (Quest quest : quests) {
+            result.addPostCommandResult(formatQuest(quest));
+        }
+        if (quests.isEmpty()) {
+            result.addPostCommandResult("You have no active "
+                    + formatPageName(type).toLowerCase(Locale.ROOT)
+                    + " quests.");
+        }
+    }
+
+    private static String formatQuest(Quest quest) {
+        return String.format("[%s] %s: %s (Type: %s)",
+                quest.getPriority(), quest.getName(),
+                quest.getInstructions(), quest.getType());
+    }
+
+    private static QuestType parseQuestType(String pageName) {
+        if ("main".equals(pageName)) {
+            return QuestType.MAIN;
+        }
+        if ("epic".equals(pageName)) {
+            return QuestType.EPIC;
+        }
+        if ("daily".equals(pageName)) {
+            return QuestType.DAILY;
+        }
+        return null;
+    }
+
+    private static String normalizePageName(String pageName) {
+        return pageName.trim().toLowerCase(Locale.ROOT)
+                .replace("-", "")
+                .replace("_", "")
+                .replace(" ", "");
+    }
+
+    private static String formatPageName(QuestType type) {
+        String lowerCase = type.name().toLowerCase(Locale.ROOT);
+        return Character.toUpperCase(lowerCase.charAt(0))
+                + lowerCase.substring(1);
+    }
+
     private static void appendQuestPage(CommandResult result,
             List<Quest> activeQuests, int pageNumber) {
         int startIndex = (pageNumber - 1) * QUESTS_PER_PAGE;
@@ -65,10 +150,7 @@ public final class TravelLogMenuController {
                 activeQuests.size());
         for (int index = startIndex; index < endIndex; index++) {
             Quest quest = activeQuests.get(index);
-            result.addPostCommandResult(String.format(
-                    "[%s] %s: %s (Type: %s)",
-                    quest.getPriority(), quest.getName(),
-                    quest.getInstructions(), quest.getType()));
+            result.addPostCommandResult(formatQuest(quest));
         }
         if (activeQuests.isEmpty()) {
             result.addPostCommandResult("You have no active quests.");

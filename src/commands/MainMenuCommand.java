@@ -2,9 +2,20 @@ package commands;
 
 import controller.MainController;
 import controller.ProjectValidationController;
+import controller.WalletController;
 import model.CommandResult;
 
 public enum MainMenuCommand implements Command<CommandResult> {
+    OPEN_LEADERBOARD("^menu\\s+leaderboard$",
+            MainController::handleOpenLeaderboard),
+    SHOW_COIN_WALLET("^menu\\s+coin(?:-|\\s+)wallet$",
+            WalletController::handleShowCoins),
+    SHOW_GEM_WALLET("^menu\\s+gem(?:-|\\s+)wallet$",
+            WalletController::handleShowDiamonds),
+    CHEAT_ADD_CURRENCY(
+            "^menu\\s+cheat\\s+add\\s+(?<count>\\d+)\\s+"
+                    + "(?<currency>coin(?:s)?|diamond(?:s)?)$",
+            WalletController::handleCheatAddCurrency),
     RUN_PROJECT_CHECKS(
             "^run\\s+project\\s+checks$",
             ProjectValidationController::handleRunChecks),

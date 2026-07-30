@@ -27,6 +27,7 @@ import model.game.special.ConveyorPlantPacket;
 import model.game.special.ProtectedPlantStatus;
 import model.menu.GameMenu;
 import model.menu.GreenhouseMenu;
+import model.menu.LeaderboardMenu;
 import model.menu.Menu;
 import model.menu.TravelLogMenu;
 import model.roadmap.AdventureSession;
@@ -34,6 +35,15 @@ import model.user.User;
 
 public final class GameMenuController {
     private GameMenuController() {
+    }
+
+    public static CommandResult handleOpenLeaderboard(Matcher matcher) {
+        Menu currentMenu = App.getInstance().getCurrentMenu();
+        if (!(currentMenu instanceof GameMenu)) {
+            return CommandResult.error("game menu is not active!");
+        }
+        App.getInstance().changeMenu(new LeaderboardMenu(currentMenu));
+        return CommandResult.success("entered leaderboard menu");
     }
 
     public static CommandResult handleOpenGreenhouse(Matcher matcher) {
