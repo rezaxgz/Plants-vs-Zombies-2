@@ -3,9 +3,19 @@ package model.menu;
 import model.App;
 
 public final class LeaderboardMenu extends Menu {
+    private final Menu parentMenu;
+
+    public LeaderboardMenu() {
+        this(new MainMenu());
+    }
+
+    public LeaderboardMenu(Menu parentMenu) {
+        this.parentMenu = parentMenu == null ? new MainMenu() : parentMenu;
+    }
+
     @Override
     public void exit() {
-        App.getInstance().changeMenu(new MainMenu());
+        App.getInstance().changeMenu(parentMenu);
     }
 
     @Override

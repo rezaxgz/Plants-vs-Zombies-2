@@ -5,7 +5,7 @@ import model.CommandResult;
 
 public enum TravelLogMenuCommand implements Command<CommandResult> {
     MINIGAMES_PAGE(
-            "^travel\\s+log\\s+page\\s+mini(?:-|\\s*)games$",
+            "^travel\\s+log\\s+page\\s+mini(?:-|\\s*)game(?:s)?$",
             TravelLogMenuController::handleMinigamesPage),
     SHOW_MINIGAMES(
             "^show\\s+mini(?:-|\\s*)games$",
@@ -35,8 +35,12 @@ public enum TravelLogMenuCommand implements Command<CommandResult> {
                     + "start\\s+minigame\\s+-m\\s+i(?:-|\\s*)zombie)"
                     + "\\s+-l\\s+(?<level>\\d+)$",
             TravelLogMenuController::handleStartIZombie),
+    NUMBERED_PAGE(
+            "^travel\\s+log\\s+page\\s+(?<pageNumber>\\d+)$",
+            TravelLogMenuController::handleNumberedPage),
     PAGE(
-            "^travel\\s+log\\s+page\\s+(?<page>\\d+)$",
+            "^travel\\s+log\\s+page\\s+"
+                    + "(?<page>[A-Za-z][A-Za-z0-9_\\- ]*)$",
             TravelLogMenuController::handlePage);
 
     private final String pattern;

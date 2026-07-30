@@ -17,6 +17,9 @@ import model.game.plantSelector.PlantSelection;
 import model.game.scored.DailyScoredGameFactory;
 import model.game.scored.ScoredGame;
 import model.menu.GameMenu;
+import model.menu.LeaderboardMenu;
+import model.menu.MainMenu;
+import model.menu.Menu;
 import model.menu.PlantSelectionMenu;
 import model.roadmap.AdventureProgress;
 import model.roadmap.AdventureSession;
@@ -32,6 +35,15 @@ import model.user.User;
  */
 public final class MainController {
     private MainController() {
+    }
+
+    public static CommandResult handleOpenLeaderboard(Matcher matcher) {
+        Menu currentMenu = App.getInstance().getCurrentMenu();
+        if (!(currentMenu instanceof MainMenu)) {
+            return CommandResult.error("main menu is not active!");
+        }
+        App.getInstance().changeMenu(new LeaderboardMenu(currentMenu));
+        return CommandResult.success("entered leaderboard menu");
     }
 
     public static CommandResult handleStartTimedWarChallenge(
