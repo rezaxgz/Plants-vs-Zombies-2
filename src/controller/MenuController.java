@@ -15,6 +15,7 @@ import model.menu.NewsMenu;
 import model.menu.ProfileMenu;
 import model.news.NewsMessages;
 import model.menu.SettingsMenu;
+import model.menu.ShopMenu;
 import model.menu.SignUpMenu;
 import model.menu.TravelLogMenu;
 import model.menu.GreenhouseMenu;
@@ -136,13 +137,15 @@ public final class MenuController {
             return new TravelLogMenu(); 
         if ("collection".equals(requestedName)) 
             return new CollectionMenu(); 
+        if ("shop".equals(requestedName)) 
+            return new ShopMenu(); 
         return null;
     }
 
     private static boolean isMainChild(Menu menu) {
         return menu instanceof SettingsMenu || menu instanceof NetworkMenu || menu instanceof NewsMenu
                 || menu instanceof ProfileMenu || menu instanceof GreenhouseMenu
-                || menu instanceof LeaderboardMenu || menu instanceof TravelLogMenu ||  menu instanceof CollectionMenu;
+                || menu instanceof LeaderboardMenu || menu instanceof TravelLogMenu ||  menu instanceof CollectionMenu || menu instanceof ShopMenu;
     }
 
     private static boolean isKnownMenu(String menuName) {
@@ -150,7 +153,7 @@ public final class MenuController {
                 || "game".equals(menuName) || "collection".equals(menuName) || "settings".equals(menuName)
                 || "network".equals(menuName) || "news".equals(menuName) || "profile".equals(menuName)
                 || "greenhouse".equals(menuName)
-                || "leaderboard".equals(menuName) || "travellog".equals(menuName);
+                || "leaderboard".equals(menuName) || "travellog".equals(menuName) || "shop".equals(menuName);
     }
 
     private static String normalizeMenuName(String menuName) {
