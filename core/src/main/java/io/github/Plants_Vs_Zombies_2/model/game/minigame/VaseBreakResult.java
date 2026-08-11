@@ -1,0 +1,10 @@
+package io.github.Plants_Vs_Zombies_2.model.game.minigame;
+
+public enum VaseBreakResult {
+    SUCCESS_EMPTY,
+    SUCCESS_SEED_PACKET,
+    SUCCESS_ZOMBIE,
+    GAME_NOT_ACTIVE,
+    INVALID_POSITION,
+    NO_VASE
+}
