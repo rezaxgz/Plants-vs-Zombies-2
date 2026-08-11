@@ -1,0 +1,21 @@
+package io.github.Plants_Vs_Zombies_2.model.shop.item;
+
+import io.github.Plants_Vs_Zombies_2.model.enums.CurrencyType;
+
+public class ItemPrice {
+    private final int amount;
+    private final CurrencyType type;
+
+    public ItemPrice(int amount, CurrencyType type) {
+        this.amount = amount;
+        this.type = type;
+    }
+
+    public int getAmount() {
+        return amount;
+    }
+
+    public CurrencyType getType() {
+        return type;
+    }
+}
