@@ -20,17 +20,25 @@ public final class LoginMenuController {
     }
 
     public static CommandResult handleLogin(Matcher matcher) {
-        LoginMenu menu = (LoginMenu) App.getInstance().getCurrentMenu();
-        String username = matcher.group("username");
+        return login(
+                matcher.group("username"),
+                matcher.group("password"),
+                matcher.group("stayLoggedIn") != null);
+    }
+
+    /**
+     * GUI-friendly form of the terminal login command.
+     */
+    public static CommandResult login(
+            String username, String password, boolean stayLoggedIn) {
+        LoginMenu menu = requireLoginMenu();
         if (!UserManager.usernameExists(username)) {
             return CommandResult.error("username does not exist!");
         }
-        String password = matcher.group("password");
         if (!menu.isCorrectPassword(username, password)) {
             return CommandResult.error("Incorrect password!");
         }
 
-        boolean stayLoggedIn = matcher.group("stayLoggedIn") != null;
         menu.setStayLoggedIn(stayLoggedIn);
         menu.login(username);
         User loggedInUser = App.getInstance().getLoggedInUser();
@@ -53,12 +61,18 @@ public final class LoginMenuController {
     }
 
     public static CommandResult handleForgetPassword(Matcher matcher) {
-        LoginMenu menu = (LoginMenu) App.getInstance().getCurrentMenu();
-        String username = matcher.group("username");
+        return beginPasswordReset(
+                matcher.group("username"), matcher.group("email"));
+    }
+
+    /**
+     * GUI-friendly form of the terminal forget-password command.
+     */
+    public static CommandResult beginPasswordReset(String username, String email) {
+        LoginMenu menu = requireLoginMenu();
         if (!UserManager.usernameExists(username)) {
             return CommandResult.error("username does not exist!");
         }
-        String email = matcher.group("email");
         String emailError = UserDataValidator.validateEmail(email);
         if (emailError != null) {
             return CommandResult.error(emailError);
@@ -79,16 +93,12 @@ public final class LoginMenuController {
     }
 
     public static CommandResult handleAnswer(Matcher matcher) {
-        LoginMenu menu = (LoginMenu) App.getInstance().getCurrentMenu();
+        LoginMenu menu = requireLoginMenu();
         User user = menu.getTempUser();
-        if (user == null) {
-            return CommandResult.error(
-                    "use forget password before answering a security question");
-        }
-        String answer = matcher.group("answer");
-        if (!menu.isCorrectAnswer(answer, user)) {
-            menu.setTempUser(null);
-            return CommandResult.error("Incorrect answer!");
+        CommandResult answerResult = validateResetAnswer(
+                menu, user, matcher.group("answer"));
+        if (!answerResult.isSuccsesful()) {
+            return answerResult;
         }
 
         AppView.printOutput("Enter new password: ");
@@ -96,6 +106,59 @@ public final class LoginMenuController {
             return CommandResult.error("new password was not provided");
         }
         String password = AppView.getInstance().getInput();
+        CommandResult passwordResult = validateNewPassword(user, password);
+        if (!passwordResult.isSuccsesful()) {
+            return passwordResult;
+        }
+
+        AppView.printOutput("confirm password: ");
+        if (!AppView.getInstance().hasNext()) {
+            return CommandResult.error("password confirmation was not provided");
+        }
+        String confirmedPassword = AppView.getInstance().getInput();
+        return applyPasswordChange(menu, user, password, confirmedPassword);
+    }
+
+    /**
+     * Completes the same password-reset flow as the terminal answer command,
+     * but receives the new password from graphical TextFields instead of
+     * reading from the console.
+     */
+    public static CommandResult completePasswordReset(
+            String answer, String password, String confirmedPassword) {
+        LoginMenu menu = requireLoginMenu();
+        User user = menu.getTempUser();
+        CommandResult answerResult = validateResetAnswer(menu, user, answer);
+        if (!answerResult.isSuccsesful()) {
+            return answerResult;
+        }
+        CommandResult passwordResult = validateNewPassword(user, password);
+        if (!passwordResult.isSuccsesful()) {
+            return passwordResult;
+        }
+        return applyPasswordChange(menu, user, password, confirmedPassword);
+    }
+
+    public static void cancelPasswordReset() {
+        if (App.getInstance().getCurrentMenu() instanceof LoginMenu menu) {
+            menu.setTempUser(null);
+        }
+    }
+
+    private static CommandResult validateResetAnswer(
+            LoginMenu menu, User user, String answer) {
+        if (user == null) {
+            return CommandResult.error(
+                    "use forget password before answering a security question");
+        }
+        if (!menu.isCorrectAnswer(answer, user)) {
+            menu.setTempUser(null);
+            return CommandResult.error("Incorrect answer!");
+        }
+        return CommandResult.success("");
+    }
+
+    private static CommandResult validateNewPassword(User user, String password) {
         List<String> passwordErrors = UserDataValidator.validatePassword(password);
         if (!passwordErrors.isEmpty()) {
             return CommandResult.error(passwordErrors.get(0));
@@ -104,13 +167,15 @@ public final class LoginMenuController {
             return CommandResult.error(
                     "new password must be different from the current password");
         }
+        return CommandResult.success("");
+    }
 
-        AppView.printOutput("confirm password: ");
-        if (!AppView.getInstance().hasNext()) {
-            return CommandResult.error("password confirmation was not provided");
-        }
-        String confirmedPassword = AppView.getInstance().getInput();
-        if (!confirmedPassword.equals(password)) {
+    private static CommandResult applyPasswordChange(
+            LoginMenu menu,
+            User user,
+            String password,
+            String confirmedPassword) {
+        if (!password.equals(confirmedPassword)) {
             return CommandResult.error(
                     "password and confirmation do not match");
         }
@@ -119,5 +184,12 @@ public final class LoginMenuController {
         menu.setTempUser(null);
         UserManager.saveAllUsers();
         return CommandResult.success("password changed successfully.");
+    }
+
+    private static LoginMenu requireLoginMenu() {
+        if (!(App.getInstance().getCurrentMenu() instanceof LoginMenu menu)) {
+            throw new IllegalStateException("login action requires the login menu");
+        }
+        return menu;
     }
 }

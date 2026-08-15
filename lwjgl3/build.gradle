@@ -48,6 +48,8 @@ dependencies {
     implementation("org.lwjgl:lwjgl-opengl:$lwjgl3Version")
     implementation("org.lwjgl:lwjgl-stb:$lwjgl3Version")
   }
+
+  runtimeOnly "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
 }
 
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)

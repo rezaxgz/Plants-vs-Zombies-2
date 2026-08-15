@@ -14,6 +14,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
+
 import io.github.Plants_Vs_Zombies_2.model.Settings;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollection;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
@@ -44,7 +47,7 @@ final class UserJsonDatabase {
             if (json.isBlank())
                 return new ArrayList<>();
 
-            Object parsed = new JsonParser(json).parse();
+            Object parsed = convertJsonValue(new JsonReader().parse(json));
             Map<String, Object> root = requireObject(parsed, "database root");
             int version = getInt(root, "version", CURRENT_VERSION);
             if (version != CURRENT_VERSION) {
@@ -64,8 +67,9 @@ final class UserJsonDatabase {
             return users;
         } catch (IOException e) {
             throw new IllegalStateException("could not read user database: " + absolutePath, e);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("invalid user database JSON at " + absolutePath + ": " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                    "invalid user database JSON at " + absolutePath + ": " + e.getMessage(), e);
         }
     }
 
@@ -716,206 +720,43 @@ final class UserJsonDatabase {
         return (List<Object>) value;
     }
 
-    private static final class JsonParser {
-        private final String input;
-        private int index;
-
-        private JsonParser(String input) {
-            this.input = input;
+    /**
+     * Converts LibGDX's JsonValue tree to the Map/List/value representation
+     * used by the existing persistence mapping code. Keeping that mapping
+     * means old users.json files remain fully compatible while JSON syntax is
+     * now handled by LibGDX instead of the old hand-written parser.
+     */
+    private static Object convertJsonValue(JsonValue value) {
+        if (value == null || value.isNull()) {
+            return null;
         }
-
-        private Object parse() {
-            skipWhitespace();
-            Object value = parseValue();
-            skipWhitespace();
-            if (index != input.length()) {
-                throw error("unexpected trailing content");
+        if (value.isObject()) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (JsonValue child = value.child(); child != null; child = child.next()) {
+                result.put(child.name(), convertJsonValue(child));
             }
-            return value;
+            return result;
         }
-
-        private Object parseValue() {
-            if (index >= input.length())
-                throw error("unexpected end of input");
-
-            char c = input.charAt(index);
-            return switch (c) {
-                case '{' -> parseObject();
-                case '[' -> parseArray();
-                case '"' -> parseString();
-                case 't' -> parseLiteral("true", Boolean.TRUE);
-                case 'f' -> parseLiteral("false", Boolean.FALSE);
-                case 'n' -> parseLiteral("null", null);
-                default -> {
-                    if (c == '-' || Character.isDigit(c)) {
-                        yield parseNumber();
-                    }
-                    throw error("unexpected character '" + c + "'");
-                }
-            };
+        if (value.isArray()) {
+            List<Object> result = new ArrayList<>();
+            for (JsonValue child = value.child(); child != null; child = child.next()) {
+                result.add(convertJsonValue(child));
+            }
+            return result;
         }
-
-        private Map<String, Object> parseObject() {
-            expect('{');
-            skipWhitespace();
-            Map<String, Object> object = new LinkedHashMap<>();
-            if (consume('}')) {
-                return object;
-            }
-
-            while (true) {
-                skipWhitespace();
-                if (index >= input.length() || input.charAt(index) != '"') {
-                    throw error("object key must be a string");
-                }
-                String key = parseString();
-                skipWhitespace();
-                expect(':');
-                skipWhitespace();
-                object.put(key, parseValue());
-                skipWhitespace();
-                if (consume('}')) {
-                    return object;
-                }
-                expect(',');
-                skipWhitespace();
-            }
+        if (value.isString()) {
+            return value.asString();
         }
-
-        private List<Object> parseArray() {
-            expect('[');
-            skipWhitespace();
-            List<Object> array = new ArrayList<>();
-            if (consume(']')) {
-                return array;
-            }
-
-            while (true) {
-                skipWhitespace();
-                array.add(parseValue());
-                skipWhitespace();
-                if (consume(']')) {
-                    return array;
-                }
-                expect(',');
-                skipWhitespace();
-            }
+        if (value.isBoolean()) {
+            return value.asBoolean();
         }
-
-        private String parseString() {
-            expect('"');
-            StringBuilder value = new StringBuilder();
-            while (index < input.length()) {
-                char c = input.charAt(index++);
-                if (c == '"') {
-                    return value.toString();
-                }
-                if (c != '\\') {
-                    if (c < 0x20) {
-                        throw error("unescaped control character in string");
-                    }
-                    value.append(c);
-                    continue;
-                }
-
-                if (index >= input.length()) {
-                    throw error("unfinished string escape");
-                }
-                char escaped = input.charAt(index++);
-                switch (escaped) {
-                    case '"' -> value.append('"');
-                    case '\\' -> value.append('\\');
-                    case '/' -> value.append('/');
-                    case 'b' -> value.append('\b');
-                    case 'f' -> value.append('\f');
-                    case 'n' -> value.append('\n');
-                    case 'r' -> value.append('\r');
-                    case 't' -> value.append('\t');
-                    case 'u' -> value.append(parseUnicodeEscape());
-                    default -> throw error("invalid string escape: \\" + escaped);
-                }
-            }
-            throw error("unterminated string");
+        if (value.isLong()) {
+            return value.asLong();
         }
-
-        private char parseUnicodeEscape() {
-            if (index + 4 > input.length()) {
-                throw error("unfinished unicode escape");
-            }
-            String digits = input.substring(index, index + 4);
-            index += 4;
-            try {
-                return (char) Integer.parseInt(digits, 16);
-            } catch (NumberFormatException e) {
-                throw error("invalid unicode escape: " + digits);
-            }
+        if (value.isDouble()) {
+            return value.asDouble();
         }
-
-        private Number parseNumber() {
-            int start = index;
-            consume('-');
-            consumeDigits();
-            boolean decimal = false;
-
-            if (consume('.')) {
-                decimal = true;
-                consumeDigits();
-            }
-            if (consume('e') || consume('E')) {
-                decimal = true;
-                consume('+');
-                consume('-');
-                consumeDigits();
-            }
-
-            String number = input.substring(start, index);
-            try {
-                return decimal ? Double.parseDouble(number) : Long.parseLong(number);
-            } catch (NumberFormatException e) {
-                throw error("invalid number: " + number);
-            }
-        }
-
-        private void consumeDigits() {
-            int start = index;
-            while (index < input.length() && Character.isDigit(input.charAt(index))) {
-                index++;
-            }
-            if (start == index) {
-                throw error("expected a digit");
-            }
-        }
-
-        private Object parseLiteral(String literal, Object value) {
-            if (!input.startsWith(literal, index)) {
-                throw error("expected " + literal);
-            }
-            index += literal.length();
-            return value;
-        }
-
-        private void expect(char expected) {
-            if (!consume(expected)) {
-                throw error("expected '" + expected + "'");
-            }
-        }
-
-        private boolean consume(char expected) {
-            if (index < input.length() && input.charAt(index) == expected) {
-                index++;
-                return true;
-            }
-            return false;
-        }
-
-        private void skipWhitespace() {
-            while (index < input.length() && Character.isWhitespace(input.charAt(index))) {
-                index++;
-            }
-        }
-
-        private IllegalArgumentException error(String message) {
-            return new IllegalArgumentException(message + " at character " + index);
-        }
+        throw new IllegalArgumentException("unsupported JSON value type: " + value.type());
     }
+
 }
