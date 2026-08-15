@@ -51,6 +51,22 @@ public final class ScreenNavigator {
         return skin;
     }
 
+    /**
+     * Chooses the first graphical screen from the restored login session. A
+     * valid persistent session starts directly in the main menu; otherwise
+     * the application always starts at registration.
+     */
+    public void showStartupScreen() {
+        history.clear();
+        transientScreenVisible = false;
+        if (app.getLoggedInUser() == null) {
+            app.changeMenu(new SignUpMenu());
+        } else {
+            app.changeMenu(new MainMenu());
+        }
+        showCurrentMenu();
+    }
+
     public void showCurrentMenu() {
         transientScreenVisible = false;
         Menu currentMenu = app.getCurrentMenu();

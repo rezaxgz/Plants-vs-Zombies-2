@@ -1,5 +1,6 @@
 package io.github.Plants_Vs_Zombies_2.model.auth;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +10,7 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
 public final class UserManager {
     private static final String DATABASE_PATH_PROPERTY = "pvz.users.database";
     private static final String DEFAULT_DATABASE_PATH = "data/users.json";
-    private static final Path databasePath = Path.of(System.getProperty(DATABASE_PATH_PROPERTY, DEFAULT_DATABASE_PATH));
+    private static final Path databasePath = resolveDatabasePath();
     private static final List<User> users = new ArrayList<>();
 
     static {
@@ -17,6 +18,32 @@ public final class UserManager {
     }
 
     private UserManager() {
+    }
+
+    private static Path resolveDatabasePath() {
+        String configuredPath = System.getProperty(DATABASE_PATH_PROPERTY);
+        if (configuredPath != null && !configuredPath.isBlank()) {
+            return Path.of(configuredPath);
+        }
+
+        Path direct = Path.of(DEFAULT_DATABASE_PATH);
+
+        // Recent LibGDX desktop launchers commonly run with assets/ as their
+        // working directory. During development, keep using the phase-one
+        // project-root data/users.json instead of silently creating a second
+        // user database under assets/data/.
+        Path workingDirectory = Path.of("").toAbsolutePath().normalize();
+        Path folderName = workingDirectory.getFileName();
+        Path projectRoot = workingDirectory.getParent();
+        if (folderName != null
+                && "assets".equalsIgnoreCase(folderName.toString())
+                && projectRoot != null
+                && (Files.exists(projectRoot.resolve("core"))
+                        || Files.exists(projectRoot.resolve("lwjgl3")))) {
+            return projectRoot.resolve(DEFAULT_DATABASE_PATH);
+        }
+
+        return direct;
     }
 
     public static Path getDatabasePath() {

@@ -6,8 +6,9 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
 
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
@@ -16,9 +17,6 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
  */
 public final class SessionManager {
     private static final String SESSION_PATH_PROPERTY = "pvz.session.database";
-    private static final Pattern USERNAME_PATTERN = Pattern.compile(
-            "\\{\\s*\\\"username\\\"\\s*:\\s*\\\"(?<username>[-A-Za-z0-9]+)\\\"\\s*}");
-
     private SessionManager() {
     }
 
@@ -69,14 +67,24 @@ public final class SessionManager {
         }
         try {
             String json = Files.readString(sessionPath, StandardCharsets.UTF_8);
-            Matcher matcher = USERNAME_PATTERN.matcher(json.trim());
-            if (!matcher.matches()) {
+            JsonValue root = new JsonReader().parse(json);
+            JsonValue usernameValue = root == null || !root.isObject()
+                    ? null : root.get("username");
+            if (usernameValue == null || !usernameValue.isString()) {
                 clearPersistentSession();
                 return null;
             }
-            return matcher.group("username");
+            String username = usernameValue.asString();
+            if (username == null || !username.matches("[-A-Za-z0-9]+")) {
+                clearPersistentSession();
+                return null;
+            }
+            return username;
         } catch (IOException exception) {
             throw new IllegalStateException("could not read persistent session", exception);
+        } catch (RuntimeException exception) {
+            clearPersistentSession();
+            return null;
         }
     }
 

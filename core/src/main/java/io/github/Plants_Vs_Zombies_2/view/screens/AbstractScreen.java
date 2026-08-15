@@ -5,13 +5,16 @@ import java.util.function.Supplier;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 
 import io.github.Plants_Vs_Zombies_2.model.App;
@@ -38,6 +41,7 @@ public abstract class AbstractScreen implements Screen {
 
     private final Label coinsLabel;
     private final Label diamondsLabel;
+    private Texture backgroundTexture;
 
     protected AbstractScreen(ScreenNavigator navigator, String title) {
         if (navigator == null) {
@@ -121,6 +125,22 @@ public abstract class AbstractScreen implements Screen {
         navigation.row();
     }
 
+    /**
+     * Places an internal asset behind the Scene2D UI. LibGDX internal paths
+     * are relative to the project's assets directory, so callers must not
+     * include the leading "assets/" segment.
+     */
+    protected final void setBackground(String internalPath) {
+        if (backgroundTexture != null) {
+            backgroundTexture.dispose();
+        }
+        backgroundTexture = new Texture(Gdx.files.internal(internalPath));
+        Image image = new Image(backgroundTexture);
+        image.setScaling(Scaling.fill);
+        image.setBounds(0f, 0f, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+        stage.getRoot().addActorAt(0, image);
+    }
+
     private void refreshResourceLabels() {
         User user = App.getInstance().getLoggedInUser();
         if (user == null) {
@@ -169,5 +189,9 @@ public abstract class AbstractScreen implements Screen {
     @Override
     public void dispose() {
         stage.dispose();
+        if (backgroundTexture != null) {
+            backgroundTexture.dispose();
+            backgroundTexture = null;
+        }
     }
 }

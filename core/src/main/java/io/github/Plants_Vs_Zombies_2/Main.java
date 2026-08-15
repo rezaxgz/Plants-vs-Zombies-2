@@ -4,6 +4,7 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
+import io.github.Plants_Vs_Zombies_2.view.screens.PvzSkinCompatibility;
 import io.github.Plants_Vs_Zombies_2.view.screens.ScreenNavigator;
 import pvz.skin.PvzSkin;
 
@@ -21,8 +22,9 @@ public class Main extends Game {
     @Override
     public void create() {
         skin = PvzSkin.get();
+        PvzSkinCompatibility.installMissingStyles(skin);
         screenNavigator = new ScreenNavigator(this, skin);
-        screenNavigator.showCurrentMenu();
+        screenNavigator.showStartupScreen();
     }
 
     @Override
