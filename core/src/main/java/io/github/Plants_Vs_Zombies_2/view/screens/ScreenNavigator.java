@@ -25,30 +25,49 @@ import io.github.Plants_Vs_Zombies_2.model.menu.SettingsMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.SignUpMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.TravelLogMenu;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
+import pvz.libpvz.pam.PamPlayer;
+import pvz.libpvz.textures.TextureBank;
 
 /**
  * Bridges the existing model-menu state machine to LibGDX Screen objects.
  */
 public final class ScreenNavigator {
+    private static final String PVZ_ASSETS_ROOT = "pvz-assets";
+
     private final Main game;
     private final Skin skin;
+    private final TextureBank textureBank;
+    private final PamPlayer pamPlayer;
     private final App app;
     private final Deque<Menu> history = new ArrayDeque<>();
 
     private Menu displayedMenu;
     private boolean transientScreenVisible;
 
-    public ScreenNavigator(Main game, Skin skin) {
-        if (game == null || skin == null) {
-            throw new IllegalArgumentException("game and skin are required");
+    public ScreenNavigator(Main game, Skin skin, TextureBank textureBank) {
+        if (game == null || skin == null || textureBank == null) {
+            throw new IllegalArgumentException(
+                    "game, skin and textureBank are required");
         }
         this.game = game;
         this.skin = skin;
+        this.textureBank = textureBank;
+        this.pamPlayer = new PamPlayer(
+                textureBank, Gdx.files.internal(PVZ_ASSETS_ROOT));
         this.app = App.getInstance();
     }
 
     public Skin getSkin() {
         return skin;
+    }
+
+    public TextureBank getTextureBank() {
+        return textureBank;
+    }
+
+    public PamPlayer getPamPlayer() {
+        return pamPlayer;
     }
 
     /**
@@ -116,10 +135,17 @@ public final class ScreenNavigator {
         showCurrentMenu();
     }
 
+    /**
+     * Graphical logout deliberately lands on Login rather than SignUp. The
+     * phase-one App.logout() behavior is left untouched for terminal commands.
+     */
     public void logout() {
         history.clear();
         transientScreenVisible = false;
+        AdventureSession.getInstance().reset();
+        UserManager.saveAllUsers();
         app.logout();
+        app.changeMenu(new LoginMenu());
         showCurrentMenu();
     }
 

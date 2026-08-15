@@ -1,11 +1,13 @@
 package io.github.Plants_Vs_Zombies_2;
 
 import com.badlogic.gdx.Game;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.view.screens.PvzSkinCompatibility;
 import io.github.Plants_Vs_Zombies_2.view.screens.ScreenNavigator;
+import pvz.libpvz.textures.TextureBank;
 import pvz.skin.PvzSkin;
 
 /**
@@ -16,14 +18,24 @@ import pvz.skin.PvzSkin;
  * graphical screen lifecycle.</p>
  */
 public class Main extends Game {
+    private static final String PVZ_ASSETS_ROOT = "pvz-assets";
+
     private Skin skin;
+    private TextureBank textureBank;
     private ScreenNavigator screenNavigator;
 
     @Override
     public void create() {
         skin = PvzSkin.get();
         PvzSkinCompatibility.installMissingStyles(skin);
-        screenNavigator = new ScreenNavigator(this, skin);
+
+        // Keep a single libPVZ texture bank for the whole application. The
+        // Scene2D screens only borrow TextureRegions from it; they do not own
+        // or dispose the atlas textures themselves.
+        textureBank = new TextureBank(
+                "768", Gdx.files.internal(PVZ_ASSETS_ROOT));
+
+        screenNavigator = new ScreenNavigator(this, skin, textureBank);
         screenNavigator.showStartupScreen();
     }
 
@@ -35,6 +47,9 @@ public class Main extends Game {
         if (screenNavigator != null) {
             screenNavigator.synchronizeWithModel();
         }
+        if (textureBank != null) {
+            textureBank.update();
+        }
         super.render();
     }
 
@@ -44,6 +59,9 @@ public class Main extends Game {
             screenNavigator.dispose();
         }
         UserManager.saveAllUsers();
+        if (textureBank != null) {
+            textureBank.dispose();
+        }
         if (skin != null) {
             skin.dispose();
         }
