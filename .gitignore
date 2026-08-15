@@ -167,6 +167,7 @@ Thumbs.db
 pvz-asset-browser.jar
 *.zip
 /assets/pvz-assets/
+*.patch
 
 # old file
 *.class
