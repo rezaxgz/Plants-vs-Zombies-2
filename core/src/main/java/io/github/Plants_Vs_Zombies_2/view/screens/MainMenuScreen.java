@@ -26,6 +26,7 @@ import com.badlogic.gdx.utils.Scaling;
 import io.github.Plants_Vs_Zombies_2.model.App;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.CollectionMenu;
+import io.github.Plants_Vs_Zombies_2.model.menu.GreenhouseMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.LeaderboardMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.SettingsMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
@@ -48,6 +49,8 @@ public final class MainMenuScreen extends AbstractScreen {
             "IMAGE_UI_GAMECENTER_ANDROID_LEADERBOARD";
     private static final String LEADERBOARD_BUTTON_DOWN =
             "IMAGE_UI_GAMECENTER_ANDROID_LEADERBOARD_SELECT";
+    private static final String GREENHOUSE_BUTTON =
+            "IMAGE_UI_FEATURE_UNLOCK_FEATURE_KEY_ART_ZEN_GARDEN";
 
     private static final String[] NEWS_CARD_STYLES = {
             "green", "brown"
@@ -113,6 +116,15 @@ public final class MainMenuScreen extends AbstractScreen {
             }
         });
 
+        ImageButton greenhouse = assetImageButton(
+                GREENHOUSE_BUTTON, GREENHOUSE_BUTTON, "Greenhouse");
+        greenhouse.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                navigator.navigate(new GreenhouseMenu());
+            }
+        });
+
         ImageButton settings = imageButton("settings", "Settings");
         settings.addListener(new ClickListener() {
             @Override
@@ -127,6 +139,7 @@ public final class MainMenuScreen extends AbstractScreen {
         navigation.add(collection).size(82f).left().bottom();
         navigation.add(shop).size(82f).left().bottom();
         navigation.add(leaderboard).size(82f).left().bottom();
+        navigation.add(greenhouse).width(112f).height(82f).left().bottom();
         navigation.add().expandX();
         navigation.add(settings).size(78f).right().bottom();
     }

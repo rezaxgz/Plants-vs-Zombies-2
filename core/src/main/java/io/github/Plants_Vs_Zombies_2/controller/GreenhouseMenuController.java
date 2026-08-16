@@ -68,8 +68,14 @@ public final class GreenhouseMenuController {
         if (user == null) {
             return CommandResult.error("You must be logged in.");
         }
-        int x = Integer.parseInt(matcher.group("x"));
-        int y = Integer.parseInt(matcher.group("y"));
+        return plantPot(user, Integer.parseInt(matcher.group("x")),
+                Integer.parseInt(matcher.group("y")));
+    }
+
+    public static CommandResult plantPot(User user, int x, int y) {
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
         Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
         if (pot == null) {
             return CommandResult.error("invalid coordinates");
@@ -80,9 +86,13 @@ public final class GreenhouseMenuController {
         if (!pot.isEmpty()) {
             return CommandResult.error("this pot is already occupied");
         }
+        if (user.getSprouts() <= 0) {
+            return CommandResult.error("no more sprouts for planting");
+        }
 
         PlantedPlant plantedPlant = choosePlant(user);
         pot.setPlant(plantedPlant);
+        user.deductSprouts(1);
         UserManager.saveAllUsers();
         return CommandResult.success("planted "
                 + plantedPlant.getPlantName() + " at ("
@@ -121,8 +131,14 @@ public final class GreenhouseMenuController {
         if (user == null) {
             return CommandResult.error("You must be logged in.");
         }
-        int x = Integer.parseInt(matcher.group("x"));
-        int y = Integer.parseInt(matcher.group("y"));
+        return collectPot(user, Integer.parseInt(matcher.group("x")),
+                Integer.parseInt(matcher.group("y")));
+    }
+
+    public static CommandResult collectPot(User user, int x, int y) {
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
         Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
         if (pot == null || pot.isLocked() || pot.isEmpty()) {
             return CommandResult.error("no plant to collect here");
@@ -155,8 +171,14 @@ public final class GreenhouseMenuController {
         if (user == null) {
             return CommandResult.error("You must be logged in.");
         }
-        int x = Integer.parseInt(matcher.group("x"));
-        int y = Integer.parseInt(matcher.group("y"));
+        return growPot(user, Integer.parseInt(matcher.group("x")),
+                Integer.parseInt(matcher.group("y")));
+    }
+
+    public static CommandResult growPot(User user, int x, int y) {
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
         Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
         if (pot == null || pot.isLocked() || pot.isEmpty()) {
             return CommandResult.error("no growing plant here");
@@ -167,7 +189,7 @@ public final class GreenhouseMenuController {
             return CommandResult.error("plant is already ready for harvest");
         }
 
-        int cost = plant.getRemainingHoursCeil();
+        int cost = getSkipDiamondCost(plant);
         if (user.getDiamonds() < cost) {
             return CommandResult.error("not enough diamonds. need " + cost);
         }
@@ -177,6 +199,30 @@ public final class GreenhouseMenuController {
         UserManager.saveAllUsers();
         return CommandResult.success("spent " + cost
                 + " diamonds. plant is now ready!");
+    }
+
+    public static CommandResult pluckPlant(User user, int x, int y) {
+        if (user == null) {
+            return CommandResult.error("You must be logged in.");
+        }
+        Pot pot = user.getGreenHouse().getBoard().getPotAt(x, y);
+        if (pot == null || pot.isLocked() || pot.isEmpty()) {
+            return CommandResult.error("no plant to pluck here");
+        }
+        String plantName = pot.getPlant().getPlantName();
+        pot.harvest();
+        UserManager.saveAllUsers();
+        return CommandResult.success("plucked " + plantName + ".");
+    }
+
+    public static int getSkipDiamondCost(PlantedPlant plant) {
+        if (plant == null || plant.isGrown()) {
+            return 0;
+        }
+        long twoHoursMillis = 2L * 60L * 60L * 1000L;
+        return Math.max(1,
+                (int) Math.ceil(plant.getRemainingMillis()
+                        / (double) twoHoursMillis));
     }
 
     public static CommandResult handleUnlock(Matcher matcher) {

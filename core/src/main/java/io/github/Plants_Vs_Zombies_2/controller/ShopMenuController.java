@@ -18,7 +18,7 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 public final class ShopMenuController {
     private static final int MAXIMUM_PLANT_FOOD = 3;
-    private static final int MAXIMUM_POTS = 20;
+    private static final int MAXIMUM_POTS = 12;
     private static final int DAILY_OFFER_PRICE = 1600;
     private static final int DAILY_OFFER_SEEDS = 10;
     private static final Random RANDOM = new Random();
@@ -113,7 +113,7 @@ public final class ShopMenuController {
                 if (user.getGreenHouse().getBoard().getUnlockedPotCount()
                         + count > MAXIMUM_POTS) {
                     return CommandResult.error(
-                            "A greenhouse cannot exceed 20 pots.");
+                            "A greenhouse cannot exceed 12 pots.");
                 }
                 break;
             case PLANT_FOOD:
@@ -310,7 +310,7 @@ public final class ShopMenuController {
         int currentPots = board.getUnlockedPotCount();
         if (currentPots + count > MAXIMUM_POTS) {
             return CommandResult.error(
-                    "Transaction rejected. A greenhouse cannot exceed 20 pots.");
+                    "Transaction rejected. A greenhouse cannot exceed 12 pots.");
         }
         unlockNextSequentialPots(board, count);
         user.setGreenhousePotsUnlocked(board.getUnlockedPotCount());

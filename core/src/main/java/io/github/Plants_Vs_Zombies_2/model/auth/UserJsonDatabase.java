@@ -157,6 +157,7 @@ final class UserJsonDatabase {
         SecurityQuestion securityQuestion = readSecurityQuestion(storedUser.get("securityQuestion"), prefix);
         int coins = getInt(storedUser, "coins", 0);
         int diamonds = getInt(storedUser, "diamonds", 0);
+        int sprouts = getInt(storedUser, "sprouts", 0);
         int greenhousePotsUnlocked = getInt(storedUser, "greenhousePotsUnlocked", 0);
         int potCount = getInt(storedUser, "potCount", 0);
         int plantFoodCount = getInt(storedUser, "plantFoodCount", 0);
@@ -187,6 +188,7 @@ final class UserJsonDatabase {
         User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
                 diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts,
                 plantCollection, zombieCollection, settings, adventureProgress, gameProgress);
+        user.setSprouts(sprouts);
 
         Object newsObj = storedUser.get("news");
         if (newsObj != null) {
@@ -459,6 +461,7 @@ final class UserJsonDatabase {
 
         appendNumberProperty(json, indent, "coins", user.getCoins(), true);
         appendNumberProperty(json, indent, "diamonds", user.getDiamonds(), true);
+        appendNumberProperty(json, indent, "sprouts", user.getSprouts(), true);
         appendNumberProperty(json, indent, "greenhousePotsUnlocked", user.getGreenhousePotsUnlocked(), true);
         appendNumberProperty(json, indent, "potCount", user.getPotCount(), true);
         appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), true);
