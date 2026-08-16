@@ -37,7 +37,7 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
 /** Graphical shell for the greenhouse / Zen Garden menu. */
 public final class GreenhouseScreen extends AbstractScreen {
     private static final String BACKGROUND_PATH =
-            "pvz-assets/ATLASES/DELAYLOAD_BACKGROUND_ZEN_768_00_CROPED.PNG";
+            "Images/Backgrounds/ZEN_GARDEN_BACKGROUND.png";
     private static final String POT_IMAGE_ID =
             "IMAGE_ZEN_GARDEN_GROWING_PLANT_SLOT_GROWING_PLANT_SLOT_184X161";
     private static final String GOLDEN_POT_IMAGE_ID =

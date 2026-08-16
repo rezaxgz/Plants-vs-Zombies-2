@@ -22,6 +22,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.utils.Timer;
 import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.ScreenViewport;
 
 import io.github.Plants_Vs_Zombies_2.model.App;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
@@ -57,6 +58,8 @@ public abstract class AbstractScreen implements Screen {
     protected final ScreenNavigator navigator;
     protected final Skin skin;
     protected final Stage stage;
+    private final Stage backgroundStage;
+    private Image backgroundImage;
     protected final Table root;
     protected final Table headerLeading;
     protected final Table content;
@@ -74,6 +77,10 @@ public abstract class AbstractScreen implements Screen {
         }
         this.navigator = navigator;
         this.skin = navigator.getSkin();
+        // Backgrounds use a pixel-based viewport rather than the UI's
+        // FitViewport. This guarantees that the background always covers the
+        // complete OS window, even when the window is not 16:9.
+        this.backgroundStage = new Stage(new ScreenViewport());
         this.stage = new Stage(new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
 
         root = new Table();
@@ -273,14 +280,23 @@ public abstract class AbstractScreen implements Screen {
      * include the leading "assets/" segment.
      */
     protected final void setBackground(String internalPath) {
+        backgroundStage.getRoot().clearChildren();
         if (backgroundTexture != null) {
             backgroundTexture.dispose();
         }
         backgroundTexture = new Texture(Gdx.files.internal(internalPath));
-        Image image = new Image(backgroundTexture);
-        image.setScaling(Scaling.fill);
-        image.setBounds(0f, 0f, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
-        stage.getRoot().addActorAt(0, image);
+        backgroundImage = new Image(backgroundTexture);
+        backgroundImage.setScaling(Scaling.stretch);
+
+        // A ScreenViewport maps one stage unit to one screen pixel. Set the
+        // image to those exact dimensions instead of relying on fill-parent
+        // layout, which can leave FitViewport-style letterboxing visible.
+        backgroundStage.getViewport().update(
+                Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
+        backgroundImage.setBounds(0f, 0f,
+                backgroundStage.getViewport().getWorldWidth(),
+                backgroundStage.getViewport().getWorldHeight());
+        backgroundStage.addActor(backgroundImage);
     }
 
     private void refreshResourceLabels() {
@@ -309,12 +325,21 @@ public abstract class AbstractScreen implements Screen {
         refreshResourceLabels();
         Gdx.gl.glClearColor(0.08f, 0.12f, 0.16f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        stage.act(Math.min(delta, 1f / 15f));
+        float frameDelta = Math.min(delta, 1f / 15f);
+        backgroundStage.act(frameDelta);
+        backgroundStage.draw();
+        stage.act(frameDelta);
         stage.draw();
     }
 
     @Override
     public void resize(int width, int height) {
+        backgroundStage.getViewport().update(width, height, true);
+        if (backgroundImage != null) {
+            backgroundImage.setBounds(0f, 0f,
+                    backgroundStage.getViewport().getWorldWidth(),
+                    backgroundStage.getViewport().getWorldHeight());
+        }
         stage.getViewport().update(width, height, true);
     }
 
@@ -336,9 +361,11 @@ public abstract class AbstractScreen implements Screen {
     @Override
     public void dispose() {
         stage.dispose();
+        backgroundStage.dispose();
         if (backgroundTexture != null) {
             backgroundTexture.dispose();
             backgroundTexture = null;
         }
+        backgroundImage = null;
     }
 }
