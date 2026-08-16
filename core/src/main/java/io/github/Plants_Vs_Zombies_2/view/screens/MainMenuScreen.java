@@ -35,12 +35,22 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 /** Main menu controls requested by the phase-two GUI specification. */
 public final class MainMenuScreen extends AbstractScreen {
+    private static final String MAIN_MENU_BACKGROUND =
+            "Images/Backgrounds/MAIN_MENU_BACKGROUND.png";
     private static final String MAIN_MENU_LOGO =
             "IMAGE_UI_MAINMENU_PVZ2_LOGO_HORIZONTAL";
+    private static final String NEWS_BUTTON_UP =
+            "IMAGE_UI_HUD_NEWSBUTTON_BUTTONS_HUD_NEWS_NORMAL";
+    private static final String NEWS_BUTTON_DOWN =
+            "IMAGE_UI_HUD_NEWSBUTTON_BUTTONS_HUD_NEWS_SELECTED";
     private static final String COLLECTION_BUTTON_UP =
-            "IMAGE_UI_HUD_ALMANACBUTTON_BUTTONS_HUD_ALMANAC_NORMAL";
+            "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_ALMANAC_NORMAL";
     private static final String COLLECTION_BUTTON_DOWN =
-            "IMAGE_UI_HUD_ALMANACBUTTON_BUTTONS_HUD_ALMANAC_SELECTED";
+            "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_ALMANAC_SELECTED";
+    private static final String GREENHOUSE_BUTTON_UP =
+            "IMAGE_UI_GENERIC_BUTTONS_HUD_ZG_NORMAL";
+    private static final String GREENHOUSE_BUTTON_DOWN =
+            "IMAGE_UI_GENERIC_BUTTONS_HUD_ZG_SELECTED";
     private static final String SHOP_BUTTON_UP =
             "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_STORE_NORMAL";
     private static final String SHOP_BUTTON_DOWN =
@@ -49,8 +59,6 @@ public final class MainMenuScreen extends AbstractScreen {
             "IMAGE_UI_GAMECENTER_ANDROID_LEADERBOARD";
     private static final String LEADERBOARD_BUTTON_DOWN =
             "IMAGE_UI_GAMECENTER_ANDROID_LEADERBOARD_SELECT";
-    private static final String GREENHOUSE_BUTTON =
-            "IMAGE_UI_FEATURE_UNLOCK_FEATURE_KEY_ART_ZEN_GARDEN";
 
     private static final String[] NEWS_CARD_STYLES = {
             "green", "brown"
@@ -61,6 +69,7 @@ public final class MainMenuScreen extends AbstractScreen {
 
     public MainMenuScreen(ScreenNavigator navigator) {
         super(navigator, "Main Menu");
+        setBackground(MAIN_MENU_BACKGROUND);
 
         ImageButton logout = imageButton("previous", "Logout");
         logout.addListener(new ClickListener() {
@@ -73,7 +82,8 @@ public final class MainMenuScreen extends AbstractScreen {
 
         buildMainContent();
 
-        ImageButton news = imageButton("hud_quests", "News");
+        ImageButton news = assetImageButton(
+                NEWS_BUTTON_UP, NEWS_BUTTON_DOWN, "News");
         news.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -117,7 +127,7 @@ public final class MainMenuScreen extends AbstractScreen {
         });
 
         ImageButton greenhouse = assetImageButton(
-                GREENHOUSE_BUTTON, GREENHOUSE_BUTTON, "Greenhouse");
+                GREENHOUSE_BUTTON_UP, GREENHOUSE_BUTTON_DOWN, "Greenhouse");
         greenhouse.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -133,35 +143,38 @@ public final class MainMenuScreen extends AbstractScreen {
             }
         });
 
-        // Keep the two content shortcuts together at the lower-left, like the
-        // PvZ2 HUD, while Settings remains isolated on the lower-right.
+        // Keep the feature shortcuts on the lower-left. Leaderboard belongs
+        // with Settings on the lower-right so the utility buttons form one
+        // compact group instead of shifting the feature shortcuts.
         navigation.add(newsControl).width(96f).height(112f).left().bottom();
         navigation.add(collection).size(82f).left().bottom();
+        navigation.add(greenhouse).size(82f).left().bottom();
         navigation.add(shop).size(82f).left().bottom();
-        navigation.add(leaderboard).size(82f).left().bottom();
-        navigation.add(greenhouse).width(112f).height(82f).left().bottom();
         navigation.add().expandX();
+        navigation.add(leaderboard).size(82f).right().bottom();
         navigation.add(settings).size(78f).right().bottom();
     }
 
     private void buildMainContent() {
         Table center = new Table();
-        center.defaults().pad(8f);
+        center.top();
 
         Image logo = createAssetImage(MAIN_MENU_LOGO);
         logo.setScaling(Scaling.fit);
-        center.add(logo).width(700f).height(220f).row();
 
-        TextButton playButton = new TextButton("Play", skin, "green");
+        center.add(logo).width(560f).height(176f).padTop(32f).row();
+        center.add().height(150f).row();
+
+        TextButton playButton = new TextButton("Play", skin, "purple");
         playButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 navigator.showAdventureScreen();
             }
         });
-        center.add(playButton).width(260f).height(70f).padTop(18f);
+        center.add(playButton).width(260f).height(70f);
 
-        content.add(center).expand().center();
+        content.add(center).grow().top();
     }
 
     private ImageButton imageButton(String style, String tooltip) {
