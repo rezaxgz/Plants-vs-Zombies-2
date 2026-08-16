@@ -35,6 +35,7 @@ abstract class GameRewardLogic extends GameWaveLogic {
         }
         List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
         for (Zombie zombie : zombieSnapshot) {
+            zombie.clearDamageSourcePlant();
             zombie.kill();
         }
         board.update(0.0f);
@@ -169,6 +170,7 @@ abstract class GameRewardLogic extends GameWaveLogic {
         }
 
         sunCount += collectedAmount;
+        questRunTracker.recordSunCollected(collectedAmount);
         board.removeEntity(sun);
         return true;
     }
@@ -208,6 +210,7 @@ abstract class GameRewardLogic extends GameWaveLogic {
         for (Zombie zombie : zombieSnapshot) {
             if (isWithinArea(position, zombie.getLane(),
                     (int) Math.floor(zombie.getColumnPosition()), 2)) {
+                zombie.clearDamageSourcePlant();
                 zombie.takeDamage(Constants.RADIOACTIVE_SUN_ZOMBIE_DAMAGE);
                 damagedZombies++;
             }

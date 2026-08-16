@@ -128,6 +128,8 @@ abstract class BoardSpecialProjectileLogic extends BoardProjectileObstacleLogic 
                 if (zombie.isDead()) {
                     break;
                 }
+                zombie.recordDamageSourcePlant(
+                        projectile.getSourcePlantName());
                 effect.apply(zombie);
             }
         }
@@ -282,6 +284,7 @@ abstract class BoardSpecialProjectileLogic extends BoardProjectileObstacleLogic 
         List<Zombie> targets = randomHomingTargets(plant,
                 plant.getPlantFoodTargetCount(), true);
         for (Zombie target : targets) {
+            target.recordDamageSourcePlant(plant.getName());
             target.takeDamage(plant.getDamage());
             if (target.isDead()) {
                 reportZombieDeath(target);

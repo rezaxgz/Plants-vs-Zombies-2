@@ -26,6 +26,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.special.PlantWhatYouGetSystem;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantStatus;
 import io.github.Plants_Vs_Zombies_2.model.game.special.SaveOurSeedsSystem;
 import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarSystem;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestRunTracker;
 
 abstract class GameState {
     static final double TIME_EPSILON = 0.000001;
@@ -64,6 +65,7 @@ abstract class GameState {
     boolean plantLoadoutConfigured;
     final Random random;
     final DifficultyRules difficultyRules;
+    final QuestRunTracker questRunTracker = new QuestRunTracker();
 
     int sunCount;
     int plantFoodCount;
@@ -95,6 +97,9 @@ abstract class GameState {
         }
 
         this.board = board;
+        for (BasePlant existingPlant : board.getPlants()) {
+            questRunTracker.recordPlantPlaced(existingPlant);
+        }
         this.gameType = gameType;
         this.chapterRuleset = chapterRuleset;
         this.difficultyRules = DifficultyRules.forLevel(difficultyLevel);

@@ -17,3 +17,10 @@ dependencies {
 jar {
   duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+
+tasks.register('selfTest', JavaExec) {
+  group = 'verification'
+  description = 'Runs dependency-free deterministic project checks.'
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.github.Plants_Vs_Zombies_2.model.validation.ProjectSelfTest'
+}

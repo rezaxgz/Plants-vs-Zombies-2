@@ -95,6 +95,7 @@ public final class LawnMowerSystem {
                     || zombie.getType().isBoss()) {
                 continue;
             }
+            zombie.clearDamageSourcePlant();
             zombie.kill();
             zombie.markForRemoval();
             killed.add(zombie);

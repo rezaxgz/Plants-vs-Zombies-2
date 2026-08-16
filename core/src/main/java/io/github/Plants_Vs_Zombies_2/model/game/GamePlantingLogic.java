@@ -9,6 +9,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.gameTypes.GameType;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestRunSummary;
 
 abstract class GamePlantingLogic extends GameSpecialLevelLogic {
     protected GamePlantingLogic(Board board, GameType gameType,
@@ -68,6 +69,7 @@ abstract class GamePlantingLogic extends GameSpecialLevelLogic {
         if (loveYourPlantsSystem != null) {
             loveYourPlantsSystem.observePlants(board);
         }
+        questRunTracker.recordPlantPlaced(plant);
         return PlantPlacementResult.SUCCESS;
     }
 
@@ -79,6 +81,7 @@ abstract class GamePlantingLogic extends GameSpecialLevelLogic {
         prepareLoveYourPlants();
         BasePlant removed = board.removePlantAt(position);
         if (removed != null) {
+            questRunTracker.forgetPluckedPlant(removed);
             resolveLoveYourPlantsFailure();
         }
         return removed;
@@ -113,11 +116,12 @@ abstract class GamePlantingLogic extends GameSpecialLevelLogic {
     }
 
     protected void onZombieSpawned(Zombie zombie) {
-        // Extension hook for scored and event game modes.
+        questRunTracker.recordZombieSpawn(elapsedSeconds);
     }
 
     protected void onZombieDeaths(List<Zombie> zombies) {
-        // Extension hook for scored and event game modes.
+        questRunTracker.recordZombieDeaths(zombies, elapsedSeconds,
+                lawnMowerSystem.getMowers());
     }
 
     public boolean allowsCheats() {
@@ -208,5 +212,9 @@ abstract class GamePlantingLogic extends GameSpecialLevelLogic {
 
     public GameStatus getStatus() {
         return status;
+    }
+
+    public QuestRunSummary createQuestRunSummary(String chapterId) {
+        return questRunTracker.createSummary((Game) this, chapterId);
     }
 }

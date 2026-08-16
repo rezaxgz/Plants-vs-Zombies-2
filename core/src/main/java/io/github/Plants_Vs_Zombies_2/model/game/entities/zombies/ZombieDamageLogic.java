@@ -6,6 +6,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.*;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.armor.ArmorType;
 
 abstract class ZombieDamageLogic extends ZombieAbilityLogic {
+    private String lastDamageSourcePlantName = "";
+
     protected ZombieDamageLogic(ZombieType type, int waveNumber, int lane, double columnPosition, boolean glowing) {
         super(type, waveNumber, lane, columnPosition, glowing);
     }
@@ -44,6 +46,19 @@ abstract class ZombieDamageLogic extends ZombieAbilityLogic {
             }
         }
         synchronizeCamelSegments();
+    }
+
+    public void recordDamageSourcePlant(String plantName) {
+        lastDamageSourcePlantName = plantName == null
+                ? "" : plantName.trim();
+    }
+
+    public void clearDamageSourcePlant() {
+        lastDamageSourcePlantName = "";
+    }
+
+    public String getLastDamageSourcePlantName() {
+        return lastDamageSourcePlantName;
     }
 
     public void takeDirectDamage(int damage) {

@@ -173,6 +173,7 @@ abstract class BoardPlantAttackLogic extends BoardUpdateLogic {
             return;
         }
         if (behavior == HomingBehavior.LIGHTNING) {
+            target.recordDamageSourcePlant(plant.getName());
             target.takeDamage(plant.getDamage());
             if (target.isDead()) {
                 reportZombieDeath(target);

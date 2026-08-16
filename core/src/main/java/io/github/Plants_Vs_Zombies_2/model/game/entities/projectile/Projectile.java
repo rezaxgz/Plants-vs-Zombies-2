@@ -137,6 +137,7 @@ public class Projectile extends Entity {
         if (zombie == null || isRemoved()) {
             return;
         }
+        zombie.recordDamageSourcePlant(sourcePlantName);
         applyEffects(zombie);
         markForRemoval();
     }
