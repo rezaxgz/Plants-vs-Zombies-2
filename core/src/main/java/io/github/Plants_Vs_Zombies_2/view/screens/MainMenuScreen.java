@@ -27,6 +27,7 @@ import io.github.Plants_Vs_Zombies_2.model.App;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.CollectionMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.SettingsMenu;
+import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
 import io.github.Plants_Vs_Zombies_2.model.news.News;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
@@ -38,6 +39,10 @@ public final class MainMenuScreen extends AbstractScreen {
             "IMAGE_UI_HUD_ALMANACBUTTON_BUTTONS_HUD_ALMANAC_NORMAL";
     private static final String COLLECTION_BUTTON_DOWN =
             "IMAGE_UI_HUD_ALMANACBUTTON_BUTTONS_HUD_ALMANAC_SELECTED";
+    private static final String SHOP_BUTTON_UP =
+            "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_STORE_NORMAL";
+    private static final String SHOP_BUTTON_DOWN =
+            "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_STORE_SELECTED";
 
     private static final String[] NEWS_CARD_STYLES = {
             "green", "brown"
@@ -85,6 +90,15 @@ public final class MainMenuScreen extends AbstractScreen {
             }
         });
 
+        ImageButton shop = assetImageButton(
+                SHOP_BUTTON_UP, SHOP_BUTTON_DOWN, "Shop");
+        shop.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                navigator.navigate(new ShopMenu());
+            }
+        });
+
         ImageButton settings = imageButton("settings", "Settings");
         settings.addListener(new ClickListener() {
             @Override
@@ -97,6 +111,7 @@ public final class MainMenuScreen extends AbstractScreen {
         // PvZ2 HUD, while Settings remains isolated on the lower-right.
         navigation.add(newsControl).width(96f).height(112f).left().bottom();
         navigation.add(collection).size(82f).left().bottom();
+        navigation.add(shop).size(82f).left().bottom();
         navigation.add().expandX();
         navigation.add(settings).size(78f).right().bottom();
     }
