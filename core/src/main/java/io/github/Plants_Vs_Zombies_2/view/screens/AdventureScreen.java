@@ -236,7 +236,8 @@ public final class AdventureScreen extends AbstractScreen {
                 progress.getCompletedLevelCount(chapter)
                         + "/" + chapter.getLevelCount(),
                 skin, "secondary");
-        slot.add(completion);
+        slot.add(completion).row();
+
         return slot;
     }
 
@@ -285,7 +286,20 @@ public final class AdventureScreen extends AbstractScreen {
         statusLabel.setColor(completed
                 ? Color.GREEN
                 : unlocked ? Color.WHITE : Color.LIGHT_GRAY);
-        island.add(statusLabel).padTop(1f);
+        island.add(statusLabel).padTop(1f).row();
+
+        if (unlocked) {
+            TextButton play = new TextButton("Play", skin, "green");
+            play.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    event.stop();
+                    AdventureSession.getInstance().selectChapter(chapter);
+                    navigator.showLevelGamePreview(chapter, level);
+                }
+            });
+            island.add(play).width(112f).height(38f).padTop(4f);
+        }
         return island;
     }
 

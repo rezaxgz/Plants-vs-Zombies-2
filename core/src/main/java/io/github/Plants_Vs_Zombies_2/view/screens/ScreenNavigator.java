@@ -26,6 +26,8 @@ import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.SignUpMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.TravelLogMenu;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
 import pvz.libpvz.pam.PamPlayer;
 import pvz.libpvz.textures.TextureBank;
 
@@ -171,6 +173,13 @@ public final class ScreenNavigator {
 
     public void showAdventureScreen() {
         showTransient(new AdventureScreen(this));
+    }
+
+    public void showLevelGamePreview(Chapter chapter, Level level) {
+        if (chapter == null || level == null) {
+            throw new IllegalArgumentException("chapter and level cannot be null");
+        }
+        showTransient(new GameScreen(this, chapter, level));
     }
 
     public void showPauseScreen() {
