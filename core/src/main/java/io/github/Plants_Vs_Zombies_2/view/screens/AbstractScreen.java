@@ -6,6 +6,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -13,7 +15,6 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
-import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 
@@ -24,18 +25,24 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
 /**
  * Shared Scene2D shell for every graphical menu.
  *
- * <p>Concrete screens are intentionally only navigation shells for now. The
- * content table is left available for the actual menu widgets that will be
- * implemented in later GUI steps.</p>
+ * <p>Every screen gets the phase-two wallet HUD at the top. The actual coin
+ * and diamond art is resolved from the extracted PvZ2 asset database through
+ * libPVZ, so no manual sprite-sheet coordinates are duplicated in the UI.</p>
  */
 public abstract class AbstractScreen implements Screen {
     public static final float VIRTUAL_WIDTH = 1280f;
     public static final float VIRTUAL_HEIGHT = 720f;
 
+    private static final String COIN_IMAGE_ID =
+            "IMAGE_EFFECTS_COIN_GOLD_COIN_GOLD_98X95";
+    private static final String DIAMOND_IMAGE_ID =
+            "IMAGE_EFFECTS_COIN_DIAMOND_COIN_DIAMOND_141X146";
+
     protected final ScreenNavigator navigator;
     protected final Skin skin;
     protected final Stage stage;
     protected final Table root;
+    protected final Table headerLeading;
     protected final Table content;
     protected final Table navigation;
 
@@ -57,13 +64,17 @@ public abstract class AbstractScreen implements Screen {
         stage.addActor(root);
 
         Table header = new Table();
+        headerLeading = new Table();
         Label titleLabel = new Label(title, skin, "big");
-        coinsLabel = new Label("", skin);
-        diamondsLabel = new Label("", skin);
+        coinsLabel = new Label("", skin, "medium_outline");
+        diamondsLabel = new Label("", skin, "medium_outline");
 
+        header.add(headerLeading).left().padRight(10f);
         header.add(titleLabel).left().expandX();
-        header.add(coinsLabel).right().padRight(24f);
-        header.add(diamondsLabel).right();
+        header.add(createWalletCounter(
+                COIN_IMAGE_ID, coinsLabel, 42f)).right().padRight(12f);
+        header.add(createWalletCounter(
+                DIAMOND_IMAGE_ID, diamondsLabel, 46f)).right();
         root.add(header).growX().row();
 
         content = new Table();
@@ -74,6 +85,33 @@ public abstract class AbstractScreen implements Screen {
         root.add(navigation).growX().bottom().padTop(12f);
 
         refreshResourceLabels();
+    }
+
+    private Table createWalletCounter(
+            String imageId, Label amountLabel, float iconSize) {
+        Table counter = new Table();
+        counter.setBackground(
+                skin.getDrawable("image_ui_powerups_powerup_cost_10"));
+        counter.pad(3f, 9f, 3f, 7f);
+
+        Image image = createAssetImage(imageId);
+        image.setScaling(Scaling.fit);
+        counter.add(image).size(iconSize).padRight(4f);
+        counter.add(amountLabel).minWidth(54f).left();
+        return counter;
+    }
+
+    protected final TextureRegion requireAssetRegion(String imageId) {
+        TextureRegion region = navigator.getTextureBank().region(imageId);
+        if (region == null) {
+            throw new IllegalStateException(
+                    "libPVZ could not resolve required image: " + imageId);
+        }
+        return region;
+    }
+
+    protected final Image createAssetImage(String imageId) {
+        return new Image(requireAssetRegion(imageId));
     }
 
     /**
@@ -144,12 +182,12 @@ public abstract class AbstractScreen implements Screen {
     private void refreshResourceLabels() {
         User user = App.getInstance().getLoggedInUser();
         if (user == null) {
-            coinsLabel.setText("Coins: --");
-            diamondsLabel.setText("Diamonds: --");
+            coinsLabel.setText("--");
+            diamondsLabel.setText("--");
             return;
         }
-        coinsLabel.setText("Coins: " + user.getCoins());
-        diamondsLabel.setText("Diamonds: " + user.getDiamonds());
+        coinsLabel.setText(Integer.toString(user.getCoins()));
+        diamondsLabel.setText(Integer.toString(user.getDiamonds()));
     }
 
     @Override
