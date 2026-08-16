@@ -35,4 +35,17 @@ public final class SettingsMenuController {
         return CommandResult.success(
                 "difficulty level changed to " + difficulty);
     }
+
+    public static CommandResult handleSetDebugMode(Matcher matcher) {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error("login is required!");
+        }
+
+        boolean enabled = Boolean.parseBoolean(matcher.group("enabled"));
+        user.getSettings().setDebugMode(enabled);
+        UserManager.saveAllUsers();
+        return CommandResult.success(
+                "debug mode is now " + (enabled ? "on" : "off"));
+    }
 }
