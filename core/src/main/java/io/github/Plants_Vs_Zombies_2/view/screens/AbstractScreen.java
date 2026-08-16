@@ -44,13 +44,13 @@ public abstract class AbstractScreen implements Screen {
     private static final String PLUS_IMAGE_ID =
             "IMAGE_UI_HUD_INGAME_COIN_BUY";
 
-    private static final int DEBUG_COIN_INCREMENT = 100;
-    private static final int DEBUG_DIAMOND_INCREMENT = 5;
-    private static final float WALLET_HUD_WIDTH = 530f;
-    private static final float WALLET_HUD_HEIGHT = 64f;
-    private static final float WALLET_HUD_RIGHT_MARGIN = 24f;
-    private static final float WALLET_HUD_TOP_MARGIN = 24f;
-    private static final float DEBUG_SAVE_DELAY_SECONDS = 0.4f;
+    protected static final int DEBUG_COIN_INCREMENT = 100;
+    protected static final int DEBUG_DIAMOND_INCREMENT = 5;
+    protected static final float WALLET_HUD_WIDTH = 530f;
+    protected static final float WALLET_HUD_HEIGHT = 64f;
+    protected static final float WALLET_HUD_RIGHT_MARGIN = 24f;
+    protected static final float WALLET_HUD_TOP_MARGIN = 24f;
+    protected static final float DEBUG_SAVE_DELAY_SECONDS = 0.4f;
 
     private static Timer.Task pendingDebugWalletSave;
 
@@ -164,7 +164,7 @@ public abstract class AbstractScreen implements Screen {
     }
 
 
-    private static synchronized void scheduleDebugWalletSave() {
+    protected static synchronized void scheduleDebugWalletSave() {
         if (pendingDebugWalletSave != null) {
             pendingDebugWalletSave.cancel();
         }
@@ -185,7 +185,7 @@ public abstract class AbstractScreen implements Screen {
         Timer.schedule(pendingDebugWalletSave, DEBUG_SAVE_DELAY_SECONDS);
     }
 
-    private Button createAssetButton(String imageId, Runnable action) {
+    protected final Button createAssetButton(String imageId, Runnable action) {
         Drawable drawable = requireAssetDrawable(imageId);
         Button.ButtonStyle style = new Button.ButtonStyle();
         style.up = drawable;

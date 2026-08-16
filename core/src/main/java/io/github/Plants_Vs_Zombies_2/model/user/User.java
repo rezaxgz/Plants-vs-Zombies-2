@@ -33,6 +33,7 @@ public class User {
     // progress info
     private int coins;
     private int diamonds;
+    private int sprouts;
     private PlantCollection plantCollection;
     private ZombieCollection zombieCollection;
     private AdventureProgress adventureProgress;
@@ -75,6 +76,7 @@ public class User {
         this.securityQuestion = securityQuestion;
         this.coins = coins;
         this.diamonds = diamonds;
+        this.sprouts = 0;
         this.plantFoodCount = plantFoodCount;
         this.greenHouse = new GreenHouse();
         this.greenhousePotsUnlocked = Math.max(
@@ -211,6 +213,28 @@ public class User {
 
     public int getDiamonds() {
         return diamonds;
+    }
+
+    public int getSprouts() {
+        return sprouts;
+    }
+
+    public void setSprouts(int sprouts) {
+        this.sprouts = Math.max(0, sprouts);
+    }
+
+    public void addSprouts(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("amount cannot be negative");
+        }
+        sprouts += amount;
+    }
+
+    public void deductSprouts(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("amount cannot be negative");
+        }
+        sprouts = Math.max(0, sprouts - amount);
     }
 
     public void addDiamonds(int amount) {

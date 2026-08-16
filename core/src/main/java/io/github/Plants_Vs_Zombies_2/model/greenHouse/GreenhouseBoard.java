@@ -1,8 +1,8 @@
 package io.github.Plants_Vs_Zombies_2.model.greenHouse;
 
 public class GreenhouseBoard {
-    public static final int COLUMNS = 5;
-    public static final int ROWS = 4;
+    public static final int COLUMNS = 4;
+    public static final int ROWS = 3;
 
     private Pot[][] pots;
 

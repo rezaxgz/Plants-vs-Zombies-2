@@ -19,9 +19,16 @@ final class PamAnimationActor extends Actor {
     private final String pamPath;
     private final String clip;
     private final Rectangle animationBounds;
+    private final boolean pingPong;
+    private final float clipDurationSeconds;
     private float stateTime;
 
     PamAnimationActor(PamPlayer player, String pamPath, String clip) {
+        this(player, pamPath, clip, false);
+    }
+
+    PamAnimationActor(PamPlayer player, String pamPath, String clip,
+            boolean pingPong) {
         if (player == null) {
             throw new IllegalArgumentException("player cannot be null");
         }
@@ -35,6 +42,10 @@ final class PamAnimationActor extends Actor {
         this.pamPath = pamPath;
         this.clip = clip;
         this.animationBounds = player.bounds(pamPath, clip);
+        this.pingPong = pingPong;
+        this.clipDurationSeconds = pingPong
+                ? Math.max(0.01f, player.clipDurationSeconds(pamPath, clip))
+                : 0f;
     }
 
     @Override
@@ -72,8 +83,20 @@ final class PamAnimationActor extends Actor {
                 actorColor.a * parentAlpha);
         batch.flush();
         batch.setTransformMatrix(scaledTransform);
-        player.draw(batch, pamPath, clip, stateTime,
-                centerX, centerY, true);
+
+        float playbackTime = stateTime;
+        boolean loop = true;
+        if (pingPong) {
+            float cycle = clipDurationSeconds * 2f;
+            float phase = stateTime % cycle;
+            playbackTime = phase <= clipDurationSeconds
+                    ? phase
+                    : cycle - phase;
+            loop = false;
+        }
+        player.draw(batch, pamPath, clip, playbackTime,
+                centerX, centerY, loop);
+
         batch.flush();
         batch.setTransformMatrix(oldTransform);
         batch.setColor(oldColor);
