@@ -1,0 +1,2 @@
+add assets to shop menu and make it prettier
+check leaderboard options and design

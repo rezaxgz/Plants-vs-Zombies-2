@@ -2,6 +2,7 @@ package io.github.Plants_Vs_Zombies_2.model.auth;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +34,8 @@ import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 final class UserJsonDatabase {
     private static final int CURRENT_VERSION = 1;
+    private static final int WINDOWS_MOVE_RETRIES = 4;
+    private static final long WINDOWS_MOVE_RETRY_DELAY_MS = 25L;
 
     private UserJsonDatabase() {
     }
@@ -102,9 +105,35 @@ final class UserJsonDatabase {
     }
 
     private static void moveIntoPlace(Path source, Path destination) throws IOException {
+        AccessDeniedException lastAccessDenied = null;
+        for (int attempt = 0; attempt <= WINDOWS_MOVE_RETRIES; attempt++) {
+            try {
+                moveIntoPlaceOnce(source, destination);
+                return;
+            } catch (AccessDeniedException exception) {
+                lastAccessDenied = exception;
+                if (attempt == WINDOWS_MOVE_RETRIES) {
+                    throw exception;
+                }
+                try {
+                    Thread.sleep(WINDOWS_MOVE_RETRY_DELAY_MS * (attempt + 1L));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(
+                            "interrupted while retrying user database save",
+                            interrupted);
+                }
+            }
+        }
+        throw lastAccessDenied;
+    }
+
+    private static void moveIntoPlaceOnce(Path source, Path destination)
+            throws IOException {
         try {
-            Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException exception) {
             Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
         }
     }
@@ -236,8 +265,14 @@ final class UserJsonDatabase {
                 value, prefix + ".settings");
         int difficulty = getInt(storedSettings, "difficultyLevel",
                 Settings.DEFAULT_DIFFICULTY);
+        boolean debugMode = getBoolean(storedSettings, "debugMode", false);
+        int gameSpeed = getInt(storedSettings, "gameSpeed",
+                Settings.DEFAULT_GAME_SPEED);
+        boolean showGameMapGrid = getBoolean(
+                storedSettings, "showGameMapGrid", false);
         try {
-            return new Settings(difficulty);
+            return new Settings(difficulty, debugMode,
+                    gameSpeed, showGameMapGrid);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(prefix
                     + ".settings.difficultyLevel must be between 1 and 5");
@@ -471,7 +506,13 @@ final class UserJsonDatabase {
             Settings settings, String indent) {
         json.append(indent).append("  \"settings\": {\n");
         appendNumberProperty(json, indent + "  ", "difficultyLevel",
-                settings.getDifficultyLevel(), false);
+                settings.getDifficultyLevel(), true);
+        appendBooleanProperty(json, indent + "  ", "debugMode",
+                settings.isDebugMode(), true);
+        appendNumberProperty(json, indent + "  ", "gameSpeed",
+                settings.getGameSpeed(), true);
+        appendBooleanProperty(json, indent + "  ", "showGameMapGrid",
+                settings.isShowGameMapGrid(), false);
         json.append(indent).append("  },\n");
     }
 

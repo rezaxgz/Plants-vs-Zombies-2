@@ -1,5 +1,6 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
+import java.util.Locale;
 import java.util.function.Supplier;
 
 import com.badlogic.gdx.Gdx;
@@ -9,34 +10,49 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
+import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.utils.Scaling;
+import com.badlogic.gdx.utils.Timer;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.Menu;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 /**
  * Shared Scene2D shell for every graphical menu.
- *
- * <p>Every screen gets the phase-two wallet HUD at the top. The actual coin
- * and diamond art is resolved from the extracted PvZ2 asset database through
- * libPVZ, so no manual sprite-sheet coordinates are duplicated in the UI.</p>
  */
 public abstract class AbstractScreen implements Screen {
     public static final float VIRTUAL_WIDTH = 1280f;
     public static final float VIRTUAL_HEIGHT = 720f;
 
     private static final String COIN_IMAGE_ID =
-            "IMAGE_EFFECTS_COIN_GOLD_COIN_GOLD_98X95";
+            "IMAGE_UI_THYMED_EVENTS_ECS_CONVRT_COIN";
     private static final String DIAMOND_IMAGE_ID =
             "IMAGE_EFFECTS_COIN_DIAMOND_COIN_DIAMOND_141X146";
+    private static final String CURRENCY_BAR_IMAGE_ID =
+            "IMAGE_UI_GENERIC_BUTTON_GENERIC_LTECURRENCY";
+    private static final String PLUS_IMAGE_ID =
+            "IMAGE_UI_HUD_INGAME_COIN_BUY";
+
+    private static final int DEBUG_COIN_INCREMENT = 100;
+    private static final int DEBUG_DIAMOND_INCREMENT = 5;
+    private static final float WALLET_HUD_WIDTH = 530f;
+    private static final float WALLET_HUD_HEIGHT = 64f;
+    private static final float WALLET_HUD_RIGHT_MARGIN = 24f;
+    private static final float WALLET_HUD_TOP_MARGIN = 24f;
+    private static final float DEBUG_SAVE_DELAY_SECONDS = 0.4f;
+
+    private static Timer.Task pendingDebugWalletSave;
 
     protected final ScreenNavigator navigator;
     protected final Skin skin;
@@ -48,6 +64,8 @@ public abstract class AbstractScreen implements Screen {
 
     private final Label coinsLabel;
     private final Label diamondsLabel;
+    private final Table walletHud;
+    private boolean lastDebugMode;
     private Texture backgroundTexture;
 
     protected AbstractScreen(ScreenNavigator navigator, String title) {
@@ -68,14 +86,25 @@ public abstract class AbstractScreen implements Screen {
         Label titleLabel = new Label(title, skin, "big");
         coinsLabel = new Label("", skin, "medium_outline");
         diamondsLabel = new Label("", skin, "medium_outline");
+        coinsLabel.setFontScale(1.1f);
+        diamondsLabel.setFontScale(1.1f);
+        walletHud = new Table();
 
         header.add(headerLeading).left().padRight(10f);
         header.add(titleLabel).left().expandX();
-        header.add(createWalletCounter(
-                COIN_IMAGE_ID, coinsLabel, 42f)).right().padRight(12f);
-        header.add(createWalletCounter(
-                DIAMOND_IMAGE_ID, diamondsLabel, 46f)).right();
+        // Reserve the same top-right area on every screen, but keep the actual
+        // wallet HUD out of the Table layout. Some wide menu contents can make
+        // the root table's preferred width exceed the viewport; an absolute
+        // child keeps the wallet pinned to the exact same viewport position.
+        header.add().width(WALLET_HUD_WIDTH).height(WALLET_HUD_HEIGHT);
         root.add(header).growX().row();
+
+        walletHud.setBounds(
+                VIRTUAL_WIDTH - WALLET_HUD_RIGHT_MARGIN - WALLET_HUD_WIDTH,
+                VIRTUAL_HEIGHT - WALLET_HUD_TOP_MARGIN - WALLET_HUD_HEIGHT,
+                WALLET_HUD_WIDTH, WALLET_HUD_HEIGHT);
+        walletHud.right();
+        root.addActor(walletHud);
 
         content = new Table();
         root.add(content).grow().row();
@@ -84,21 +113,92 @@ public abstract class AbstractScreen implements Screen {
         navigation.defaults().pad(6f).minWidth(190f).height(52f);
         root.add(navigation).growX().bottom().padTop(12f);
 
+        lastDebugMode = false;
+        rebuildWalletHud(lastDebugMode);
         refreshResourceLabels();
     }
 
-    private Table createWalletCounter(
-            String imageId, Label amountLabel, float iconSize) {
-        Table counter = new Table();
-        counter.setBackground(
-                skin.getDrawable("image_ui_powerups_powerup_cost_10"));
-        counter.pad(3f, 9f, 3f, 7f);
+    private void rebuildWalletHud(boolean debugMode) {
+        walletHud.clearChildren();
+        walletHud.defaults().padLeft(14f).right();
+        walletHud.add(createWalletCounter(DIAMOND_IMAGE_ID, diamondsLabel,
+                64f, debugMode, DEBUG_DIAMOND_INCREMENT, false))
+                .right().padRight(8f);
+        walletHud.add(createWalletCounter(COIN_IMAGE_ID, coinsLabel,
+                58f, debugMode, DEBUG_COIN_INCREMENT, true))
+                .right();
+        lastDebugMode = debugMode;
+    }
 
-        Image image = createAssetImage(imageId);
-        image.setScaling(Scaling.fit);
-        counter.add(image).size(iconSize).padRight(4f);
-        counter.add(amountLabel).minWidth(54f).left();
+    private Table createWalletCounter(String imageId, Label amountLabel,
+            float iconSize, boolean debugMode, int increment,
+            boolean coinCurrency) {
+        Table counter = new Table();
+
+        Image icon = createAssetImage(imageId);
+        icon.setScaling(Scaling.fit);
+        counter.add(icon).size(iconSize).padRight(-14f).padTop(2f);
+
+        Table bar = new Table();
+        bar.setBackground(requireAssetDrawable(CURRENCY_BAR_IMAGE_ID));
+        bar.pad(6f, 24f, 6f, 28f);
+        bar.add(amountLabel).minWidth(92f).right();
+        counter.add(bar).width(152f).height(54f);
+
+        if (debugMode) {
+            counter.add(createAssetButton(PLUS_IMAGE_ID, () -> {
+                User user = App.getInstance().getLoggedInUser();
+                if (user == null) {
+                    return;
+                }
+                if (coinCurrency) {
+                    user.addCoins(increment);
+                } else {
+                    user.addDiamonds(increment);
+                }
+                scheduleDebugWalletSave();
+                refreshResourceLabels();
+            })).size(44f).padLeft(-8f);
+        }
         return counter;
+    }
+
+
+    private static synchronized void scheduleDebugWalletSave() {
+        if (pendingDebugWalletSave != null) {
+            pendingDebugWalletSave.cancel();
+        }
+        pendingDebugWalletSave = new Timer.Task() {
+            @Override
+            public void run() {
+                try {
+                    UserManager.saveAllUsers();
+                } finally {
+                    synchronized (AbstractScreen.class) {
+                        if (pendingDebugWalletSave == this) {
+                            pendingDebugWalletSave = null;
+                        }
+                    }
+                }
+            }
+        };
+        Timer.schedule(pendingDebugWalletSave, DEBUG_SAVE_DELAY_SECONDS);
+    }
+
+    private Button createAssetButton(String imageId, Runnable action) {
+        Drawable drawable = requireAssetDrawable(imageId);
+        Button.ButtonStyle style = new Button.ButtonStyle();
+        style.up = drawable;
+        style.down = drawable;
+        style.over = drawable;
+        Button button = new Button(style);
+        button.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                action.run();
+            }
+        });
+        return button;
     }
 
     protected final TextureRegion requireAssetRegion(String imageId) {
@@ -108,6 +208,10 @@ public abstract class AbstractScreen implements Screen {
                     "libPVZ could not resolve required image: " + imageId);
         }
         return region;
+    }
+
+    protected final Drawable requireAssetDrawable(String imageId) {
+        return new TextureRegionDrawable(requireAssetRegion(imageId));
     }
 
     protected final Image createAssetImage(String imageId) {
@@ -181,13 +285,18 @@ public abstract class AbstractScreen implements Screen {
 
     private void refreshResourceLabels() {
         User user = App.getInstance().getLoggedInUser();
+        boolean debugMode = user != null && user.getSettings().isDebugMode();
+        if (debugMode != lastDebugMode) {
+            rebuildWalletHud(debugMode);
+        }
         if (user == null) {
             coinsLabel.setText("--");
             diamondsLabel.setText("--");
             return;
         }
-        coinsLabel.setText(Integer.toString(user.getCoins()));
-        diamondsLabel.setText(Integer.toString(user.getDiamonds()));
+        coinsLabel.setText(String.format(Locale.US, "%,d", user.getCoins()));
+        diamondsLabel.setText(
+                String.format(Locale.US, "%,d", user.getDiamonds()));
     }
 
     @Override

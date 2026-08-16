@@ -69,8 +69,8 @@ final class PlantPacketCard extends Table {
         packet.add(createBadgeLayer());
 
         add(packet).size(WIDTH, PACKET_HEIGHT).row();
-        add(createSeedProgress()).width(WIDTH - 8f).height(20f)
-                .padTop(1f);
+        add(createSeedProgress(skin, plant, 0.54f))
+                .width(WIDTH - 8f).height(20f).padTop(1f);
     }
 
     private Image createPacketBackground() {
@@ -124,7 +124,8 @@ final class PlantPacketCard extends Table {
         return badges;
     }
 
-    private Stack createSeedProgress() {
+    static Stack createSeedProgress(Skin skin,
+            PlantCollectionItem plant, float fontScale) {
         int required = plant.getCardsNeededForNextLevel();
         int collected = plant.getTotalCardsCollected();
         boolean maximum = plant.isAtMaximumLevel();
@@ -143,7 +144,7 @@ final class PlantPacketCard extends Table {
                 ? collected + "/MAX"
                 : collected + "/" + required,
                 skin, "medium_outline");
-        count.setFontScale(0.54f);
+        count.setFontScale(fontScale);
 
         Table labelLayer = new Table();
         labelLayer.add(count).center();
@@ -183,7 +184,7 @@ final class PlantPacketCard extends Table {
                 + state;
     }
 
-    private static String packetAssetFor(String plantName) {
+    static String packetAssetFor(String plantName) {
         String normalized = normalizeAssetName(plantName);
         String override = PACKET_OVERRIDES.get(normalized);
         return override != null
@@ -191,7 +192,7 @@ final class PlantPacketCard extends Table {
                 : "IMAGE_UI_PACKETS_" + normalized;
     }
 
-    private static String categoryIconFor(PlantCategory category) {
+    static String categoryIconFor(PlantCategory category) {
         switch (category) {
             case SUN_PRODUCER:
                 return "IMAGE_UI_PACKETS_ENLIGHTENMINT";
@@ -219,7 +220,7 @@ final class PlantPacketCard extends Table {
         }
     }
 
-    private static String prettyCategory(PlantCategory category) {
+    static String prettyCategory(PlantCategory category) {
         String raw = category.name().toLowerCase(Locale.ROOT)
                 .replace('_', ' ');
         StringBuilder result = new StringBuilder();
