@@ -10,7 +10,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 /**
  * Counts every tracked plant that is removed or destroyed.
  */
-public final class LoveYourPlantsSystem {
+public final class LoveYourPlantsSystem implements java.io.Serializable {
     private final int maximumLostPlants;
     private final Set<BasePlant> observedPlants;
     private final Set<BasePlant> lostPlants;

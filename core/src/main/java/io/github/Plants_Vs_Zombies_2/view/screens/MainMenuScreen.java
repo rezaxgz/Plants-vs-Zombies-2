@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -17,13 +18,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.ui.TextTooltip;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton.TextButtonStyle;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Scaling;
 
+import io.github.Plants_Vs_Zombies_2.controller.ProfileMenuController;
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.CollectionMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.GreenhouseMenu;
@@ -59,6 +63,16 @@ public final class MainMenuScreen extends AbstractScreen {
             "IMAGE_UI_GAMECENTER_ANDROID_LEADERBOARD";
     private static final String LEADERBOARD_BUTTON_DOWN =
             "IMAGE_UI_GAMECENTER_ANDROID_LEADERBOARD_SELECT";
+    private static final String PROFILE_BUTTON_ICON =
+            "IMAGE_UI_MAINMENU_MM_PLAYERICON";
+    private static final String EDIT_BUTTON_UP =
+            "IMAGE_UI_MAINMENU_EDIT_BTN_NORMAL";
+    private static final String EDIT_BUTTON_DOWN =
+            "IMAGE_UI_MAINMENU_EDIT_BTN_PRESSED";
+    private static final String PROFILE_COIN_ICON =
+            "IMAGE_UI_THYMED_EVENTS_ECS_CONVRT_COIN";
+    private static final String PROFILE_DIAMOND_ICON =
+            "IMAGE_EFFECTS_COIN_DIAMOND_COIN_DIAMOND_141X146";
 
     private static final String[] NEWS_CARD_STYLES = {
             "green", "brown"
@@ -66,6 +80,8 @@ public final class MainMenuScreen extends AbstractScreen {
 
     private final Label unreadNewsBadge;
     private Table newsModal;
+    private Table profileModal;
+    private Table profileEditModal;
 
     public MainMenuScreen(ScreenNavigator navigator) {
         super(navigator, "Main Menu");
@@ -126,6 +142,14 @@ public final class MainMenuScreen extends AbstractScreen {
             }
         });
 
+        ImageButton profile = profileImageButton("Profile");
+        profile.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                showProfileModal();
+            }
+        });
+
         ImageButton greenhouse = assetImageButton(
                 GREENHOUSE_BUTTON_UP, GREENHOUSE_BUTTON_DOWN, "Greenhouse");
         greenhouse.addListener(new ClickListener() {
@@ -152,6 +176,7 @@ public final class MainMenuScreen extends AbstractScreen {
         navigation.add(shop).size(82f).left().bottom();
         navigation.add().expandX();
         navigation.add(leaderboard).size(82f).right().bottom();
+        navigation.add(profile).size(72f).right().bottom();
         navigation.add(settings).size(78f).right().bottom();
     }
 
@@ -183,6 +208,26 @@ public final class MainMenuScreen extends AbstractScreen {
         return button;
     }
 
+    private ImageButton profileImageButton(String tooltip) {
+        TextButtonStyle brown = skin.get("brown", TextButtonStyle.class);
+        ImageButtonStyle style = new ImageButtonStyle();
+        style.up = brown.up;
+        style.down = brown.down;
+        style.over = brown.over != null ? brown.over : brown.down;
+
+        TextureRegionDrawable icon = new TextureRegionDrawable(
+                requireAssetRegion(PROFILE_BUTTON_ICON));
+        style.imageUp = icon;
+        style.imageDown = icon;
+        style.imageOver = icon;
+
+        ImageButton button = new ImageButton(style);
+        button.getImage().setScaling(Scaling.fit);
+        button.getImageCell().size(48f, 48f);
+        button.addListener(new TextTooltip(tooltip, skin));
+        return button;
+    }
+
     private ImageButton assetImageButton(
             String normalAsset, String pressedAsset, String tooltip) {
         ImageButtonStyle style = new ImageButtonStyle();
@@ -198,6 +243,296 @@ public final class MainMenuScreen extends AbstractScreen {
         return button;
     }
 
+    private void showProfileModal() {
+        if (profileModal != null || newsModal != null) {
+            return;
+        }
+
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return;
+        }
+
+        profileModal = new Table();
+        profileModal.setFillParent(true);
+        profileModal.setTouchable(Touchable.enabled);
+
+        Table panel = new Table();
+        panel.setBackground(
+                skin.getDrawable("image_ui_dialog_asset_inner_bkgd_10"));
+        panel.pad(22f);
+
+        TextButtonStyle brownStyle = skin.get("brown", TextButtonStyle.class);
+        Table titleBar = new Table();
+        titleBar.setBackground(brownStyle.up);
+        titleBar.pad(7f, 12f, 7f, 12f);
+        Image avatar = createAssetImage(PROFILE_BUTTON_ICON);
+        avatar.setScaling(Scaling.fit);
+        titleBar.add(avatar).size(46f).padRight(10f);
+        Label title = new Label("Profile", skin, "big");
+        title.setColor(Color.WHITE);
+        titleBar.add(title).left().expandX();
+        ImageButton close = imageButton("generic_close_circle", "Close");
+        close.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                closeProfileModal();
+            }
+        });
+        titleBar.add(close).size(52f).right();
+        panel.add(titleBar).growX().height(68f).padBottom(12f).row();
+
+        Table accountRows = new Table();
+        accountRows.defaults().growX().height(49f).pad(3f);
+        accountRows.add(profileInfoRow("Username", user.getUsername(),
+                () -> showSingleFieldEditor("Edit Username", "Username",
+                        user.getUsername(),
+                        ProfileMenuController::changeUsername))).row();
+        accountRows.add(profileInfoRow("Nickname", user.getNickName(),
+                () -> showSingleFieldEditor("Edit Nickname", "Nickname",
+                        user.getNickName(),
+                        ProfileMenuController::changeNickname))).row();
+        accountRows.add(profileInfoRow("Email", user.getEmail(),
+                () -> showSingleFieldEditor("Edit Email", "Email",
+                        user.getEmail(),
+                        ProfileMenuController::changeEmail))).row();
+        accountRows.add(profileInfoRow("Password", "********",
+                this::showPasswordEditor)).row();
+        panel.add(accountRows).width(820f).top().row();
+
+        Label statsHeading = new Label("Player Statistics", skin,
+                "medium_outline");
+        statsHeading.setColor(new Color(0.38f, 0.22f, 0.08f, 1f));
+        panel.add(statsHeading).left().padTop(10f).padBottom(4f).row();
+
+        Table stats = new Table();
+        stats.center();
+
+        Table primaryStats = new Table();
+        primaryStats.defaults().pad(5f);
+        primaryStats.add(profileStatCard("Games Played",
+                Integer.toString(user.getGameProgerss().getGamesPlayed()),
+                null)).width(220f).height(68f);
+        primaryStats.add(profileStatCard("Completed Levels",
+                Integer.toString(user.getAdventureProgress()
+                        .getTotalCompletedLevelCount()), null))
+                .width(220f).height(68f);
+        primaryStats.add(profileStatCard("Highest Mew Point",
+                Integer.toString(user.getGameProgerss().getHighestScore()),
+                null)).width(220f).height(68f);
+
+        Table currencyStats = new Table();
+        currencyStats.defaults().pad(5f);
+        currencyStats.add(profileStatCard("Coins",
+                String.format(Locale.US, "%,d", user.getCoins()),
+                PROFILE_COIN_ICON)).width(285f).height(72f);
+        currencyStats.add(profileStatCard("Diamonds",
+                String.format(Locale.US, "%,d", user.getDiamonds()),
+                PROFILE_DIAMOND_ICON)).width(285f).height(72f);
+
+        stats.add(primaryStats).center().row();
+        stats.add(currencyStats).center().padTop(2f).row();
+
+        panel.add(stats).width(760f).center().top().row();
+        profileModal.add(panel).width(900f).height(600f);
+        root.setTouchable(Touchable.disabled);
+        stage.addActor(profileModal);
+    }
+
+    private Table profileInfoRow(String name, String value,
+            Runnable editAction) {
+        Table row = new Table();
+        TextButtonStyle rowStyle = skin.get("brown", TextButtonStyle.class);
+        row.setBackground(rowStyle.up);
+        row.pad(5f, 14f, 5f, 12f);
+
+        Label.LabelStyle nameStyle = new Label.LabelStyle(
+                skin.get("secondary", Label.LabelStyle.class));
+        nameStyle.fontColor = new Color(1f, 0.88f, 0.58f, 1f);
+        Label nameLabel = new Label(name, nameStyle);
+        nameLabel.setFontScale(0.82f);
+
+        Label valueLabel = new Label(value == null ? "" : value,
+                skin, "medium_outline");
+        valueLabel.setFontScale(0.72f);
+        valueLabel.setColor(Color.WHITE);
+
+        row.add(nameLabel).width(195f).left();
+        row.add(valueLabel).growX().left().padLeft(12f);
+        if (editAction == null) {
+            row.add().width(38f);
+        } else {
+            row.add(createEditButton(editAction)).size(34f).right();
+        }
+        return row;
+    }
+
+    private Table profileStatCard(String name, String value,
+            String iconAsset) {
+        Table card = new Table();
+        TextButtonStyle cardStyle = skin.get("green", TextButtonStyle.class);
+        card.setBackground(cardStyle.up);
+        card.pad(5f, 10f, 5f, 10f);
+
+        Label.LabelStyle titleStyle = new Label.LabelStyle(
+                skin.get("secondary", Label.LabelStyle.class));
+        titleStyle.fontColor = new Color(1f, 0.92f, 0.68f, 1f);
+        Label nameLabel = new Label(name, titleStyle);
+        nameLabel.setFontScale(0.80f);
+        nameLabel.setAlignment(com.badlogic.gdx.utils.Align.center);
+
+        Label valueLabel = new Label(value == null ? "" : value,
+                skin, "medium_outline");
+        valueLabel.setFontScale(0.96f);
+        valueLabel.setColor(Color.WHITE);
+        valueLabel.setAlignment(com.badlogic.gdx.utils.Align.center);
+
+        card.add(nameLabel).colspan(iconAsset == null ? 1 : 2)
+                .growX().center().padBottom(3f).row();
+        if (iconAsset == null) {
+            card.add(valueLabel).growX().center();
+        } else {
+            Image icon = createAssetImage(iconAsset);
+            icon.setScaling(Scaling.fit);
+            card.add(icon).size(30f).right().padRight(7f);
+            card.add(valueLabel).left();
+        }
+        return card;
+    }
+
+    private ImageButton createEditButton(Runnable action) {
+        ImageButton button = assetImageButton(
+                EDIT_BUTTON_UP, EDIT_BUTTON_DOWN, "Edit");
+        button.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                event.stop();
+                action.run();
+            }
+        });
+        return button;
+    }
+
+    private void showSingleFieldEditor(String title, String fieldName,
+            String currentValue, Function<String, CommandResult> submitAction) {
+        TextField field = new TextField(
+                currentValue == null ? "" : currentValue, skin);
+        field.setMessageText(fieldName);
+
+        Table form = new Table();
+        form.add(new Label(fieldName, skin)).right().padRight(12f);
+        form.add(field).width(360f).height(46f).left();
+
+        showProfileEditor(title, form, () -> submitAction.apply(
+                field.getText().trim()), field);
+    }
+
+    private void showPasswordEditor() {
+        TextField oldPassword = new TextField("", skin);
+        oldPassword.setMessageText("Current password");
+        oldPassword.setPasswordMode(true);
+        oldPassword.setPasswordCharacter('*');
+
+        TextField newPassword = new TextField("", skin);
+        newPassword.setMessageText("New password");
+        newPassword.setPasswordMode(true);
+        newPassword.setPasswordCharacter('*');
+
+        Table form = new Table();
+        form.defaults().pad(5f);
+        form.add(new Label("Current password", skin)).right().padRight(12f);
+        form.add(oldPassword).width(360f).height(46f).left().row();
+        form.add(new Label("New password", skin)).right().padRight(12f);
+        form.add(newPassword).width(360f).height(46f).left();
+
+        showProfileEditor("Change Password", form,
+                () -> ProfileMenuController.changePassword(
+                        newPassword.getText(), oldPassword.getText()),
+                oldPassword);
+    }
+
+    private void showProfileEditor(String title, Table form,
+            ResultSupplier submitAction, TextField focusField) {
+        if (profileEditModal != null || profileModal == null) {
+            return;
+        }
+        profileModal.setTouchable(Touchable.disabled);
+
+        profileEditModal = new Table();
+        profileEditModal.setFillParent(true);
+        profileEditModal.setTouchable(Touchable.enabled);
+
+        Table panel = new Table();
+        panel.setBackground(
+                skin.getDrawable("image_ui_dialog_asset_inner_bkgd_10"));
+        panel.pad(24f);
+        panel.defaults().pad(7f);
+
+        Label heading = new Label(title, skin, "big");
+        Label status = new Label("", skin, "secondary");
+        status.setWrap(true);
+        panel.add(heading).colspan(2).padBottom(12f).row();
+        panel.add(form).colspan(2).row();
+
+        TextButton save = new TextButton("Save", skin, "green");
+        TextButton cancel = new TextButton("Cancel", skin, "brown");
+        panel.add(save).width(170f).height(50f).padTop(12f);
+        panel.add(cancel).width(170f).height(50f).padTop(12f).row();
+        panel.add(status).colspan(2).width(520f).growX().padTop(6f).row();
+
+        save.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                CommandResult result = submitAction.get();
+                status.setText(result.getMessage());
+                status.setColor(result.isSuccsesful()
+                        ? Color.GREEN : Color.SCARLET);
+                if (result.isSuccsesful()) {
+                    closeProfileEditor();
+                    closeProfileModal();
+                    showProfileModal();
+                }
+            }
+        });
+        cancel.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                closeProfileEditor();
+            }
+        });
+
+        profileEditModal.add(panel).width(650f).height(330f);
+        stage.addActor(profileEditModal);
+        stage.setKeyboardFocus(focusField);
+    }
+
+    private void closeProfileEditor() {
+        if (profileEditModal == null) {
+            return;
+        }
+        profileEditModal.remove();
+        profileEditModal = null;
+        stage.setKeyboardFocus(null);
+        if (profileModal != null) {
+            profileModal.setTouchable(Touchable.enabled);
+        }
+    }
+
+    private void closeProfileModal() {
+        closeProfileEditor();
+        if (profileModal == null) {
+            return;
+        }
+        profileModal.remove();
+        profileModal = null;
+        root.setTouchable(Touchable.enabled);
+    }
+
+    @FunctionalInterface
+    private interface ResultSupplier {
+        CommandResult get();
+    }
+
     private void refreshUnreadNewsBadge() {
         User user = App.getInstance().getLoggedInUser();
         int unread = user == null ? 0 : user.getNewsPanel().getUnreadCount();
@@ -206,7 +541,7 @@ public final class MainMenuScreen extends AbstractScreen {
     }
 
     private void showNewsModal() {
-        if (newsModal != null) {
+        if (newsModal != null || profileModal != null) {
             return;
         }
 

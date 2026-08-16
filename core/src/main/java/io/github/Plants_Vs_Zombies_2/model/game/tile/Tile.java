@@ -3,7 +3,7 @@ package io.github.Plants_Vs_Zombies_2.model.game.tile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 
-public class Tile {
+public class Tile implements java.io.Serializable {
     private final EntityPosition position;
     private TileType tileType;
     private BasePlant plant;

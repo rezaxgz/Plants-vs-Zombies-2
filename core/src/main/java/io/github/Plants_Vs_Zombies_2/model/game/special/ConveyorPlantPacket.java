@@ -3,7 +3,7 @@ package io.github.Plants_Vs_Zombies_2.model.game.special;
 /**
  * One plant packet currently waiting on the Conveyor Belt.
  */
-public final class ConveyorPlantPacket {
+public final class ConveyorPlantPacket implements java.io.Serializable {
     private final long sequenceNumber;
     private final String plantType;
 

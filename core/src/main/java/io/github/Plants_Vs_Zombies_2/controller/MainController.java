@@ -415,6 +415,40 @@ public final class MainController {
         return loadout;
     }
 
+    /**
+     * Starts an adventure level from the graphical Phase-2 flow while reusing
+     * the exact Phase-1 game construction, special-level setup, boosts and
+     * starting-item transfer logic.
+     */
+    public static CommandResult launchAdventureGameFromGui(
+            Chapter chapter, Level level, PlantSelection selection) {
+        if (chapter == null || level == null) {
+            return CommandResult.error("chapter and level are required!");
+        }
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return CommandResult.error("login is required to start a level!");
+        }
+
+        if (level.getSpecialLevelType() == SpecialLevelType.CONVEYOR_BELT) {
+            return launchAdventureGame(chapter, level,
+                    Map.of(), List.of(),
+                    "Conveyor Belt levels skip plant selection.");
+        }
+        if (level.getSpecialLevelType() == SpecialLevelType.LOCKED_PLANTS) {
+            return launchAdventureGame(chapter, level,
+                    createForcedLoadout(user, level), List.of(),
+                    "Locked Plants uses its fixed plant loadout.");
+        }
+        if (selection == null || selection.getSelectedPlants().isEmpty()) {
+            return CommandResult.error(
+                    "select at least one plant before starting the game!");
+        }
+        return launchAdventureGame(chapter, level,
+                selection.getSelectedPlantLevels(),
+                selection.getBoostedPlantNames(), null);
+    }
+
     static CommandResult launchAdventureGame(
             Chapter chapter, Level level,
             Map<String, Integer> selectedPlantLevels,

@@ -32,7 +32,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.structure.BaseStructure;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 
-abstract class BoardState {
+abstract class BoardState implements java.io.Serializable {
     static final double POSITION_EPSILON = 0.000001;
     static final double SWEET_POTATO_ATTRACTION_RANGE = 1.0;
     static final double PROJECTILE_COLLISION_RADIUS = 0.35;
@@ -42,7 +42,7 @@ abstract class BoardState {
     static final int FINISH_EXPLOSION_DAMAGE = 1800;
     static final double FROZEN_SHELL_WARMING_DAMAGE_PER_SECOND = 60.0;
 
-    static final class ActiveFamilyBoost {
+    static final class ActiveFamilyBoost implements java.io.Serializable {
         final PlantFamily family;
         final boolean resetCooldowns;
         final Set<BasePlant> affectedPlants;

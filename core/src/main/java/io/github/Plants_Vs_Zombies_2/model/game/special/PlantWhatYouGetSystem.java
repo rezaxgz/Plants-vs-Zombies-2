@@ -6,7 +6,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantCategory;
 /**
  * Setup phase with fixed sun, no producers, and no recharge usage.
  */
-public final class PlantWhatYouGetSystem {
+public final class PlantWhatYouGetSystem implements java.io.Serializable {
     private boolean setupActive = true;
 
     public boolean isPlantAllowed(

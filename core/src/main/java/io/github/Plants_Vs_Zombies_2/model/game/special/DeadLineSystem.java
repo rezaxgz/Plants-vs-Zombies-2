@@ -7,7 +7,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 /**
  * Finds the first hostile zombie that reaches a vertical loss line.
  */
-public final class DeadLineSystem {
+public final class DeadLineSystem implements java.io.Serializable {
     private static final double POSITION_EPSILON = 0.000001;
 
     private final double lineColumn;

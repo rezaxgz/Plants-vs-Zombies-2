@@ -8,7 +8,7 @@ import java.util.Random;
 /**
  * Produces one free plant immediately and then one every twelve seconds.
  */
-public final class ConveyorBeltSystem {
+public final class ConveyorBeltSystem implements java.io.Serializable {
     public static final double PACKET_INTERVAL_SECONDS = 12.0;
     public static final int MAXIMUM_PACKET_COUNT = 8;
 

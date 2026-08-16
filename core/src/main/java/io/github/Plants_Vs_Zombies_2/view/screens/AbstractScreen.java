@@ -8,6 +8,7 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
@@ -281,11 +282,32 @@ public abstract class AbstractScreen implements Screen {
      */
     protected final void setBackground(String internalPath) {
         backgroundStage.getRoot().clearChildren();
-        if (backgroundTexture != null) {
-            backgroundTexture.dispose();
-        }
+        disposeOwnedBackgroundTexture();
         backgroundTexture = new Texture(Gdx.files.internal(internalPath));
-        backgroundImage = new Image(backgroundTexture);
+        installBackgroundImage(new Image(backgroundTexture));
+    }
+
+    /**
+     * Uses an image from libPVZ's TextureBank as a full-window stretched
+     * background. The TextureBank owns the underlying texture, so this screen
+     * only owns the Image actor and never disposes that texture.
+     */
+    protected final void setAssetBackground(String imageId) {
+        backgroundStage.getRoot().clearChildren();
+        disposeOwnedBackgroundTexture();
+        installBackgroundImage(createAssetImage(imageId));
+    }
+
+    /** Adds an actor above the stretched background but below the normal UI. */
+    protected final void addBackgroundOverlay(Actor actor) {
+        if (actor == null) {
+            throw new IllegalArgumentException("background overlay cannot be null");
+        }
+        backgroundStage.addActor(actor);
+    }
+
+    private void installBackgroundImage(Image image) {
+        backgroundImage = image;
         backgroundImage.setScaling(Scaling.stretch);
 
         // A ScreenViewport maps one stage unit to one screen pixel. Set the
@@ -297,6 +319,13 @@ public abstract class AbstractScreen implements Screen {
                 backgroundStage.getViewport().getWorldWidth(),
                 backgroundStage.getViewport().getWorldHeight());
         backgroundStage.addActor(backgroundImage);
+    }
+
+    private void disposeOwnedBackgroundTexture() {
+        if (backgroundTexture != null) {
+            backgroundTexture.dispose();
+            backgroundTexture = null;
+        }
     }
 
     private void refreshResourceLabels() {
@@ -320,15 +349,25 @@ public abstract class AbstractScreen implements Screen {
         Gdx.input.setInputProcessor(stage);
     }
 
+    /**
+     * Screens can temporarily freeze Scene2D actions/animations while still
+     * drawing and receiving input. GameScreen uses this for its pause modal.
+     */
+    protected boolean shouldAdvanceScene() {
+        return true;
+    }
+
     @Override
     public void render(float delta) {
         refreshResourceLabels();
         Gdx.gl.glClearColor(0.08f, 0.12f, 0.16f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         float frameDelta = Math.min(delta, 1f / 15f);
-        backgroundStage.act(frameDelta);
+        if (shouldAdvanceScene()) {
+            backgroundStage.act(frameDelta);
+            stage.act(frameDelta);
+        }
         backgroundStage.draw();
-        stage.act(frameDelta);
         stage.draw();
     }
 
@@ -362,10 +401,7 @@ public abstract class AbstractScreen implements Screen {
     public void dispose() {
         stage.dispose();
         backgroundStage.dispose();
-        if (backgroundTexture != null) {
-            backgroundTexture.dispose();
-            backgroundTexture = null;
-        }
+        disposeOwnedBackgroundTexture();
         backgroundImage = null;
     }
 }

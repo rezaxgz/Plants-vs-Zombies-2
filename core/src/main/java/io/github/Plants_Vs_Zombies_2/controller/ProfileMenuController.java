@@ -14,11 +14,15 @@ public final class ProfileMenuController {
     }
 
     public static CommandResult handleChangeUsername(Matcher matcher) {
+        return changeUsername(matcher.group("username"));
+    }
+
+    public static CommandResult changeUsername(String username) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
-        String username = matcher.group("username");
+        username = username == null ? "" : username;
         if (username.equals(user.getUsername())) {
             return CommandResult.error(
                     "new username is the same as the current username");
@@ -36,11 +40,15 @@ public final class ProfileMenuController {
     }
 
     public static CommandResult handleChangeNickname(Matcher matcher) {
+        return changeNickname(matcher.group("nickname"));
+    }
+
+    public static CommandResult changeNickname(String nickname) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
-        String nickname = matcher.group("nickname").trim();
+        nickname = nickname == null ? "" : nickname.trim();
         if (nickname.equals(user.getNickName())) {
             return CommandResult.error(
                     "new nickname is the same as the current nickname");
@@ -56,11 +64,15 @@ public final class ProfileMenuController {
     }
 
     public static CommandResult handleChangeEmail(Matcher matcher) {
+        return changeEmail(matcher.group("email"));
+    }
+
+    public static CommandResult changeEmail(String email) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
-        String email = matcher.group("email");
+        email = email == null ? "" : email;
         if (email.equals(user.getEmail())) {
             return CommandResult.error(
                     "new email is the same as the current email");
@@ -76,16 +88,22 @@ public final class ProfileMenuController {
     }
 
     public static CommandResult handleChangePassword(Matcher matcher) {
+        return changePassword(matcher.group("newPassword"),
+                matcher.group("oldPassword"));
+    }
+
+    public static CommandResult changePassword(String newPassword,
+            String oldPassword) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
-        String oldPassword = matcher.group("oldPassword");
+        oldPassword = oldPassword == null ? "" : oldPassword;
+        newPassword = newPassword == null ? "" : newPassword;
         if (!user.doesMatchPassword(oldPassword)) {
             return CommandResult.error("old password is incorrect");
         }
 
-        String newPassword = matcher.group("newPassword");
         if (user.doesMatchPassword(newPassword)) {
             return CommandResult.error(
                     "new password is the same as the current password");

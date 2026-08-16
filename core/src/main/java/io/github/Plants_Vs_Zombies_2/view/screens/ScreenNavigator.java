@@ -9,6 +9,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.Main;
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.controller.MainController;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.CollectionMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
@@ -25,7 +26,13 @@ import io.github.Plants_Vs_Zombies_2.model.menu.SettingsMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.SignUpMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.TravelLogMenu;
+import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
+import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
+import io.github.Plants_Vs_Zombies_2.model.user.User;
 import pvz.libpvz.pam.PamPlayer;
 import pvz.libpvz.textures.TextureBank;
 
@@ -171,6 +178,59 @@ public final class ScreenNavigator {
 
     public void showAdventureScreen() {
         showTransient(new AdventureScreen(this));
+    }
+
+    /** Leaves an active game behind and makes Adventure's Back return to Main. */
+    public void exitGameToAdventure() {
+        history.clear();
+        app.changeMenu(new MainMenu());
+        displayedMenu = app.getCurrentMenu();
+        showAdventureScreen();
+    }
+
+    public void showLevelGamePreview(Chapter chapter, Level level) {
+        if (chapter == null || level == null) {
+            throw new IllegalArgumentException("chapter and level cannot be null");
+        }
+
+        User user = app.getLoggedInUser();
+        if (user == null) {
+            showTransient(new GameScreen(this, chapter, level));
+            return;
+        }
+
+        GameMenu savedGame = SavedGameManager.loadAdventureGame(
+                user, chapter.getId(), level.getNumber());
+        if (savedGame != null) {
+            app.changeMenu(savedGame);
+            showCurrentMenu();
+            return;
+        }
+
+        // Match the phase-one level-start rules. Conveyor Belt levels choose
+        // cards from the belt and Locked Plants levels use a forced loadout,
+        // so both can enter the real model-backed level immediately.
+        SpecialLevelType specialType = level.getSpecialLevelType();
+        if (specialType == SpecialLevelType.CONVEYOR_BELT
+                || specialType == SpecialLevelType.LOCKED_PLANTS) {
+            MainController.launchAdventureGameFromGui(
+                    chapter, level, null);
+            showCurrentMenu();
+            return;
+        }
+
+        PlantSelection selection = new PlantSelection(
+                user.getPlantCollection(), level);
+        if (selection.shouldStartAutomatically()) {
+            selection.selectAllAvailable();
+            MainController.launchAdventureGameFromGui(
+                    chapter, level, selection);
+            showCurrentMenu();
+            return;
+        }
+
+        showTransient(new GameScreen(
+                this, chapter, level, selection, true));
     }
 
     public void showPauseScreen() {

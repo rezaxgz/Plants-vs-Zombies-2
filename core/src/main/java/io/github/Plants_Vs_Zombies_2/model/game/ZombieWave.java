@@ -12,7 +12,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 /**
  * Immutable wave definition with exact default-difficulty wave budgeting.
  */
-public final class ZombieWave {
+public final class ZombieWave implements java.io.Serializable {
     private final List<ZombieType> zombieTypes;
     private final List<ZombieType> availableTypes;
     private final int difficulty;

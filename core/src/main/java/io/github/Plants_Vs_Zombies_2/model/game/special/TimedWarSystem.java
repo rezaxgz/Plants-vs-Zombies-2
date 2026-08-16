@@ -11,7 +11,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 /**
  * Counts zombie kills or plant-produced sun before a timer expires.
  */
-public final class TimedWarSystem {
+public final class TimedWarSystem implements java.io.Serializable {
     private static final double TIME_EPSILON = 0.000001;
 
     private final TimedWarObjective objective;

@@ -2,7 +2,7 @@ package io.github.Plants_Vs_Zombies_2.model.game.entities;
 
 import java.util.Objects;
 
-public final class EntityPosition {
+public final class EntityPosition implements java.io.Serializable {
     private final int row;
     private final int column;
 

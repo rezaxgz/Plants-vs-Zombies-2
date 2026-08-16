@@ -1,6 +1,6 @@
 package io.github.Plants_Vs_Zombies_2.model.game.entities;
 
-public abstract class Entity {
+public abstract class Entity implements java.io.Serializable {
     protected EntityPosition entityPosition;
 
     private double elapsedSeconds;

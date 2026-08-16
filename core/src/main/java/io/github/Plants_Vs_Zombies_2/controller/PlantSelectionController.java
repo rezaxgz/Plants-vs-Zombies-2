@@ -47,6 +47,18 @@ public final class PlantSelectionController {
         }
         PlantSelection selection = menu.getSelection();
         PlantCollectionItem plant = selection.findPlant(matcher.group("type"));
+        return addPlant(selection, plant);
+    }
+
+    /**
+     * Shared mutation used by both the phase-one command and the graphical
+     * plant-selection modal.
+     */
+    public static CommandResult addPlant(
+            PlantSelection selection, PlantCollectionItem plant) {
+        if (selection == null) {
+            return selectionRequired();
+        }
         CommandResult error = validatePlantForAdd(selection, plant);
         if (error != null) {
             return error;
@@ -85,6 +97,15 @@ public final class PlantSelectionController {
         }
         PlantSelection selection = menu.getSelection();
         PlantCollectionItem plant = selection.findPlant(matcher.group("type"));
+        return removePlant(selection, plant);
+    }
+
+    /** Shared graphical/terminal remove operation. */
+    public static CommandResult removePlant(
+            PlantSelection selection, PlantCollectionItem plant) {
+        if (selection == null) {
+            return selectionRequired();
+        }
         if (plant == null) {
             return CommandResult.error("plant does not exist!");
         }
@@ -105,6 +126,15 @@ public final class PlantSelectionController {
         }
         PlantSelection selection = menu.getSelection();
         PlantCollectionItem plant = selection.findPlant(matcher.group("type"));
+        return boostPlant(user, selection, plant);
+    }
+
+    /** Shared graphical/terminal paid-boost operation. */
+    public static CommandResult boostPlant(User user,
+            PlantSelection selection, PlantCollectionItem plant) {
+        if (selection == null || user == null) {
+            return selectionRequired();
+        }
         if (plant == null) {
             return CommandResult.error("plant does not exist!");
         }
@@ -123,6 +153,10 @@ public final class PlantSelectionController {
         UserManager.saveAllUsers();
         return CommandResult.success(plant.getName()
                 + " boosted for this level; 2 diamonds spent.");
+    }
+
+    public static int getBoostDiamondCost() {
+        return BOOST_DIAMOND_COST;
     }
 
     public static CommandResult handleStartGame(Matcher matcher) {
