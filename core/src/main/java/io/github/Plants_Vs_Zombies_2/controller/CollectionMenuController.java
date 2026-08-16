@@ -85,6 +85,33 @@ public final class CollectionMenuController {
         if (plant == null) {
             return CommandResult.error("plant does not exist!");
         }
+        return upgradePlant(user, plant);
+    }
+
+    public static CommandResult handlePurchasePlant(Matcher matcher) {
+        User user = getLoggedInUser();
+        if (user == null) {
+            return loginRequired();
+        }
+        PlantCollectionItem plant = user.getPlantCollection().findPlant(matcher.group("plant"));
+        if (plant == null) {
+            return CommandResult.error("plant does not exist!");
+        }
+        return purchasePlant(user, plant);
+    }
+
+    /**
+     * Shared mutation used by both the terminal command and the graphical
+     * collection detail modal.
+     */
+    public static CommandResult upgradePlant(User user,
+            PlantCollectionItem plant) {
+        if (user == null) {
+            return loginRequired();
+        }
+        if (plant == null) {
+            return CommandResult.error("plant does not exist!");
+        }
         if (!plant.isUnlocked()) {
             return CommandResult.error("plant is locked!");
         }
@@ -109,12 +136,15 @@ public final class CollectionMenuController {
                 + plant.getCurrentLevel() + ".");
     }
 
-    public static CommandResult handlePurchasePlant(Matcher matcher) {
-        User user = getLoggedInUser();
+    /**
+     * Shared mutation used by both the terminal command and the graphical
+     * collection detail modal.
+     */
+    public static CommandResult purchasePlant(User user,
+            PlantCollectionItem plant) {
         if (user == null) {
             return loginRequired();
         }
-        PlantCollectionItem plant = user.getPlantCollection().findPlant(matcher.group("plant"));
         if (plant == null) {
             return CommandResult.error("plant does not exist!");
         }
