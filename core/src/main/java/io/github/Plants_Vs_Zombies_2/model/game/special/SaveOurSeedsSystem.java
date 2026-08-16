@@ -14,8 +14,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantFactory;
 /**
  * Places and tracks the plants that must survive Save Our Seeds.
  */
-public final class SaveOurSeedsSystem {
-    private static final class ProtectedPlantEntry {
+public final class SaveOurSeedsSystem implements java.io.Serializable {
+    private static final class ProtectedPlantEntry implements java.io.Serializable {
         private final BasePlant plant;
         private final EntityPosition originalPosition;
 

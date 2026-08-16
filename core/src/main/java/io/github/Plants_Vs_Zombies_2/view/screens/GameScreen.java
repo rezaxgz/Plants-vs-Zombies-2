@@ -1,5 +1,6 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.badlogic.gdx.graphics.Color;
@@ -25,16 +26,15 @@ import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
 
 import io.github.Plants_Vs_Zombies_2.controller.CollectionMenuController;
+import io.github.Plants_Vs_Zombies_2.controller.MainController;
 import io.github.Plants_Vs_Zombies_2.controller.PlantSelectionController;
 import io.github.Plants_Vs_Zombies_2.model.App;
 import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
-import io.github.Plants_Vs_Zombies_2.model.menu.CollectionMenu;
+import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
-import io.github.Plants_Vs_Zombies_2.model.menu.GreenhouseMenu;
-import io.github.Plants_Vs_Zombies_2.model.menu.LeaderboardMenu;
-import io.github.Plants_Vs_Zombies_2.model.menu.TravelLogMenu;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
@@ -116,19 +116,22 @@ public final class GameScreen extends AbstractScreen {
     private boolean sunHudDebugMode;
     private int previewSunCount;
 
-    /** Normal model-backed game screen. */
+    /** Normal model-backed game screen, including resumed saved games. */
     public GameScreen(ScreenNavigator navigator) {
-        super(navigator, "Game");
+        super(navigator, "");
 
+        GameMenu menu = currentGameMenu();
         Chapter chapter = chapterForCurrentGame();
+        if (chapter != null && menu.getLevel() != null) {
+            installPreviewLevelTitle(chapter, menu.getLevel());
+        }
         installChapterBoard(chapter);
         installGameHud();
 
-        addMenuButton("Collection", () -> new CollectionMenu(currentGameMenu()));
-        addMenuButton("Greenhouse", () -> new GreenhouseMenu(currentGameMenu()));
-        addMenuButton("Travel Log", () -> new TravelLogMenu(currentGameMenu()));
-        addMenuButton("Leaderboard", () -> new LeaderboardMenu(currentGameMenu()));
-        addBackButton();
+        if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
+            installSeedTray();
+            rebuildSeedTray();
+        }
     }
 
     /** Empty level preview for levels that do not use normal plant choosing. */
@@ -293,7 +296,12 @@ public final class GameScreen extends AbstractScreen {
         saveAndExit.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                navigator.showAdventureScreen();
+                try {
+                    saveCurrentGameAndExit();
+                } catch (RuntimeException exception) {
+                    hint.setColor(Color.SCARLET);
+                    hint.setText("Save failed: " + exception.getMessage());
+                }
             }
         });
         actions.add(saveAndExit).width(154f).height(52f).padRight(10f);
@@ -319,6 +327,17 @@ public final class GameScreen extends AbstractScreen {
 
         pauseModal.addActor(panel);
         stage.addActor(pauseModal);
+    }
+
+    private void saveCurrentGameAndExit() {
+        if (previewLevel != null) {
+            throw new IllegalStateException("level has not started yet");
+        }
+        GameMenu menu = currentGameMenu();
+        User user = currentUser();
+        SavedGameManager.saveAdventureGame(user, menu);
+        gamePaused = false;
+        navigator.exitGameToAdventure();
     }
 
     private void closePauseModal() {
@@ -384,12 +403,15 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void rebuildSeedTray() {
-        if (seedTray == null || previewSelection == null) {
+        if (seedTray == null) {
             return;
         }
         seedTray.clearChildren();
-        List<PlantCollectionItem> selected = previewSelection.getSelectedPlants();
-        int slots = previewSelection.getSlotCount();
+        List<PlantCollectionItem> selected = selectedPlantsForSeedTray();
+        int slots = seedSlotCount();
+        if (slots <= 0) {
+            return;
+        }
         float slotHeight = Math.min(SEED_SLOT_HEIGHT,
                 Math.max(48f, (SEED_TRAY_HEIGHT - Math.max(0, slots - 1) * 2f)
                         / Math.max(1, slots)));
@@ -406,11 +428,43 @@ public final class GameScreen extends AbstractScreen {
         }
     }
 
+    private List<PlantCollectionItem> selectedPlantsForSeedTray() {
+        if (previewSelection != null) {
+            return previewSelection.getSelectedPlants();
+        }
+        List<PlantCollectionItem> selected = new ArrayList<>();
+        User user = currentUser();
+        if (user == null) {
+            return selected;
+        }
+        for (BasePlant prototype : currentGameMenu().getGame()
+                .getPlantLoadoutPrototypes()) {
+            PlantCollectionItem item = user.getPlantCollection()
+                    .findPlant(prototype.getName());
+            if (item != null) {
+                selected.add(item);
+            }
+        }
+        return selected;
+    }
+
+    private int seedSlotCount() {
+        if (previewSelection != null) {
+            return previewSelection.getSlotCount();
+        }
+        Level level = currentGameMenu().getLevel();
+        return level == null ? 0 : level.getPlantSlotCount();
+    }
+
+    private Chapter seedTrayChapter() {
+        return previewChapter != null ? previewChapter : chapterForCurrentGame();
+    }
+
     private Actor createGameSeedSlot(PlantCollectionItem plant) {
         Stack slot = new Stack();
         String packet = plant != null && isVisuallyBoosted(plant)
                 ? BOOST_PACKET
-                : packetAssetForChapter(previewChapter);
+                : packetAssetForChapter(seedTrayChapter());
 
         Image background = createAssetImage(packet);
         background.setScaling(Scaling.stretch);
@@ -501,7 +555,13 @@ public final class GameScreen extends AbstractScreen {
                             "select at least one plant before starting the game!"));
                     return;
                 }
-                closePlantSelectionModal();
+                CommandResult result = MainController.launchAdventureGameFromGui(
+                        previewChapter, previewLevel, previewSelection);
+                if (!result.isSuccsesful()) {
+                    showSelectionFeedback(result);
+                    return;
+                }
+                navigator.showCurrentMenu();
             }
         });
         plantSelectionModal.addActor(letsRock);
@@ -778,9 +838,18 @@ public final class GameScreen extends AbstractScreen {
         if (plant == null) {
             return false;
         }
+        if (previewSelection != null && previewSelection.isBoosted(plant)) {
+            return true;
+        }
+        if (previewLevel == null && App.getInstance().getCurrentMenu() instanceof GameMenu) {
+            for (String boosted : currentGameMenu().getGame().getBoostedPlantNames()) {
+                if (boosted.equalsIgnoreCase(plant.getName())) {
+                    return true;
+                }
+            }
+        }
         User user = currentUser();
-        return previewSelection != null && previewSelection.isBoosted(plant)
-                || user != null && user.hasPlantBoost(plant.getName());
+        return user != null && user.hasPlantBoost(plant.getName());
     }
 
     private User currentUser() {
@@ -851,6 +920,9 @@ public final class GameScreen extends AbstractScreen {
     @Override
     public void render(float delta) {
         refreshSunHud();
+        if (previewLevel == null) {
+            currentGameMenu().synchronizeProgress();
+        }
         super.render(delta);
     }
 

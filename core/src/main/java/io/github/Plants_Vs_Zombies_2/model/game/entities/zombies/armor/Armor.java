@@ -4,7 +4,7 @@ package io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.armor;
  * Represents armor worn by a zombie. Armor absorbs damage before
  * the zombie's base health is affected.
  */
-public class Armor {
+public class Armor implements java.io.Serializable {
     private final ArmorType type;
     private int currentHealth;
     private int maximumHealth;

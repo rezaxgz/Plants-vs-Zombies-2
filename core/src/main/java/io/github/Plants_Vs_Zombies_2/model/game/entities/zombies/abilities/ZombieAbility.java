@@ -7,7 +7,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
  * Abstract base class for special zombie abilities.
  * Each ability has a cooldown and can be activated under certain conditions.
  */
-public abstract class ZombieAbility {
+public abstract class ZombieAbility implements java.io.Serializable {
     protected double cooldown;
     protected double elapsedSinceLastUse;
     protected boolean active;

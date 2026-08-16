@@ -27,7 +27,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantStatus;
 import io.github.Plants_Vs_Zombies_2.model.game.special.SaveOurSeedsSystem;
 import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarSystem;
 
-abstract class GameState {
+abstract class GameState implements java.io.Serializable {
     static final double TIME_EPSILON = 0.000001;
     static final double TORNADO_SPAWN_CHANCE = 0.50;
     static final double ICY_WIND_LANE_CHANCE = 0.50;

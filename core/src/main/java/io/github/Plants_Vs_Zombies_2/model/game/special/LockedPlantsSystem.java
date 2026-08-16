@@ -17,7 +17,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantFamily;
 /**
  * Applies either a forced loadout or one representative per plant family.
  */
-public final class LockedPlantsSystem {
+public final class LockedPlantsSystem implements java.io.Serializable {
     private final LockedPlantsMode mode;
     private final List<String> configuredPlantTypes;
     private final Set<String> normalizedConfiguredTypes;

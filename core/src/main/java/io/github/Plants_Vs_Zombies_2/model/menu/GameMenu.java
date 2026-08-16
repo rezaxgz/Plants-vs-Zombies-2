@@ -9,6 +9,7 @@ import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.game.Game;
 import io.github.Plants_Vs_Zombies_2.model.game.GameStatus;
 import io.github.Plants_Vs_Zombies_2.model.game.scored.ScoredGame;
+import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
 import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
@@ -131,6 +132,13 @@ public class GameMenu extends Menu {
     }
 
     public void synchronizeProgress() {
+        if (game.getStatus() != GameStatus.ACTIVE && chapterId != null) {
+            User activeUser = App.getInstance().getLoggedInUser();
+            if (activeUser != null) {
+                SavedGameManager.deleteAdventureGame(
+                        activeUser, chapterId, levelNumber);
+            }
+        }
         if (progressSynchronized
                 || game.getStatus() == GameStatus.ACTIVE) {
             return;

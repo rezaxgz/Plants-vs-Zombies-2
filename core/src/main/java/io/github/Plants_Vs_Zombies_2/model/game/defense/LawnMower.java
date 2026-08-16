@@ -3,7 +3,7 @@ package io.github.Plants_Vs_Zombies_2.model.game.defense;
 /**
  * One single-use lawn mower protecting a single board row.
  */
-public final class LawnMower {
+public final class LawnMower implements java.io.Serializable {
     private final int row;
     private boolean used;
 

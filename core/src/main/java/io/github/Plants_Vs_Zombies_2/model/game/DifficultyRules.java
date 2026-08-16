@@ -6,7 +6,7 @@ import io.github.Plants_Vs_Zombies_2.model.Settings;
  * Converts the saved difficulty level into the five gameplay multipliers
  * required by the project specification.
  */
-public final class DifficultyRules {
+public final class DifficultyRules implements java.io.Serializable {
     private static final double DEFAULT_LEVEL = 3.0;
 
     private final int level;

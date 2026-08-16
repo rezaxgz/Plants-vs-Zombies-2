@@ -11,7 +11,7 @@ import io.github.Plants_Vs_Zombies_2.view.game.LawnMowerView;
 /**
  * Owns one lawn mower per row and resolves zombies reaching the house.
  */
-public final class LawnMowerSystem {
+public final class LawnMowerSystem implements java.io.Serializable {
     private final List<LawnMower> mowers;
 
     public LawnMowerSystem(int rowCount) {

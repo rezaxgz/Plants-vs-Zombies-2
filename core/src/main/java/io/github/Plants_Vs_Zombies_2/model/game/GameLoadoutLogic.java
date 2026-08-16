@@ -261,6 +261,22 @@ abstract class GameLoadoutLogic extends GameRewardLogic {
         return plantLoadoutConfigured;
     }
 
+    public List<String> getBoostedPlantNames() {
+        List<String> names = new ArrayList<>();
+        for (String key : boostedPlantTypes) {
+            names.add(plantLoadoutNames.getOrDefault(key, key));
+        }
+        return Collections.unmodifiableList(names);
+    }
+
+    public List<String> getGreenhouseBoostPlantNames() {
+        List<String> names = new ArrayList<>();
+        for (String key : greenhouseBoostTypes) {
+            names.add(plantLoadoutNames.getOrDefault(key, key));
+        }
+        return Collections.unmodifiableList(names);
+    }
+
     public List<BasePlant> getPlantLoadoutPrototypes() {
         if (!plantLoadoutConfigured) {
             return Collections.emptyList();
