@@ -349,15 +349,25 @@ public abstract class AbstractScreen implements Screen {
         Gdx.input.setInputProcessor(stage);
     }
 
+    /**
+     * Screens can temporarily freeze Scene2D actions/animations while still
+     * drawing and receiving input. GameScreen uses this for its pause modal.
+     */
+    protected boolean shouldAdvanceScene() {
+        return true;
+    }
+
     @Override
     public void render(float delta) {
         refreshResourceLabels();
         Gdx.gl.glClearColor(0.08f, 0.12f, 0.16f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         float frameDelta = Math.min(delta, 1f / 15f);
-        backgroundStage.act(frameDelta);
+        if (shouldAdvanceScene()) {
+            backgroundStage.act(frameDelta);
+            stage.act(frameDelta);
+        }
         backgroundStage.draw();
-        stage.act(frameDelta);
         stage.draw();
     }
 

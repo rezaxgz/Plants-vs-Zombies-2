@@ -25,9 +25,12 @@ import io.github.Plants_Vs_Zombies_2.model.menu.SettingsMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.SignUpMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.TravelLogMenu;
+import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
+import io.github.Plants_Vs_Zombies_2.model.user.User;
 import pvz.libpvz.pam.PamPlayer;
 import pvz.libpvz.textures.TextureBank;
 
@@ -179,7 +182,34 @@ public final class ScreenNavigator {
         if (chapter == null || level == null) {
             throw new IllegalArgumentException("chapter and level cannot be null");
         }
-        showTransient(new GameScreen(this, chapter, level));
+
+        User user = app.getLoggedInUser();
+        if (user == null) {
+            showTransient(new GameScreen(this, chapter, level));
+            return;
+        }
+
+        // Match the phase-one level-start rules. Conveyor Belt levels choose
+        // cards from the belt and Locked Plants levels use a forced loadout,
+        // so neither opens the normal plant picker.
+        SpecialLevelType specialType = level.getSpecialLevelType();
+        if (specialType == SpecialLevelType.CONVEYOR_BELT
+                || specialType == SpecialLevelType.LOCKED_PLANTS) {
+            showTransient(new GameScreen(this, chapter, level));
+            return;
+        }
+
+        PlantSelection selection = new PlantSelection(
+                user.getPlantCollection(), level);
+        if (selection.shouldStartAutomatically()) {
+            selection.selectAllAvailable();
+            showTransient(new GameScreen(
+                    this, chapter, level, selection, false));
+            return;
+        }
+
+        showTransient(new GameScreen(
+                this, chapter, level, selection, true));
     }
 
     public void showPauseScreen() {
