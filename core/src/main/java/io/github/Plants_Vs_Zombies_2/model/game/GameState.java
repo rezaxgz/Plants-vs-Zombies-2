@@ -156,7 +156,7 @@ abstract class GameState implements java.io.Serializable {
         if (!Double.isFinite(timePassedSeconds) || timePassedSeconds < 0.0) {
             throw new IllegalArgumentException("timePassedSeconds must be finite and non-negative");
         }
-        return Math.max(6.0 + 0.05 * timePassedSeconds, 12.0);
+        return Math.max(9.0 + 0.075 * timePassedSeconds, 18.0);
     }
 
     static boolean isWithinArea(EntityPosition center, int row,

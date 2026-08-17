@@ -9,7 +9,7 @@ public final class Constants {
 
     public static final float DEFAULT_SUN_LIFESPAN_SECONDS = 10.0f;
     public static final float SUN_DESPAWN_WARNING_SECONDS = 3.0f;
-    public static final float SKY_SUN_FALL_SECONDS = 5.0f;
+    public static final float SKY_SUN_FALL_SECONDS = 8.0f;
     public static final float DEFAULT_DROP_LIFESPAN_SECONDS = 10.0f;
     public static final double RADIOACTIVE_SKY_SUN_CHANCE = 0.05;
     public static final double SPECIAL_SKY_SUN_CHANCE = 0.15;

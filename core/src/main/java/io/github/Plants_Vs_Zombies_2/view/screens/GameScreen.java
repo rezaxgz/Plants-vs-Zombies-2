@@ -1,7 +1,10 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -32,11 +35,14 @@ import io.github.Plants_Vs_Zombies_2.controller.CollectionMenuController;
 import io.github.Plants_Vs_Zombies_2.controller.MainController;
 import io.github.Plants_Vs_Zombies_2.controller.PlantSelectionController;
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.Constants;
 import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
 import io.github.Plants_Vs_Zombies_2.model.game.Game;
 import io.github.Plants_Vs_Zombies_2.model.game.PlantPlacementResult;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.SunType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
@@ -54,6 +60,10 @@ public final class GameScreen extends AbstractScreen {
 
     private static final String SUN_ICON = "IMAGE_EFFECTS_SUN_SUN_78X78";
     private static final String GAME_SUN_ICON = "IMAGE_UI_HUD_INGAME_SUN";
+    private static final String BOARD_SUN_SPECIAL =
+            "IMAGE_EFFECTS_SUN_SUN_166X166";
+    private static final String BOARD_SUN_RADIOACTIVE =
+            "IMAGE_EFFECTS_SUN_SUN_203X203";
     private static final String GAME_SUN_BACKGROUND =
             "IMAGE_UI_HUD_INGAME_BACKGROUND_3SLICE";
     private static final String GAME_PLANT_FOOD_ICON =
@@ -90,6 +100,11 @@ public final class GameScreen extends AbstractScreen {
     private static final float PLANT_FOOD_HUD_Y = 586f;
     private static final float PLANT_FOOD_HUD_WIDTH = SUN_HUD_WIDTH;
     private static final float PLANT_FOOD_HUD_HEIGHT = SUN_HUD_HEIGHT;
+    private static final float NORMAL_BOARD_SUN_SIZE = 108f;
+    private static final float SPECIAL_BOARD_SUN_SIZE = 152f;
+    private static final float RADIOACTIVE_BOARD_SUN_SIZE = 164f;
+    private static final float SUN_FALL_SWAY_PIXELS = 5f;
+    private static final float SUN_FLASH_HZ = 1.25f;
 
     private static final BoardLayout EGYPT_BOARD = new BoardLayout(
             "IMAGE_BACKGROUNDS_EGYPT_TEXTURE",
@@ -141,6 +156,9 @@ public final class GameScreen extends AbstractScreen {
     private PlantCollectionItem selectedPlantForPlacement;
     private String plantedPlantRenderSignature = "";
 
+    private Group sunLayer;
+    private final Map<Sun, SunActor> sunActors = new IdentityHashMap<>();
+
     /** Normal model-backed game screen, including resumed saved games. */
     public GameScreen(ScreenNavigator navigator) {
         super(navigator, "");
@@ -158,6 +176,7 @@ public final class GameScreen extends AbstractScreen {
             installPlantingInteraction();
             rebuildSeedTray();
         }
+        installSunRendering();
     }
 
     /** Empty level preview for levels that do not use normal plant choosing. */
@@ -460,6 +479,22 @@ public final class GameScreen extends AbstractScreen {
             }
             return;
         }
+
+        GameMenu menu = currentGameMenu();
+        User user = currentUser();
+        Chapter chapter = menu == null || menu.getChapterId() == null
+                ? null
+                : ChapterCatalog.findById(menu.getChapterId());
+        Level level = menu == null ? null : menu.getLevel();
+        if (user != null && chapter != null && level != null) {
+            // Restart must never resume the checkpoint we are abandoning.
+            // Delete it before entering the normal fresh-level launch flow.
+            SavedGameManager.deleteAdventureGame(
+                    user, menu.getChapterId(), menu.getLevelNumber());
+            navigator.showLevelGamePreview(chapter, level);
+            return;
+        }
+
         closePauseModal();
         navigator.returnToCurrentMenu();
     }
@@ -969,6 +1004,133 @@ public final class GameScreen extends AbstractScreen {
         }
     }
 
+    private void installSunRendering() {
+        if (!isModelBackedGame() || sunLayer != null) {
+            return;
+        }
+        sunLayer = new Group();
+        sunLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(sunLayer);
+        refreshSunRendering();
+    }
+
+    private void refreshSunRendering() {
+        Game game = activeGame();
+        if (game == null || sunLayer == null) {
+            return;
+        }
+
+        List<Sun> currentSuns = game.getBoard().getSuns();
+        IdentityHashMap<Sun, Boolean> present = new IdentityHashMap<>();
+        for (Sun sun : currentSuns) {
+            present.put(sun, Boolean.TRUE);
+            SunActor actor = sunActors.get(sun);
+            if (actor == null) {
+                actor = new SunActor(sun);
+                actor.setTouchable(Touchable.disabled);
+                sunActors.put(sun, actor);
+                sunLayer.addActor(actor);
+            }
+            positionSunActor(actor);
+        }
+
+        Iterator<Map.Entry<Sun, SunActor>> iterator =
+                sunActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Sun, SunActor> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+
+        collectHoveredSuns(currentSuns);
+    }
+
+    private void positionSunActor(SunActor actor) {
+        if (actor == null || actor.sun == null) {
+            return;
+        }
+        CellBounds cell = screenBoundsForCell(actor.sun.getEntityPosition());
+        if (cell == null) {
+            actor.setVisible(false);
+            return;
+        }
+
+        float size = boardSunSize(actor.sun);
+        float centerX = cell.x + cell.width * 0.5f;
+        float targetY = cell.y + cell.height * 0.52f;
+        float centerY = targetY;
+
+        if (actor.sun.isDropping()) {
+            float progress = 1f - actor.sun.getRemainingFallSeconds()
+                    / Constants.SKY_SUN_FALL_SECONDS;
+            progress = Math.max(0f, Math.min(1f, progress));
+            float startY = Gdx.graphics.getHeight() + size * 0.6f;
+            centerY = startY + (targetY - startY) * progress;
+            centerX += (float) Math.sin(progress * Math.PI * 4.0)
+                    * SUN_FALL_SWAY_PIXELS;
+        }
+
+        actor.setBounds(centerX - size * 0.5f,
+                centerY - size * 0.5f, size, size);
+        actor.setVisible(true);
+    }
+
+    private float boardSunSize(Sun sun) {
+        if (sun != null && sun.getType() == SunType.SPECIAL) {
+            return SPECIAL_BOARD_SUN_SIZE;
+        }
+        if (sun != null && sun.getType() == SunType.RADIOACTIVE) {
+            return RADIOACTIVE_BOARD_SUN_SIZE;
+        }
+        return NORMAL_BOARD_SUN_SIZE;
+    }
+
+    private void collectHoveredSuns(List<Sun> currentSuns) {
+        if (!canCollectSuns() || currentSuns == null || currentSuns.isEmpty()) {
+            return;
+        }
+        float mouseX = Gdx.input.getX();
+        float mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
+        List<Sun> hovered = new ArrayList<>();
+        for (Sun sun : currentSuns) {
+            SunActor actor = sunActors.get(sun);
+            if (actor != null && actor.isVisible()
+                    && mouseX >= actor.getX()
+                    && mouseX <= actor.getX() + actor.getWidth()
+                    && mouseY >= actor.getY()
+                    && mouseY <= actor.getY() + actor.getHeight()) {
+                hovered.add(sun);
+            }
+        }
+        if (hovered.isEmpty()) {
+            return;
+        }
+
+        Game game = activeGame();
+        boolean collectedAny = false;
+        for (Sun sun : hovered) {
+            if (game.collectSun(sun)) {
+                collectedAny = true;
+                SunActor actor = sunActors.remove(sun);
+                if (actor != null) {
+                    actor.remove();
+                }
+            }
+        }
+        if (collectedAny) {
+            refreshSunHud();
+        }
+    }
+
+    private boolean canCollectSuns() {
+        return isModelBackedGame()
+                && !gamePaused
+                && pauseModal == null
+                && plantSelectionModal == null;
+    }
+
     private void showPlantSelectionModal() {
         if (plantSelectionModal != null || previewSelection == null) {
             return;
@@ -1397,6 +1559,7 @@ public final class GameScreen extends AbstractScreen {
             activeGame().updatePlantsOnly(plantDelta);
         }
 
+        refreshSunRendering();
         refreshSunHud();
         refreshPlantFoodHud();
         refreshBoardHover();
@@ -1413,6 +1576,7 @@ public final class GameScreen extends AbstractScreen {
         super.resize(width, height);
         if (isModelBackedGame()) {
             rebuildPlantedPlantLayer();
+            refreshSunRendering();
             refreshBoardHover();
             refreshCursorPlantPosition();
         }
@@ -1428,7 +1592,47 @@ public final class GameScreen extends AbstractScreen {
             plantingOverlayPixel.dispose();
             plantingOverlayPixel = null;
         }
+        sunActors.clear();
+        sunLayer = null;
         super.dispose();
+    }
+
+    private final class SunActor extends Actor {
+        private final Sun sun;
+
+        private SunActor(Sun sun) {
+            this.sun = sun;
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (sun == null || sun.isRemoved()) {
+                return;
+            }
+            Color old = new Color(batch.getColor());
+            float alpha = getColor().a * parentAlpha;
+            if (sun.isCloseToDespawning()) {
+                int flashPhase = (int) Math.floor(
+                        sun.getElapsedGroundSeconds() * SUN_FLASH_HZ * 2f);
+                if ((flashPhase & 1) != 0) {
+                    alpha = 0f;
+                }
+            }
+            batch.setColor(getColor().r, getColor().g, getColor().b, alpha);
+            batch.draw(requireAssetRegion(boardSunAsset(sun)),
+                    getX(), getY(), getWidth(), getHeight());
+            batch.setColor(old);
+        }
+    }
+
+    private String boardSunAsset(Sun sun) {
+        if (sun != null && sun.getType() == SunType.SPECIAL) {
+            return BOARD_SUN_SPECIAL;
+        }
+        if (sun != null && sun.getType() == SunType.RADIOACTIVE) {
+            return BOARD_SUN_RADIOACTIVE;
+        }
+        return GAME_SUN_ICON;
     }
 
     private final class CooldownShadeActor extends Actor {

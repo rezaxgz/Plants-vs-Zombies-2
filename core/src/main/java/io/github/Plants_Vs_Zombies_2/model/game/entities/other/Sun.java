@@ -115,12 +115,12 @@ public class Sun extends Entity {
     }
 
     public boolean shouldDespawn() {
-        return !persistent && !isDropping() && elapsedGroundSeconds >= lifeSpanSeconds;
+        return !isDropping() && elapsedGroundSeconds >= lifeSpanSeconds;
     }
 
     public boolean isCloseToDespawning() {
         double remainingSeconds = lifeSpanSeconds - elapsedGroundSeconds;
-        return !persistent && !isDropping() && !shouldDespawn()
+        return !isDropping() && !shouldDespawn()
                 && remainingSeconds <= Constants.SUN_DESPAWN_WARNING_SECONDS;
     }
 

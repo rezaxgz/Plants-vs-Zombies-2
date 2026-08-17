@@ -35,9 +35,10 @@ abstract class GameUpdateLogic extends GameState {
     }
 
     /**
-     * Advances planted entities and seed-packet recharge timers without
-     * advancing the wave controller. The graphical Phase-2 game screen uses
-     * this temporary mode while zombie-wave presentation is still being built.
+     * Advances planted entities, seed-packet recharge timers, and sun timing
+     * without advancing the zombie-wave controller. The graphical Phase-2
+     * game screen uses this temporary mode while zombie-wave presentation is
+     * still being built.
      */
     public void updatePlantsOnly(float deltaSeconds) {
         validateDeltaSeconds(deltaSeconds);
@@ -53,6 +54,8 @@ abstract class GameUpdateLogic extends GameState {
         reportSunLandings();
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
+        elapsedSeconds += deltaSeconds;
+        updateSkySuns();
     }
 
     public void update(float deltaSeconds) {
