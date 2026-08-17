@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import io.github.Plants_Vs_Zombies_2.model.collections.zombies.ZombieCollectionItem;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 
 /**
  * Maps project zombie types to their official PvZ2 Almanac packet art and an
@@ -46,6 +47,10 @@ final class ZombieVisualCatalog {
             return null;
         }
         return VISUALS.get(zombie.getTypeName());
+    }
+
+    static Visual find(ZombieType zombieType) {
+        return zombieType == null ? null : VISUALS.get(zombieType.name());
     }
 
     static String packetAssetFor(ZombieCollectionItem zombie) {

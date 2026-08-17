@@ -44,6 +44,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.SunType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
@@ -159,6 +160,10 @@ public final class GameScreen extends AbstractScreen {
     private Group sunLayer;
     private final Map<Sun, SunActor> sunActors = new IdentityHashMap<>();
 
+    private Group zombieLayer;
+    private final Map<Zombie, ZombiePamActor> zombieActors =
+            new IdentityHashMap<>();
+
     /** Normal model-backed game screen, including resumed saved games. */
     public GameScreen(ScreenNavigator navigator) {
         super(navigator, "");
@@ -176,6 +181,7 @@ public final class GameScreen extends AbstractScreen {
             installPlantingInteraction();
             rebuildSeedTray();
         }
+        installZombieRendering();
         installSunRendering();
     }
 
@@ -1004,6 +1010,148 @@ public final class GameScreen extends AbstractScreen {
         }
     }
 
+    private void installZombieRendering() {
+        if (!isModelBackedGame() || zombieLayer != null) {
+            return;
+        }
+        zombieLayer = new Group();
+        zombieLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(zombieLayer);
+        refreshZombieRendering();
+    }
+
+    private void refreshZombieRendering() {
+        Game game = activeGame();
+        if (game == null || zombieLayer == null) {
+            return;
+        }
+
+        List<Zombie> currentZombies = game.getBoard().getZombies();
+        IdentityHashMap<Zombie, Boolean> present = new IdentityHashMap<>();
+        for (Zombie zombie : currentZombies) {
+            if (zombie == null || zombie.isDead() || zombie.isRemoved()) {
+                continue;
+            }
+            present.put(zombie, Boolean.TRUE);
+            ZombiePamActor actor = zombieActors.get(zombie);
+            if (actor == null) {
+                ZombieVisualCatalog.Visual visual =
+                        ZombieVisualCatalog.find(zombie.getType());
+                if (visual == null) {
+                    continue;
+                }
+                try {
+                    actor = new ZombiePamActor(
+                            navigator.getPamPlayer(), zombie, visual);
+                } catch (RuntimeException ignored) {
+                    // A missing optional PAM should not stop the game model.
+                    continue;
+                }
+                actor.setTouchable(Touchable.disabled);
+                zombieActors.put(zombie, actor);
+                zombieLayer.addActor(actor);
+            }
+            actor.setEating(isZombieEatingPlant(game, zombie));
+            positionZombieActor(actor, zombie);
+        }
+
+        Iterator<Map.Entry<Zombie, ZombiePamActor>> iterator =
+                zombieActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Zombie, ZombiePamActor> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+    }
+
+    private boolean isZombieEatingPlant(Game game, Zombie zombie) {
+        if (game == null || zombie == null || zombie.isDead()
+                || zombie.isHypnotized() || zombie.isFrozen()
+                || zombie.isStunned() || zombie.isEncasedInIce()) {
+            return false;
+        }
+
+        BasePlant nearest = null;
+        int nearestColumn = -1;
+        for (BasePlant plant : game.getBoard().getPlants()) {
+            if (plant == null || plant.isRemoved() || plant.isDestroyed()
+                    || plant.isTransformedToSheep()
+                    || plant.getEntityPosition() == null
+                    || plant.getEntityPosition().getRow() != zombie.getLane()) {
+                continue;
+            }
+            int column = plant.getEntityPosition().getColumn();
+            if (column <= zombie.getColumnPosition() + 0.001
+                    && column > nearestColumn) {
+                nearest = plant;
+                nearestColumn = column;
+            }
+        }
+        if (nearest == null) {
+            return false;
+        }
+        double attackColumn = nearest.getEntityPosition().getColumn()
+                + Zombie.ATTACK_REACH;
+        return zombie.getColumnPosition() <= attackColumn + 0.001;
+    }
+
+    private void positionZombieActor(ZombiePamActor actor, Zombie zombie) {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (actor == null || zombie == null || layout == null
+                || Gdx.graphics.getWidth() <= 0
+                || Gdx.graphics.getHeight() <= 0) {
+            return;
+        }
+
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom)
+                / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+
+        float centerX = boardX
+                + (float) (zombie.getColumnPosition() + 0.5) * cellWidth;
+        float laneBottom = boardY
+                + (BOARD_ROWS - 1 - zombie.getLane()) * cellHeight;
+
+        float widthScale = zombie.getType().isLarge() ? 1.55f : 1.08f;
+        float heightScale = zombie.getType().isLarge() ? 2.25f : 1.62f;
+        switch (zombie.getType()) {
+        case IMP:
+        case EGYPT_IMP:
+        case ICEAGE_IMP:
+        case BEACH_IMP:
+        case DARK_IMP:
+        case DRAGON_IMP:
+        case WEASEL:
+            widthScale = 0.88f;
+            heightScale = 1.22f;
+            break;
+        default:
+            break;
+        }
+
+        float width = cellWidth * widthScale;
+        float height = cellHeight * heightScale;
+        // Keep the zombie feet slightly inside their model lane. The previous
+        // full-cell offset was compensating for the old PAM Y-axis anchoring
+        // bug; now that the PAM foot anchor is correct, that extra lane shift
+        // would place every zombie one row too low.
+        float footLine = laneBottom + cellHeight * 0.18f;
+        actor.setBounds(centerX - width * 0.5f,
+                footLine, width, height);
+        actor.setVisible(true);
+    }
+
     private void installSunRendering() {
         if (!isModelBackedGame() || sunLayer != null) {
             return;
@@ -1567,9 +1715,10 @@ public final class GameScreen extends AbstractScreen {
         if (isModelBackedGame() && !gamePaused) {
             float gameDelta = Math.min(delta, 1f / 15f)
                     * currentGameSpeed();
-            activeGame().updatePlantsOnly(gameDelta);
+            activeGame().update(gameDelta);
         }
 
+        refreshZombieRendering();
         refreshSunRendering();
         refreshSunHud();
         refreshPlantFoodHud();
@@ -1587,6 +1736,7 @@ public final class GameScreen extends AbstractScreen {
         super.resize(width, height);
         if (isModelBackedGame()) {
             rebuildPlantedPlantLayer();
+            refreshZombieRendering();
             refreshSunRendering();
             refreshBoardHover();
             refreshCursorPlantPosition();
@@ -1605,6 +1755,8 @@ public final class GameScreen extends AbstractScreen {
         }
         sunActors.clear();
         sunLayer = null;
+        zombieActors.clear();
+        zombieLayer = null;
         super.dispose();
     }
 
