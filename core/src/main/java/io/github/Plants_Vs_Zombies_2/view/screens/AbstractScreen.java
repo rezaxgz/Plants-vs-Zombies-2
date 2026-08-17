@@ -366,6 +366,15 @@ public abstract class AbstractScreen implements Screen {
         return true;
     }
 
+    /**
+     * Multiplier applied to Scene2D time on this screen. Normal menus stay at
+     * real-time speed; GameScreen overrides this so PAM clips and any other
+     * game-screen actions use the player's 1x/2x/3x game-speed setting.
+     */
+    protected float getSceneTimeScale() {
+        return 1f;
+    }
+
     @Override
     public void render(float delta) {
         refreshResourceLabels();
@@ -373,8 +382,9 @@ public abstract class AbstractScreen implements Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         float frameDelta = Math.min(delta, 1f / 15f);
         if (shouldAdvanceScene()) {
-            backgroundStage.act(frameDelta);
-            stage.act(frameDelta);
+            float sceneDelta = frameDelta * Math.max(0f, getSceneTimeScale());
+            backgroundStage.act(sceneDelta);
+            stage.act(sceneDelta);
         }
         drawFullWindowBackground();
         backgroundStage.draw();

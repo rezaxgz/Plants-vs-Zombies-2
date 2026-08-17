@@ -1543,20 +1543,31 @@ public final class GameScreen extends AbstractScreen {
         button.getColor().a = enabled ? 1f : 0.48f;
     }
 
+    private float currentGameSpeed() {
+        User user = currentUser();
+        if (user == null || user.getSettings() == null) {
+            return 1f;
+        }
+        return Math.max(1f, Math.min(3f,
+                user.getSettings().getGameSpeed()));
+    }
+
     @Override
     protected boolean shouldAdvanceScene() {
         return !gamePaused;
     }
 
     @Override
+    protected float getSceneTimeScale() {
+        return currentGameSpeed();
+    }
+
+    @Override
     public void render(float delta) {
         if (isModelBackedGame() && !gamePaused) {
-            User user = currentUser();
-            float gameSpeed = user == null
-                    ? 1f
-                    : user.getSettings().getGameSpeed();
-            float plantDelta = Math.min(delta, 1f / 15f) * gameSpeed;
-            activeGame().updatePlantsOnly(plantDelta);
+            float gameDelta = Math.min(delta, 1f / 15f)
+                    * currentGameSpeed();
+            activeGame().updatePlantsOnly(gameDelta);
         }
 
         refreshSunRendering();
