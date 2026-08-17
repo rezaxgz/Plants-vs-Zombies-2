@@ -153,14 +153,17 @@ public final class GreenhouseMenuController {
         String message;
         if (plant.isMarigold()) {
             user.addCoins(MARIGOLD_REWARD_COINS);
-            message = "harvested marigold! gained 500 coins";
+            message = "Collected Marigold!\nReward: +"
+                    + MARIGOLD_REWARD_COINS + " coins";
         } else {
             boolean stored = user.addPlantBoost(plant.getPlantName());
             message = stored
-                    ? "harvested " + plant.getPlantName()
-                            + "! stored 1 boost for a later level"
-                    : "harvested " + plant.getPlantName()
-                            + "; its greenhouse boost was already stored";
+                    ? "Collected " + plant.getPlantName()
+                            + "!\nReward: +1 greenhouse boost for "
+                            + plant.getPlantName()
+                    : "Collected " + plant.getPlantName()
+                            + "!\nReward already stored: 1 greenhouse boost for "
+                            + plant.getPlantName();
         }
         UserManager.saveAllUsers();
         return CommandResult.success(message);

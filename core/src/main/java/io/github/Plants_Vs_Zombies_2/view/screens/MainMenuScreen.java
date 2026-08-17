@@ -84,7 +84,7 @@ public final class MainMenuScreen extends AbstractScreen {
     private Table profileEditModal;
 
     public MainMenuScreen(ScreenNavigator navigator) {
-        super(navigator, "Main Menu");
+        super(navigator, welcomeTitle());
         setBackground(MAIN_MENU_BACKGROUND);
 
         ImageButton logout = imageButton("previous", "Logout");
@@ -178,6 +178,15 @@ public final class MainMenuScreen extends AbstractScreen {
         navigation.add(leaderboard).size(82f).right().bottom();
         navigation.add(profile).size(72f).right().bottom();
         navigation.add(settings).size(78f).right().bottom();
+    }
+
+    private static String welcomeTitle() {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null || user.getNickName() == null
+                || user.getNickName().isBlank()) {
+            return "Welcome!";
+        }
+        return "Welcome " + user.getNickName() + "!";
     }
 
     private void buildMainContent() {
