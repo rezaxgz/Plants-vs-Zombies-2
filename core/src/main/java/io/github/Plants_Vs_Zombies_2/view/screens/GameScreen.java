@@ -28,6 +28,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton.TextButtonStyle;
 import com.badlogic.gdx.scenes.scene2d.ui.TextTooltip;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
 
@@ -79,6 +80,12 @@ public final class GameScreen extends AbstractScreen {
     private static final String DIAMOND_ICON =
             "IMAGE_EFFECTS_COIN_DIAMOND_COIN_DIAMOND_141X146";
     private static final String BOOST_PACKET = "IMAGE_UI_PACKETS_BOOST";
+    private static final String SELECTION_BACK_BUTTON_UP =
+            "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_BACK_NORMAL";
+    private static final String SELECTION_BACK_BUTTON_DOWN =
+            "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_BACK_SELECTED";
+    private static final String RESET_COOLDOWNS_BUTTON =
+            "IMAGE_UI_CHOOSER_SEED_CHOOSER_RECALL_BUTTON_ICON";
     private static final String EGYPT_PACKET = "IMAGE_UI_PACKETS_EGYPT";
     private static final String ICEAGE_PACKET = "IMAGE_UI_PACKETS_ICEAGE";
     private static final String BEACH_PACKET = "IMAGE_UI_PACKETS_BEACH";
@@ -93,6 +100,12 @@ public final class GameScreen extends AbstractScreen {
     private static final float PAUSE_BUTTON_X = 44f;
     private static final float PAUSE_BUTTON_Y = 650f;
     private static final float PAUSE_BUTTON_SIZE = 58f;
+    private static final float SELECTION_BACK_BUTTON_X = PAUSE_BUTTON_X;
+    private static final float SELECTION_BACK_BUTTON_Y = PAUSE_BUTTON_Y;
+    private static final float SELECTION_BACK_BUTTON_SIZE = PAUSE_BUTTON_SIZE;
+    private static final float RESET_COOLDOWNS_BUTTON_X = 47f;
+    private static final float RESET_COOLDOWNS_BUTTON_Y = 14f;
+    private static final float RESET_COOLDOWNS_BUTTON_SIZE = 54f;
     private static final float SUN_HUD_X = 210f;
     private static final float SUN_HUD_Y = 648f;
     private static final float SUN_HUD_WIDTH = 218f;
@@ -139,6 +152,8 @@ public final class GameScreen extends AbstractScreen {
     private Label selectionFeedbackLabel;
     private PlantCollectionItem focusedPlant;
     private ImageButton pauseButton;
+    private ImageButton selectionBackButton;
+    private Button resetCooldownsButton;
     private Table sunHud;
     private Label sunAmountLabel;
     private Table plantFoodHud;
@@ -178,6 +193,7 @@ public final class GameScreen extends AbstractScreen {
 
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
+            installCooldownResetButton();
             installPlantingInteraction();
             rebuildSeedTray();
         }
@@ -314,7 +330,8 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         boolean debugMode = isDebugMode();
-        plantFoodAmountLabel.setText(Integer.toString(currentPlantFoodCount()));
+        plantFoodAmountLabel.setText(currentPlantFoodCount() + "/"
+                + currentMaximumPlantFoodCount());
         if (plantFoodHud.getChildren().size > 0
                 && debugMode == plantFoodHudDebugMode) {
             return;
@@ -348,9 +365,17 @@ public final class GameScreen extends AbstractScreen {
 
     private int currentPlantFoodCount() {
         if (previewLevel != null) {
-            return previewPlantFoodCount;
+            return Math.min(previewPlantFoodCount, PREVIEW_MAX_PLANT_FOOD);
         }
-        return currentGameMenu().getGame().getPlantFoodCount();
+        return Math.min(currentGameMenu().getGame().getPlantFoodCount(),
+                currentMaximumPlantFoodCount());
+    }
+
+    private int currentMaximumPlantFoodCount() {
+        if (previewLevel != null) {
+            return PREVIEW_MAX_PLANT_FOOD;
+        }
+        return currentGameMenu().getGame().getMaximumPlantFoodCount();
     }
 
     private int currentSunCount() {
@@ -380,9 +405,8 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         if (previewLevel != null) {
-            if (previewPlantFoodCount < PREVIEW_MAX_PLANT_FOOD) {
-                previewPlantFoodCount += DEBUG_PLANT_FOOD_INCREMENT;
-            }
+            previewPlantFoodCount = Math.min(PREVIEW_MAX_PLANT_FOOD,
+                    previewPlantFoodCount + DEBUG_PLANT_FOOD_INCREMENT);
         } else {
             currentGameMenu().getGame().addPlantFood();
         }
@@ -542,6 +566,27 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(seedTray);
     }
 
+    private void installCooldownResetButton() {
+        if (!isModelBackedGame() || resetCooldownsButton != null) {
+            return;
+        }
+        resetCooldownsButton = createAssetButton(RESET_COOLDOWNS_BUTTON, () -> {
+            Game game = activeGame();
+            if (game == null || gamePaused || pauseModal != null
+                    || plantSelectionModal != null) {
+                return;
+            }
+            game.removePlantCooldowns();
+            rebuildSeedTray();
+        });
+        resetCooldownsButton.setBounds(RESET_COOLDOWNS_BUTTON_X,
+                RESET_COOLDOWNS_BUTTON_Y, RESET_COOLDOWNS_BUTTON_SIZE,
+                RESET_COOLDOWNS_BUTTON_SIZE);
+        resetCooldownsButton.addListener(new TextTooltip(
+                "Reset all plant cooldowns", skin));
+        stage.addActor(resetCooldownsButton);
+    }
+
     private void rebuildSeedTray() {
         if (seedTray == null) {
             return;
@@ -643,6 +688,12 @@ public final class GameScreen extends AbstractScreen {
                 cooldownShade.setTouchable(Touchable.disabled);
                 slot.add(cooldownShade);
             }
+
+            SunAffordabilityShadeActor affordabilityShade =
+                    new SunAffordabilityShadeActor(plant);
+            affordabilityShade.setTouchable(Touchable.disabled);
+            slot.add(affordabilityShade);
+
             if (isSelectedForPlacement(plant)) {
                 SelectionOutlineActor outline = new SelectionOutlineActor();
                 outline.setTouchable(Touchable.disabled);
@@ -757,7 +808,8 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         BasePlant prototype = loadoutPrototypeFor(plant.getName());
-        if (prototype == null || isPlantCoolingDown(prototype)) {
+        if (prototype == null || isPlantCoolingDown(prototype)
+                || plant.getCost() > currentSunCount()) {
             return;
         }
         selectedPlantForPlacement = plant;
@@ -911,6 +963,11 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void refreshCursorPlantPosition() {
+        if (selectedPlantForPlacement != null
+                && selectedPlantForPlacement.getCost() > currentSunCount()) {
+            clearSelectedPlantForPlacement();
+            return;
+        }
         if (cursorPlantActor == null) {
             return;
         }
@@ -1289,6 +1346,10 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         focusedPlant = firstFocusablePlant();
+        installSelectionBackButton();
+        if (pauseButton != null) {
+            pauseButton.setVisible(false);
+        }
 
         plantSelectionModal = new Group();
         plantSelectionModal.setBounds(0f, 0f, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
@@ -1346,7 +1407,39 @@ public final class GameScreen extends AbstractScreen {
         plantSelectionModal.addActor(letsRock);
 
         stage.addActor(plantSelectionModal);
+        if (selectionBackButton != null) {
+            selectionBackButton.toFront();
+        }
         refreshPlantSelectionUi();
+    }
+
+    private void installSelectionBackButton() {
+        if (selectionBackButton != null) {
+            selectionBackButton.setVisible(true);
+            return;
+        }
+
+        ImageButton.ImageButtonStyle style = new ImageButton.ImageButtonStyle();
+        style.imageUp = new TextureRegionDrawable(
+                requireAssetRegion(SELECTION_BACK_BUTTON_UP));
+        style.imageDown = new TextureRegionDrawable(
+                requireAssetRegion(SELECTION_BACK_BUTTON_DOWN));
+        style.imageOver = style.imageDown;
+
+        selectionBackButton = new ImageButton(style);
+        selectionBackButton.getImage().setScaling(Scaling.fit);
+        selectionBackButton.setBounds(SELECTION_BACK_BUTTON_X,
+                SELECTION_BACK_BUTTON_Y, SELECTION_BACK_BUTTON_SIZE,
+                SELECTION_BACK_BUTTON_SIZE);
+        selectionBackButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                navigator.exitGameToAdventure();
+            }
+        });
+        selectionBackButton.addListener(new TextTooltip(
+                "Back to Adventure", skin));
+        stage.addActor(selectionBackButton);
     }
 
     private PlantCollectionItem firstFocusablePlant() {
@@ -1610,6 +1703,12 @@ public final class GameScreen extends AbstractScreen {
         detailPanel = null;
         selectionCountLabel = null;
         selectionFeedbackLabel = null;
+        if (selectionBackButton != null) {
+            selectionBackButton.setVisible(false);
+        }
+        if (pauseButton != null) {
+            pauseButton.setVisible(true);
+        }
         rebuildSeedTray();
     }
 
@@ -1818,6 +1917,27 @@ public final class GameScreen extends AbstractScreen {
             batch.setColor(0f, 0f, 0f, 0.68f * parentAlpha);
             batch.draw(plantingOverlayPixel,
                     getX(), getY(), getWidth(), getHeight() * fraction);
+            batch.setColor(previous);
+        }
+    }
+
+    private final class SunAffordabilityShadeActor extends Actor {
+        private final PlantCollectionItem plant;
+
+        private SunAffordabilityShadeActor(PlantCollectionItem plant) {
+            this.plant = plant;
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (plantingOverlayPixel == null || plant == null
+                    || plant.getCost() <= currentSunCount()) {
+                return;
+            }
+            Color previous = new Color(batch.getColor());
+            batch.setColor(0f, 0f, 0f, 0.52f * parentAlpha);
+            batch.draw(plantingOverlayPixel,
+                    getX(), getY(), getWidth(), getHeight());
             batch.setColor(previous);
         }
     }
