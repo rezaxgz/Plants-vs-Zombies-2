@@ -50,9 +50,13 @@ public final class GameScreen extends AbstractScreen {
     private static final String GAME_SUN_ICON = "IMAGE_UI_HUD_INGAME_SUN";
     private static final String GAME_SUN_BACKGROUND =
             "IMAGE_UI_HUD_INGAME_BACKGROUND_3SLICE";
+    private static final String GAME_PLANT_FOOD_ICON =
+            "IMAGE_UI_HUD_INGAME_PLANTFOOD_BUTTON";
     private static final String DEBUG_PLUS_ICON =
             "IMAGE_UI_HUD_INGAME_COIN_BUY";
     private static final int DEBUG_SUN_INCREMENT = 200;
+    private static final int DEBUG_PLANT_FOOD_INCREMENT = 1;
+    private static final int PREVIEW_MAX_PLANT_FOOD = 3;
     private static final String COIN_ICON =
             "IMAGE_UI_THYMED_EVENTS_ECS_CONVRT_COIN";
     private static final String DIAMOND_ICON =
@@ -76,6 +80,10 @@ public final class GameScreen extends AbstractScreen {
     private static final float SUN_HUD_Y = 648f;
     private static final float SUN_HUD_WIDTH = 218f;
     private static final float SUN_HUD_HEIGHT = 60f;
+    private static final float PLANT_FOOD_HUD_X = SUN_HUD_X;
+    private static final float PLANT_FOOD_HUD_Y = 586f;
+    private static final float PLANT_FOOD_HUD_WIDTH = SUN_HUD_WIDTH;
+    private static final float PLANT_FOOD_HUD_HEIGHT = SUN_HUD_HEIGHT;
 
     private static final BoardLayout EGYPT_BOARD = new BoardLayout(
             "IMAGE_BACKGROUNDS_EGYPT_TEXTURE",
@@ -111,10 +119,14 @@ public final class GameScreen extends AbstractScreen {
     private ImageButton pauseButton;
     private Table sunHud;
     private Label sunAmountLabel;
+    private Table plantFoodHud;
+    private Label plantFoodAmountLabel;
     private Group pauseModal;
     private boolean gamePaused;
     private boolean sunHudDebugMode;
+    private boolean plantFoodHudDebugMode;
     private int previewSunCount;
+    private int previewPlantFoodCount;
 
     /** Normal model-backed game screen, including resumed saved games. */
     public GameScreen(ScreenNavigator navigator) {
@@ -172,6 +184,7 @@ public final class GameScreen extends AbstractScreen {
     private void installGameHud() {
         installPauseButton();
         installSunHud();
+        installPlantFoodHud();
     }
 
     private void installPauseButton() {
@@ -199,6 +212,20 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(sunHud);
         sunHudDebugMode = !isDebugMode();
         refreshSunHud();
+    }
+
+    private void installPlantFoodHud() {
+        plantFoodAmountLabel = new Label("0", skin, "medium_outline");
+        plantFoodAmountLabel.setFontScale(1.05f);
+        plantFoodAmountLabel.setAlignment(Align.center);
+
+        plantFoodHud = new Table();
+        plantFoodHud.left();
+        plantFoodHud.setBounds(PLANT_FOOD_HUD_X, PLANT_FOOD_HUD_Y,
+                PLANT_FOOD_HUD_WIDTH, PLANT_FOOD_HUD_HEIGHT);
+        stage.addActor(plantFoodHud);
+        plantFoodHudDebugMode = !isDebugMode();
+        refreshPlantFoodHud();
     }
 
     private boolean isDebugMode() {
@@ -243,6 +270,50 @@ public final class GameScreen extends AbstractScreen {
         sunHud.invalidateHierarchy();
     }
 
+    private void refreshPlantFoodHud() {
+        if (plantFoodHud == null || plantFoodAmountLabel == null) {
+            return;
+        }
+        boolean debugMode = isDebugMode();
+        plantFoodAmountLabel.setText(Integer.toString(currentPlantFoodCount()));
+        if (plantFoodHud.getChildren().size > 0
+                && debugMode == plantFoodHudDebugMode) {
+            return;
+        }
+
+        plantFoodHudDebugMode = debugMode;
+        plantFoodHud.clearChildren();
+
+        Stack amountStack = new Stack();
+        Image background = createAssetImage(GAME_SUN_BACKGROUND);
+        background.setScaling(Scaling.stretch);
+        amountStack.add(background);
+
+        Table amountContents = new Table();
+        amountContents.left();
+        Image plantFood = createAssetImage(GAME_PLANT_FOOD_ICON);
+        plantFood.setScaling(Scaling.fit);
+        amountContents.add(plantFood).size(56f).padLeft(2f).padRight(-4f);
+        amountContents.add(plantFoodAmountLabel).width(76f).center();
+        amountStack.add(amountContents);
+
+        plantFoodHud.add(amountStack).width(150f).height(50f);
+
+        if (debugMode) {
+            Button plus = createAssetButton(DEBUG_PLUS_ICON,
+                    this::addDebugPlantFood);
+            plantFoodHud.add(plus).size(42f).padLeft(-5f);
+        }
+        plantFoodHud.invalidateHierarchy();
+    }
+
+    private int currentPlantFoodCount() {
+        if (previewLevel != null) {
+            return previewPlantFoodCount;
+        }
+        return currentGameMenu().getGame().getPlantFoodCount();
+    }
+
     private int currentSunCount() {
         if (previewLevel != null) {
             return previewSunCount;
@@ -263,6 +334,20 @@ public final class GameScreen extends AbstractScreen {
             currentGameMenu().getGame().addSun(DEBUG_SUN_INCREMENT);
         }
         refreshSunHud();
+    }
+
+    private void addDebugPlantFood() {
+        if (!isDebugMode()) {
+            return;
+        }
+        if (previewLevel != null) {
+            if (previewPlantFoodCount < PREVIEW_MAX_PLANT_FOOD) {
+                previewPlantFoodCount += DEBUG_PLANT_FOOD_INCREMENT;
+            }
+        } else {
+            currentGameMenu().getGame().addPlantFood();
+        }
+        refreshPlantFoodHud();
     }
 
     private void showPauseModal() {
@@ -920,6 +1005,7 @@ public final class GameScreen extends AbstractScreen {
     @Override
     public void render(float delta) {
         refreshSunHud();
+        refreshPlantFoodHud();
         if (previewLevel == null) {
             currentGameMenu().synchronizeProgress();
         }
