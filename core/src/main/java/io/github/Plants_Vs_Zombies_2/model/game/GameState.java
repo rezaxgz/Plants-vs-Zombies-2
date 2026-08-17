@@ -52,6 +52,7 @@ abstract class GameState implements java.io.Serializable {
     boolean skySunsDisabled;
     String skySunDisabledReason = "";
     boolean zombieWavesStarted;
+    transient boolean guiWaveAdvanceHeld;
     final List<ZombieWave> zombieWaves;
     final List<List<Zombie>> spawnedZombiesByWave;
     final List<String> pendingResults = new ArrayList<>();

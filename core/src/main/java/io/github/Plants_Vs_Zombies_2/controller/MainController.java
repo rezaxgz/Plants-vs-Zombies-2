@@ -433,12 +433,12 @@ public final class MainController {
         if (level.getSpecialLevelType() == SpecialLevelType.CONVEYOR_BELT) {
             return launchAdventureGame(chapter, level,
                     Map.of(), List.of(),
-                    "Conveyor Belt levels skip plant selection.", true);
+                    "Conveyor Belt levels skip plant selection.", false);
         }
         if (level.getSpecialLevelType() == SpecialLevelType.LOCKED_PLANTS) {
             return launchAdventureGame(chapter, level,
                     createForcedLoadout(user, level), List.of(),
-                    "Locked Plants uses its fixed plant loadout.", true);
+                    "Locked Plants uses its fixed plant loadout.", false);
         }
         if (selection == null || selection.getSelectedPlants().isEmpty()) {
             return CommandResult.error(
@@ -446,7 +446,7 @@ public final class MainController {
         }
         return launchAdventureGame(chapter, level,
                 selection.getSelectedPlantLevels(),
-                selection.getBoostedPlantNames(), null, true);
+                selection.getBoostedPlantNames(), null, false);
     }
 
     static CommandResult launchAdventureGame(

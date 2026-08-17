@@ -9,8 +9,10 @@ import java.util.Map;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.TextureData;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
@@ -37,13 +39,20 @@ import io.github.Plants_Vs_Zombies_2.controller.CollectionMenuController;
 import io.github.Plants_Vs_Zombies_2.controller.MainController;
 import io.github.Plants_Vs_Zombies_2.controller.PlantSelectionController;
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.Constants;
 import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
 import io.github.Plants_Vs_Zombies_2.model.game.Game;
 import io.github.Plants_Vs_Zombies_2.model.game.ZombieWave;
 import io.github.Plants_Vs_Zombies_2.model.game.PlantPlacementResult;
+import io.github.Plants_Vs_Zombies_2.model.game.RewardCollectionResult;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Coin;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.CollectibleDrop;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Diamond;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.PlantFoodDrop;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.PotDrop;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.SunType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
@@ -88,6 +97,10 @@ public final class GameScreen extends AbstractScreen {
             "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_BACK_SELECTED";
     private static final String RESET_COOLDOWNS_BUTTON =
             "IMAGE_UI_CHOOSER_SEED_CHOOSER_RECALL_BUTTON_ICON";
+    private static final String SHOVEL_BUTTON_IMAGE_ID =
+            "IMAGE_UI_HUD_INGAME_SHOVEL_BUTTON";
+    private static final String SHOVEL_CURSOR_IMAGE_ID =
+            "IMAGE_ZEN_GARDEN_CURSORS_REMOVAL_CURSOR_REMOVAL_CURSOR_133X115";
     private static final String WAVE_PROGRESS_ZOMBIE_HEAD =
             "IMAGE_UI_HUD_INGAME_PROGRESS_METER_ZOMBIEHEAD";
     private static final String WAVE_PROGRESS_FLAG_POLE =
@@ -114,6 +127,9 @@ public final class GameScreen extends AbstractScreen {
     private static final float RESET_COOLDOWNS_BUTTON_X = 47f;
     private static final float RESET_COOLDOWNS_BUTTON_Y = 14f;
     private static final float RESET_COOLDOWNS_BUTTON_SIZE = 54f;
+    private static final float SHOVEL_BUTTON_X = VIRTUAL_WIDTH - 104f;
+    private static final float SHOVEL_BUTTON_Y = 16f;
+    private static final float SHOVEL_BUTTON_SIZE = 76f;
     private static final float WAVE_PROGRESS_X = 440f;
     private static final float WAVE_PROGRESS_Y = 8f;
     private static final float WAVE_PROGRESS_WIDTH = 400f;
@@ -131,6 +147,17 @@ public final class GameScreen extends AbstractScreen {
     private static final float RADIOACTIVE_BOARD_SUN_SIZE = 164f;
     private static final float SUN_FALL_SWAY_PIXELS = 5f;
     private static final float SUN_FLASH_HZ = 1.25f;
+    private static final float PLANT_FOOD_DROP_SIZE = 72f;
+    private static final float REWARD_NOTICE_SECONDS = 3f;
+    private static final float GAME_ANNOUNCEMENT_SECONDS = 3f;
+    private static final String FIRST_WAVE_ANNOUNCEMENT =
+            "ZOMBIES ARE COMING!";
+    private static final String NEXT_WAVE_ANNOUNCEMENT =
+            "A HUGE WAVE OF ZOMBIES IS APPROACHING!";
+    private static final String NECROMANCY_ANNOUNCEMENT =
+            "NECROMANCY!";
+    private static final String LOW_BEACH_ANNOUNCEMENT =
+            "ZOMBIES ARE EMERGING FROM THE LOW BEACH!";
 
     private static final BoardLayout EGYPT_BOARD = new BoardLayout(
             "IMAGE_BACKGROUNDS_EGYPT_TEXTURE",
@@ -166,6 +193,11 @@ public final class GameScreen extends AbstractScreen {
     private ImageButton pauseButton;
     private ImageButton selectionBackButton;
     private Button resetCooldownsButton;
+    private Button shovelButton;
+    private Image fallbackShovelCursor;
+    private Cursor shovelCursor;
+    private boolean shovelMode;
+    private boolean usingFallbackShovelCursor;
     private WaveProgressActor waveProgressActor;
     private Table sunHud;
     private Label sunAmountLabel;
@@ -188,9 +220,21 @@ public final class GameScreen extends AbstractScreen {
     private Group sunLayer;
     private final Map<Sun, SunActor> sunActors = new IdentityHashMap<>();
 
+    private Group collectibleDropLayer;
+    private final Map<PlantFoodDrop, PlantFoodDropActor> plantFoodDropActors =
+            new IdentityHashMap<>();
+    private Label rewardNoticeLabel;
+    private float rewardNoticeRemainingSeconds;
+
     private Group zombieLayer;
     private final Map<Zombie, ZombiePamActor> zombieActors =
             new IdentityHashMap<>();
+
+    private Label gameAnnouncementLabel;
+    private final List<String> queuedGameAnnouncements = new ArrayList<>();
+    private float gameAnnouncementRemainingSeconds;
+    private int pendingAnnouncementWaveNumber;
+    private boolean startZombieWavesAfterAnnouncement;
 
     /** Normal model-backed game screen, including resumed saved games. */
     public GameScreen(ScreenNavigator navigator) {
@@ -208,11 +252,15 @@ public final class GameScreen extends AbstractScreen {
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
             installCooldownResetButton();
-            installPlantingInteraction();
             rebuildSeedTray();
         }
+        installPlantingInteraction();
+        installShovelButton();
         installZombieRendering();
         installSunRendering();
+        installCollectibleDropRendering();
+        installRewardNotice();
+        installGameAnnouncementSystem();
     }
 
     /** Empty level preview for levels that do not use normal plant choosing. */
@@ -431,6 +479,9 @@ public final class GameScreen extends AbstractScreen {
         if (pauseModal != null || plantSelectionModal != null) {
             return;
         }
+        if (shovelMode) {
+            setShovelMode(false);
+        }
         gamePaused = true;
 
         pauseModal = new Group();
@@ -543,6 +594,118 @@ public final class GameScreen extends AbstractScreen {
         navigator.returnToCurrentMenu();
     }
 
+    private void installGameAnnouncementSystem() {
+        Game game = activeGame();
+        if (game == null || gameAnnouncementLabel != null) {
+            return;
+        }
+
+        game.setGuiWaveAdvanceHeld(true);
+
+        gameAnnouncementLabel = new Label("", skin, "big_outline");
+        gameAnnouncementLabel.setAlignment(Align.center);
+        gameAnnouncementLabel.setWrap(true);
+        gameAnnouncementLabel.setColor(Color.SCARLET);
+        gameAnnouncementLabel.setFontScale(1.05f);
+        gameAnnouncementLabel.setBounds(220f, 286f, 840f, 148f);
+        gameAnnouncementLabel.setTouchable(Touchable.disabled);
+        gameAnnouncementLabel.setVisible(false);
+        stage.addActor(gameAnnouncementLabel);
+
+        if (!game.haveZombieWavesStarted()) {
+            queueWaveAnnouncements(1, true);
+        } else {
+            maybeQueueReadyWaveAnnouncement();
+        }
+    }
+
+    private void queueWaveAnnouncements(int waveNumber,
+            boolean startWavesWhenFinished) {
+        Game game = activeGame();
+        if (game == null || waveNumber <= 0
+                || pendingAnnouncementWaveNumber != 0) {
+            return;
+        }
+
+        queuedGameAnnouncements.clear();
+        queuedGameAnnouncements.add(waveNumber == 1
+                ? FIRST_WAVE_ANNOUNCEMENT
+                : NEXT_WAVE_ANNOUNCEMENT);
+        if (game.willNextWaveTriggerNecromancy()) {
+            queuedGameAnnouncements.add(NECROMANCY_ANNOUNCEMENT);
+        }
+        if (game.willNextWaveTriggerLowBeachEmergence()) {
+            queuedGameAnnouncements.add(LOW_BEACH_ANNOUNCEMENT);
+        }
+
+        pendingAnnouncementWaveNumber = waveNumber;
+        startZombieWavesAfterAnnouncement = startWavesWhenFinished;
+        showNextQueuedGameAnnouncement();
+    }
+
+    private void showNextQueuedGameAnnouncement() {
+        if (gameAnnouncementLabel == null) {
+            return;
+        }
+        if (queuedGameAnnouncements.isEmpty()) {
+            gameAnnouncementLabel.setText("");
+            gameAnnouncementLabel.setVisible(false);
+            gameAnnouncementRemainingSeconds = 0f;
+            finishWaveAnnouncementSequence();
+            return;
+        }
+
+        String text = queuedGameAnnouncements.remove(0);
+        gameAnnouncementLabel.setText(text);
+        gameAnnouncementLabel.setVisible(true);
+        gameAnnouncementRemainingSeconds = GAME_ANNOUNCEMENT_SECONDS;
+    }
+
+    private void updateGameAnnouncement(float deltaSeconds) {
+        if (gameAnnouncementLabel == null
+                || !gameAnnouncementLabel.isVisible()
+                || gamePaused) {
+            return;
+        }
+        gameAnnouncementRemainingSeconds -= Math.max(0f, deltaSeconds);
+        if (gameAnnouncementRemainingSeconds <= 0f) {
+            showNextQueuedGameAnnouncement();
+        }
+    }
+
+    private void finishWaveAnnouncementSequence() {
+        Game game = activeGame();
+        int targetWave = pendingAnnouncementWaveNumber;
+        boolean shouldStartWaves = startZombieWavesAfterAnnouncement;
+        pendingAnnouncementWaveNumber = 0;
+        startZombieWavesAfterAnnouncement = false;
+
+        if (game == null || targetWave <= 0) {
+            return;
+        }
+        if (shouldStartWaves && !game.startZombieWavesFromGui()) {
+            return;
+        }
+        if (game.getNextWaveNumberForGui() == targetWave) {
+            game.spawnNextWaveForGui();
+        }
+    }
+
+    private void maybeQueueReadyWaveAnnouncement() {
+        Game game = activeGame();
+        if (game == null || gameAnnouncementLabel == null
+                || pendingAnnouncementWaveNumber != 0
+                || !queuedGameAnnouncements.isEmpty()
+                || gameAnnouncementLabel.isVisible()
+                || !game.isNextWaveReadyForGui()) {
+            return;
+        }
+        int waveNumber = game.getNextWaveNumberForGui();
+        if (waveNumber > 0) {
+            queueWaveAnnouncements(waveNumber, false);
+        }
+    }
+
     private void installPreviewLevelTitle(Chapter chapter, Level level) {
         Label levelTitle = new Label(
                 chapter.getDisplayName() + " - Level " + level.getNumber(),
@@ -612,6 +775,108 @@ public final class GameScreen extends AbstractScreen {
         resetCooldownsButton.addListener(new TextTooltip(
                 "Reset all plant cooldowns", skin));
         stage.addActor(resetCooldownsButton);
+    }
+
+    private void installShovelButton() {
+        if (!isModelBackedGame() || shovelButton != null) {
+            return;
+        }
+
+        shovelButton = createAssetButton(SHOVEL_BUTTON_IMAGE_ID,
+                this::toggleShovelMode);
+        shovelButton.setBounds(SHOVEL_BUTTON_X, SHOVEL_BUTTON_Y,
+                SHOVEL_BUTTON_SIZE, SHOVEL_BUTTON_SIZE);
+        shovelButton.addListener(new TextTooltip("Shovel", skin));
+        stage.addActor(shovelButton);
+
+        fallbackShovelCursor = createAssetImage(SHOVEL_CURSOR_IMAGE_ID);
+        fallbackShovelCursor.setScaling(Scaling.fit);
+        fallbackShovelCursor.setSize(46f, 86f);
+        fallbackShovelCursor.setTouchable(Touchable.disabled);
+        fallbackShovelCursor.setVisible(false);
+        stage.addActor(fallbackShovelCursor);
+    }
+
+    private void toggleShovelMode() {
+        setShovelMode(!shovelMode);
+    }
+
+    private void setShovelMode(boolean enabled) {
+        if (enabled && !canUseShovel()) {
+            return;
+        }
+        if (enabled && selectedPlantForPlacement != null) {
+            clearSelectedPlantForPlacement();
+        }
+        shovelMode = enabled;
+        if (shovelButton != null) {
+            shovelButton.setColor(enabled
+                    ? new Color(1f, 1f, 0.8f, 1f) : Color.WHITE);
+        }
+        if (enabled) {
+            applyShovelCursor();
+        } else {
+            resetShovelCursor();
+            if (hoveredBoardCell != null) {
+                hoveredBoardCell.setVisible(false);
+            }
+        }
+    }
+
+    private boolean canUseShovel() {
+        return activeGame() != null
+                && !gamePaused
+                && pauseModal == null
+                && plantSelectionModal == null;
+    }
+
+    private void applyShovelCursor() {
+        try {
+            if (shovelCursor == null) {
+                shovelCursor = createCursorFromRegion(
+                        requireAssetRegion(SHOVEL_CURSOR_IMAGE_ID), 10, 8);
+            }
+            Gdx.graphics.setCursor(shovelCursor);
+            if (fallbackShovelCursor != null) {
+                fallbackShovelCursor.setVisible(false);
+            }
+            usingFallbackShovelCursor = false;
+        } catch (RuntimeException exception) {
+            Gdx.graphics.setSystemCursor(Cursor.SystemCursor.None);
+            if (fallbackShovelCursor != null) {
+                fallbackShovelCursor.setVisible(true);
+            }
+            usingFallbackShovelCursor = true;
+        }
+    }
+
+    private void resetShovelCursor() {
+        Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
+        if (fallbackShovelCursor != null) {
+            fallbackShovelCursor.setVisible(false);
+        }
+        usingFallbackShovelCursor = false;
+    }
+
+    private Cursor createCursorFromRegion(TextureRegion region,
+            int hotspotX, int hotspotY) {
+        TextureData textureData = region.getTexture().getTextureData();
+        if (!textureData.isPrepared()) {
+            textureData.prepare();
+        }
+        Pixmap source = textureData.consumePixmap();
+        Pixmap cursorPixmap = new Pixmap(region.getRegionWidth(),
+                region.getRegionHeight(), Pixmap.Format.RGBA8888);
+        cursorPixmap.drawPixmap(source, 0, 0,
+                region.getRegionX(), region.getRegionY(),
+                region.getRegionWidth(), region.getRegionHeight());
+        if (textureData.disposePixmap()) {
+            source.dispose();
+        }
+        Cursor cursor = Gdx.graphics.newCursor(cursorPixmap,
+                hotspotX, hotspotY);
+        cursorPixmap.dispose();
+        return cursor;
     }
 
     private void rebuildSeedTray() {
@@ -707,7 +972,7 @@ public final class GameScreen extends AbstractScreen {
         costLayer.add(cost).padRight(5f).padBottom(3f);
         slot.add(costLayer);
 
-        if (isModelBackedGame() && plantingOverlayPixel != null) {
+        if (isModelBackedGame()) {
             BasePlant prototype = loadoutPrototypeFor(plant.getName());
             if (prototype != null) {
                 CooldownShadeActor cooldownShade =
@@ -766,6 +1031,11 @@ public final class GameScreen extends AbstractScreen {
             public boolean touchDown(InputEvent event, float x, float y,
                     int pointer, int button) {
                 if (button == Input.Buttons.RIGHT) {
+                    if (shovelMode) {
+                        setShovelMode(false);
+                        event.stop();
+                        return true;
+                    }
                     if (selectedPlantForPlacement != null) {
                         clearSelectedPlantForPlacement();
                         event.stop();
@@ -773,9 +1043,7 @@ public final class GameScreen extends AbstractScreen {
                     }
                     return false;
                 }
-                if (button != Input.Buttons.LEFT
-                        || !canInteractWithBoard()
-                        || selectedPlantForPlacement == null) {
+                if (button != Input.Buttons.LEFT) {
                     return false;
                 }
 
@@ -784,6 +1052,17 @@ public final class GameScreen extends AbstractScreen {
                 if (boardPosition == null) {
                     return false;
                 }
+
+                if (shovelMode && canUseShovel()) {
+                    pluckPlantAt(boardPosition);
+                    event.stop();
+                    return true;
+                }
+                if (!canInteractWithBoard()
+                        || selectedPlantForPlacement == null) {
+                    return false;
+                }
+
                 plantSelectedPlantAt(boardPosition);
                 event.stop();
                 return true;
@@ -831,12 +1110,24 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void selectPlantForPlacement(PlantCollectionItem plant) {
+        if (shovelMode) {
+            setShovelMode(false);
+        }
         if (!canInteractWithBoard() || plant == null) {
             return;
         }
         BasePlant prototype = loadoutPrototypeFor(plant.getName());
-        if (prototype == null || isPlantCoolingDown(prototype)
-                || plant.getCost() > currentSunCount()) {
+        if (prototype == null) {
+            return;
+        }
+        if (isPlantCoolingDown(prototype)) {
+            showGameNotice(plant.getName() + " is still recharging!",
+                    Color.RED);
+            return;
+        }
+        if (plant.getCost() > currentSunCount()) {
+            showGameNotice("Not enough sun for " + plant.getName() + "!",
+                    Color.RED);
             return;
         }
         selectedPlantForPlacement = plant;
@@ -903,6 +1194,20 @@ public final class GameScreen extends AbstractScreen {
         rebuildPlantedPlantLayer();
     }
 
+    private void pluckPlantAt(EntityPosition position) {
+        Game game = activeGame();
+        if (game == null || position == null
+                || game.isProtectedSeedAt(position)) {
+            return;
+        }
+        BasePlant removed = game.pluckPlantAt(position);
+        if (removed == null) {
+            return;
+        }
+        rebuildPlantedPlantLayer();
+        refreshBoardHover();
+    }
+
     private EntityPosition boardPositionAtScreen(int screenX, int screenY) {
         BoardLayout layout = layoutForChapter(seedTrayChapter());
         if (layout == null || Gdx.graphics.getWidth() <= 0
@@ -954,15 +1259,33 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void refreshBoardHover() {
-        if (hoveredBoardCell == null || selectedPlantForPlacement == null
-                || !canInteractWithBoard()) {
-            if (hoveredBoardCell != null) {
-                hoveredBoardCell.setVisible(false);
-            }
+        if (hoveredBoardCell == null) {
             return;
         }
+
+        boolean planting = selectedPlantForPlacement != null
+                && canInteractWithBoard();
+        boolean shoveling = shovelMode && canUseShovel();
+        if (!planting && !shoveling) {
+            hoveredBoardCell.setVisible(false);
+            return;
+        }
+
         EntityPosition position = boardPositionAtScreen(
                 Gdx.input.getX(), Gdx.input.getY());
+        if (position == null) {
+            hoveredBoardCell.setVisible(false);
+            return;
+        }
+        if (shoveling) {
+            Game game = activeGame();
+            if (game == null || game.isProtectedSeedAt(position)
+                    || game.getBoard().getPlantAt(position) == null) {
+                hoveredBoardCell.setVisible(false);
+                return;
+            }
+        }
+
         CellBounds bounds = screenBoundsForCell(position);
         if (bounds == null) {
             hoveredBoardCell.setVisible(false);
@@ -1361,6 +1684,225 @@ public final class GameScreen extends AbstractScreen {
                 && !gamePaused
                 && pauseModal == null
                 && plantSelectionModal == null;
+    }
+
+    private void installCollectibleDropRendering() {
+        if (!isModelBackedGame() || collectibleDropLayer != null) {
+            return;
+        }
+        collectibleDropLayer = new Group();
+        collectibleDropLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(collectibleDropLayer);
+        refreshCollectibleDrops();
+    }
+
+    private void installRewardNotice() {
+        if (!isModelBackedGame() || rewardNoticeLabel != null) {
+            return;
+        }
+        rewardNoticeLabel = new Label("", skin, "big_outline");
+        rewardNoticeLabel.setAlignment(Align.center);
+        rewardNoticeLabel.setWrap(true);
+        rewardNoticeLabel.setColor(Color.WHITE);
+        rewardNoticeLabel.setFontScale(0.78f);
+        rewardNoticeLabel.setBounds(410f, 558f, 600f, 62f);
+        rewardNoticeLabel.setTouchable(Touchable.disabled);
+        rewardNoticeLabel.setVisible(false);
+        stage.addActor(rewardNoticeLabel);
+    }
+
+    private void refreshCollectibleDrops() {
+        Game game = activeGame();
+        if (game == null || collectibleDropLayer == null) {
+            return;
+        }
+
+        List<CollectibleDrop> currentDrops =
+                game.getBoard().getCollectibleDrops();
+        autoCollectRewardDrops(game, currentDrops);
+
+        IdentityHashMap<PlantFoodDrop, Boolean> present =
+                new IdentityHashMap<>();
+        for (CollectibleDrop drop : game.getBoard().getCollectibleDrops()) {
+            if (!(drop instanceof PlantFoodDrop)) {
+                continue;
+            }
+            PlantFoodDrop plantFood = (PlantFoodDrop) drop;
+            present.put(plantFood, Boolean.TRUE);
+            PlantFoodDropActor actor = plantFoodDropActors.get(plantFood);
+            if (actor == null) {
+                actor = new PlantFoodDropActor(plantFood);
+                actor.setTouchable(Touchable.disabled);
+                plantFoodDropActors.put(plantFood, actor);
+                collectibleDropLayer.addActor(actor);
+            }
+            positionPlantFoodDropActor(actor);
+        }
+
+        Iterator<Map.Entry<PlantFoodDrop, PlantFoodDropActor>> iterator =
+                plantFoodDropActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<PlantFoodDrop, PlantFoodDropActor> entry =
+                    iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+
+        collectHoveredPlantFood();
+    }
+
+    private void autoCollectRewardDrops(Game game,
+            List<CollectibleDrop> currentDrops) {
+        User user = currentUser();
+        if (game == null || user == null || currentDrops == null
+                || currentDrops.isEmpty()) {
+            return;
+        }
+
+        List<EntityPosition> rewardPositions = new ArrayList<>();
+        for (CollectibleDrop drop : currentDrops) {
+            if (!(drop instanceof Coin) && !(drop instanceof Diamond)
+                    && !(drop instanceof PotDrop)) {
+                continue;
+            }
+            EntityPosition position = drop.getEntityPosition();
+            if (position != null && !rewardPositions.contains(position)) {
+                rewardPositions.add(position);
+            }
+        }
+        if (rewardPositions.isEmpty()) {
+            return;
+        }
+
+        int coins = 0;
+        int diamonds = 0;
+        int pots = 0;
+        int count = 0;
+        for (EntityPosition position : rewardPositions) {
+            RewardCollectionResult result =
+                    game.collectRewardDropsAt(position, user);
+            count += result.getDropCount();
+            coins += result.getCoins();
+            diamonds += result.getDiamonds();
+            pots += result.getPots();
+        }
+        if (count <= 0) {
+            return;
+        }
+
+        UserManager.saveAllUsers();
+        showRewardNotice(coins, diamonds, pots);
+    }
+
+    private void showRewardNotice(int coins, int diamonds, int pots) {
+        if (rewardNoticeLabel == null) {
+            return;
+        }
+        List<String> earned = new ArrayList<>();
+        if (coins > 0) {
+            earned.add("+" + coins + " coin" + (coins == 1 ? "" : "s"));
+        }
+        if (diamonds > 0) {
+            earned.add("+" + diamonds + " diamond"
+                    + (diamonds == 1 ? "" : "s"));
+        }
+        if (pots > 0) {
+            earned.add("+" + pots + " pot" + (pots == 1 ? "" : "s"));
+        }
+        if (earned.isEmpty()) {
+            return;
+        }
+        showGameNotice("Earned " + String.join(", ", earned) + "!");
+    }
+
+    private void showGameNotice(String text) {
+        showGameNotice(text, Color.WHITE);
+    }
+
+    private void showGameNotice(String text, Color color) {
+        if (rewardNoticeLabel == null || text == null || text.isBlank()) {
+            return;
+        }
+        rewardNoticeLabel.setText(text);
+        rewardNoticeLabel.setColor(color == null ? Color.WHITE : color);
+        rewardNoticeLabel.setVisible(true);
+        rewardNoticeRemainingSeconds = REWARD_NOTICE_SECONDS;
+        rewardNoticeLabel.toFront();
+    }
+
+    private void updateRewardNotice(float deltaSeconds) {
+        if (rewardNoticeLabel == null || !rewardNoticeLabel.isVisible()
+                || gamePaused) {
+            return;
+        }
+        rewardNoticeRemainingSeconds -= Math.max(0f, deltaSeconds);
+        if (rewardNoticeRemainingSeconds <= 0f) {
+            rewardNoticeRemainingSeconds = 0f;
+            rewardNoticeLabel.setText("");
+            rewardNoticeLabel.setVisible(false);
+        }
+    }
+
+    private void positionPlantFoodDropActor(PlantFoodDropActor actor) {
+        if (actor == null || actor.drop == null) {
+            return;
+        }
+        CellBounds cell = screenBoundsForCell(actor.drop.getEntityPosition());
+        if (cell == null) {
+            actor.setVisible(false);
+            return;
+        }
+        float centerX = cell.x + cell.width * 0.5f;
+        float centerY = cell.y + cell.height * 0.52f;
+        actor.setBounds(centerX - PLANT_FOOD_DROP_SIZE * 0.5f,
+                centerY - PLANT_FOOD_DROP_SIZE * 0.5f,
+                PLANT_FOOD_DROP_SIZE, PLANT_FOOD_DROP_SIZE);
+        actor.setVisible(true);
+    }
+
+    private void collectHoveredPlantFood() {
+        if (!canCollectSuns() || plantFoodDropActors.isEmpty()) {
+            return;
+        }
+        Game game = activeGame();
+        if (game == null
+                || game.getPlantFoodCount() >= game.getMaximumPlantFoodCount()) {
+            return;
+        }
+
+        float mouseX = Gdx.input.getX();
+        float mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
+        List<EntityPosition> hoveredPositions = new ArrayList<>();
+        for (Map.Entry<PlantFoodDrop, PlantFoodDropActor> entry
+                : plantFoodDropActors.entrySet()) {
+            PlantFoodDropActor actor = entry.getValue();
+            if (actor == null || !actor.isVisible()
+                    || mouseX < actor.getX()
+                    || mouseX > actor.getX() + actor.getWidth()
+                    || mouseY < actor.getY()
+                    || mouseY > actor.getY() + actor.getHeight()) {
+                continue;
+            }
+            EntityPosition position = entry.getKey().getEntityPosition();
+            if (position != null && !hoveredPositions.contains(position)) {
+                hoveredPositions.add(position);
+            }
+        }
+
+        boolean collectedAny = false;
+        for (EntityPosition position : hoveredPositions) {
+            if (game.collectPlantFoodDropsAt(position) > 0) {
+                collectedAny = true;
+            }
+            if (game.getPlantFoodCount() >= game.getMaximumPlantFoodCount()) {
+                break;
+            }
+        }
+        if (collectedAny) {
+            refreshPlantFoodHud();
+        }
     }
 
     private void showPlantSelectionModal() {
@@ -1836,20 +2378,39 @@ public final class GameScreen extends AbstractScreen {
         return currentGameSpeed();
     }
 
+    private void refreshFallbackShovelCursorPosition() {
+        if (!usingFallbackShovelCursor || !shovelMode
+                || fallbackShovelCursor == null) {
+            return;
+        }
+        com.badlogic.gdx.math.Vector2 stageCoords =
+                stage.screenToStageCoordinates(
+                        new com.badlogic.gdx.math.Vector2(
+                                Gdx.input.getX(), Gdx.input.getY()));
+        fallbackShovelCursor.setPosition(stageCoords.x - 6f,
+                stageCoords.y - fallbackShovelCursor.getHeight() + 14f);
+        fallbackShovelCursor.toFront();
+    }
+
     @Override
     public void render(float delta) {
         if (isModelBackedGame() && !gamePaused) {
+            updateGameAnnouncement(Math.min(delta, 0.10f));
+            updateRewardNotice(Math.min(delta, 0.10f));
             float gameDelta = Math.min(delta, 1f / 15f)
                     * currentGameSpeed();
             activeGame().update(gameDelta);
+            maybeQueueReadyWaveAnnouncement();
         }
 
         refreshZombieRendering();
         refreshSunRendering();
+        refreshCollectibleDrops();
         refreshSunHud();
         refreshPlantFoodHud();
         refreshBoardHover();
         refreshCursorPlantPosition();
+        refreshFallbackShovelCursorPosition();
         refreshPlantedPlantLayerIfNeeded();
         if (previewLevel == null) {
             currentGameMenu().synchronizeProgress();
@@ -1864,9 +2425,22 @@ public final class GameScreen extends AbstractScreen {
             rebuildPlantedPlantLayer();
             refreshZombieRendering();
             refreshSunRendering();
+            refreshCollectibleDrops();
             refreshBoardHover();
             refreshCursorPlantPosition();
         }
+    }
+
+    @Override
+    public void hide() {
+        if (shovelMode) {
+            shovelMode = false;
+            if (shovelButton != null) {
+                shovelButton.setColor(Color.WHITE);
+            }
+        }
+        resetShovelCursor();
+        super.hide();
     }
 
     @Override
@@ -1880,6 +2454,9 @@ public final class GameScreen extends AbstractScreen {
             plantingOverlayPixel = null;
         }
         sunActors.clear();
+        plantFoodDropActors.clear();
+        collectibleDropLayer = null;
+        rewardNoticeLabel = null;
         if (waveProgressActor != null) {
             waveProgressActor.dispose();
             waveProgressActor = null;
@@ -1887,7 +2464,44 @@ public final class GameScreen extends AbstractScreen {
         sunLayer = null;
         zombieActors.clear();
         zombieLayer = null;
+        queuedGameAnnouncements.clear();
+        gameAnnouncementLabel = null;
+        if (shovelCursor != null) {
+            shovelCursor.dispose();
+            shovelCursor = null;
+        }
         super.dispose();
+    }
+
+    private final class PlantFoodDropActor extends Actor {
+        private final PlantFoodDrop drop;
+
+        private PlantFoodDropActor(PlantFoodDrop drop) {
+            this.drop = drop;
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (drop == null || drop.isRemoved()) {
+                return;
+            }
+            Color old = new Color(batch.getColor());
+            float alpha = getColor().a * parentAlpha;
+            double remainingSeconds = drop.getLifeSpanSeconds()
+                    - drop.getElapsedSeconds();
+            if (remainingSeconds > 0.0
+                    && remainingSeconds <= Constants.SUN_DESPAWN_WARNING_SECONDS) {
+                int flashPhase = (int) Math.floor(
+                        drop.getElapsedSeconds() * SUN_FLASH_HZ * 2f);
+                if ((flashPhase & 1) != 0) {
+                    alpha = 0f;
+                }
+            }
+            batch.setColor(getColor().r, getColor().g, getColor().b, alpha);
+            batch.draw(requireAssetRegion(GAME_PLANT_FOOD_ICON),
+                    getX(), getY(), getWidth(), getHeight());
+            batch.setColor(old);
+        }
     }
 
     private final class SunActor extends Actor {
