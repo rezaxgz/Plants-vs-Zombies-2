@@ -52,6 +52,8 @@ public final class TravelLogMenuController {
         if (user == null) {
             return loginRequired();
         }
+        user.getQuestProgress().ensureInitialized(user);
+        UserManager.saveAllUsers();
         List<Quest> quests = questsOfType(user, questType);
         CommandResult result = CommandResult.success(
                 "--- Travel Log: " + formatPageName(questType) + " ---");
@@ -70,6 +72,8 @@ public final class TravelLogMenuController {
         if (currentUser == null) {
             return loginRequired();
         }
+        currentUser.getQuestProgress().ensureInitialized(currentUser);
+        UserManager.saveAllUsers();
 
         List<Quest> activeQuests = new ArrayList<>(
                 currentUser.getQuestProgress().getActiveQuests());
@@ -112,9 +116,12 @@ public final class TravelLogMenuController {
     }
 
     private static String formatQuest(Quest quest) {
-        return String.format("[%s] %s: %s (Type: %s)",
+        return String.format("[%s] %s: %s | progress: %s | reward: %s | status: %s (Type: %s)",
                 quest.getPriority(), quest.getName(),
-                quest.getInstructions(), quest.getType());
+                quest.getInstructions(), quest.getProgressText(),
+                quest.getReward().describe(),
+                quest.isCompleted() ? "completed" : "active",
+                quest.getType());
     }
 
     private static QuestType parseQuestType(String pageName) {

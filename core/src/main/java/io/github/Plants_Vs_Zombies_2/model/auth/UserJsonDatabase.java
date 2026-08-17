@@ -28,6 +28,13 @@ import io.github.Plants_Vs_Zombies_2.model.greenHouse.GreenHouse;
 import io.github.Plants_Vs_Zombies_2.model.greenHouse.PlantedPlant;
 import io.github.Plants_Vs_Zombies_2.model.greenHouse.Pot;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureProgress;
+import io.github.Plants_Vs_Zombies_2.model.quest.AllQuestsProgress;
+import io.github.Plants_Vs_Zombies_2.model.quest.Quest;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestCondition;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestPriority;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestReward;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestRewardType;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestType;
 import io.github.Plants_Vs_Zombies_2.model.security.SecurityQuestion;
 import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
@@ -184,10 +191,13 @@ final class UserJsonDatabase {
                 storedUser.get("adventureProgress"), prefix);
         GameProgerss gameProgress = readGameProgress(
                 storedUser.get("gameProgress"), prefix);
+        AllQuestsProgress questProgress = readQuestProgress(
+                storedUser.get("questProgress"), prefix);
 
         User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
                 diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts,
                 plantCollection, zombieCollection, settings, adventureProgress, gameProgress);
+        user.restoreQuestProgress(questProgress);
         user.setSprouts(sprouts);
 
         Object newsObj = storedUser.get("news");
@@ -378,6 +388,58 @@ final class UserJsonDatabase {
         return result;
     }
 
+    private static AllQuestsProgress readQuestProgress(
+            Object value, String prefix) {
+        if (value == null) {
+            return null;
+        }
+        String context = prefix + ".questProgress";
+        Map<String, Object> stored = requireObject(value, context);
+        List<Quest> quests = new ArrayList<>();
+        Object questsValue = stored.get("quests");
+        if (questsValue != null) {
+            List<Object> storedQuests = requireArray(questsValue,
+                    context + ".quests");
+            for (int index = 0; index < storedQuests.size(); index++) {
+                String questContext = context + ".quests[" + index + "]";
+                Map<String, Object> quest = requireObject(
+                        storedQuests.get(index), questContext);
+                try {
+                    QuestReward reward = new QuestReward(
+                            QuestRewardType.valueOf(requireString(
+                                    quest, "rewardType", questContext)),
+                            getInt(quest, "rewardAmount", 0));
+                    quests.add(Quest.restore(
+                            requireString(quest, "id", questContext),
+                            requireString(quest, "name", questContext),
+                            requireString(quest, "instructions", questContext),
+                            QuestType.valueOf(requireString(
+                                    quest, "type", questContext)),
+                            QuestPriority.valueOf(requireString(
+                                    quest, "priority", questContext)),
+                            QuestCondition.valueOf(requireString(
+                                    quest, "condition", questContext)),
+                            requireString(quest, "parameter", questContext),
+                            getInt(quest, "target", 1), reward,
+                            getInt(quest, "progress", 0),
+                            getBoolean(quest, "completed", false),
+                            getBoolean(quest, "rewardGranted", false)));
+                } catch (IllegalArgumentException exception) {
+                    throw new IllegalArgumentException(questContext
+                            + " contains an invalid quest enum or value", exception);
+                }
+            }
+        }
+        Object refreshValue = stored.get("lastDailyRefresh");
+        String lastDailyRefresh = refreshValue instanceof String
+                ? (String) refreshValue : "";
+        return AllQuestsProgress.restore(
+                getInt(stored, "completedDailyQuests", 0),
+                getInt(stored, "completedNonDailyQuests", 0),
+                getInt(stored, "maximumDifficultyWinStreak", 0),
+                lastDailyRefresh, quests);
+    }
+
     private static GreenHouse readGreenHouse(Map<String, Object> map, String prefix) {
         GreenHouse gh = new GreenHouse();
         if (!map.containsKey("pots"))
@@ -468,6 +530,7 @@ final class UserJsonDatabase {
         appendSettings(json, user.getSettings(), indent);
         appendAdventureProgress(json, user.getAdventureProgress(), indent);
         appendGameProgress(json, user.getGameProgerss(), indent);
+        appendQuestProgress(json, user.getQuestProgress(), indent);
 
         // Serialize daily offer properties
         appendStringProperty(json, indent, "dailyOfferDate", user.getDailyOfferDate(), true);
@@ -582,6 +645,59 @@ final class UserJsonDatabase {
             appendQuoted(json, completed.get(completedIndex));
         }
         json.append("]\n");
+    }
+
+    private static void appendQuestProgress(StringBuilder json,
+            AllQuestsProgress progress, String indent) {
+        json.append(indent).append("  \"questProgress\": {\n");
+        appendNumberProperty(json, indent + "  ", "completedDailyQuests",
+                progress.getCompletedDailyQuests(), true);
+        appendNumberProperty(json, indent + "  ", "completedNonDailyQuests",
+                progress.getCompletedNonDailyQuests(), true);
+        appendNumberProperty(json, indent + "  ",
+                "maximumDifficultyWinStreak",
+                progress.getMaximumDifficultyWinStreak(), true);
+        appendStringProperty(json, indent + "  ", "lastDailyRefresh",
+                progress.getLastDailyRefresh(), true);
+        json.append(indent).append("    \"quests\": [\n");
+        List<Quest> quests = progress.getActiveQuests();
+        for (int index = 0; index < quests.size(); index++) {
+            Quest quest = quests.get(index);
+            json.append(indent).append("      {\n");
+            appendStringProperty(json, indent + "      ", "id",
+                    quest.getId(), true);
+            appendStringProperty(json, indent + "      ", "name",
+                    quest.getName(), true);
+            appendStringProperty(json, indent + "      ", "instructions",
+                    quest.getInstructions(), true);
+            appendStringProperty(json, indent + "      ", "type",
+                    quest.getType().name(), true);
+            appendStringProperty(json, indent + "      ", "priority",
+                    quest.getPriority().name(), true);
+            appendStringProperty(json, indent + "      ", "condition",
+                    quest.getCondition().name(), true);
+            appendStringProperty(json, indent + "      ", "parameter",
+                    quest.getParameter(), true);
+            appendNumberProperty(json, indent + "      ", "target",
+                    quest.getTarget(), true);
+            appendNumberProperty(json, indent + "      ", "progress",
+                    quest.getProgress(), true);
+            appendStringProperty(json, indent + "      ", "rewardType",
+                    quest.getReward().getType().name(), true);
+            appendNumberProperty(json, indent + "      ", "rewardAmount",
+                    quest.getReward().getAmount(), true);
+            appendBooleanProperty(json, indent + "      ", "completed",
+                    quest.isCompleted(), true);
+            appendBooleanProperty(json, indent + "      ", "rewardGranted",
+                    quest.isRewardGranted(), false);
+            json.append(indent).append("      }");
+            if (index + 1 < quests.size()) {
+                json.append(',');
+            }
+            json.append('\n');
+        }
+        json.append(indent).append("    ]\n");
+        json.append(indent).append("  },\n");
     }
 
     private static void appendPlantCollection(StringBuilder json,

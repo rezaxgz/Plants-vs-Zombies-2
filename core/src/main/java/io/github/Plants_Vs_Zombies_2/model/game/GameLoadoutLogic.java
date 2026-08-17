@@ -112,6 +112,7 @@ abstract class GameLoadoutLogic extends GameRewardLogic {
         }
 
         conveyorBeltSystem.consumePacket(index);
+        questRunTracker.recordPlantPlaced(plant);
         pendingResults.add("Conveyor Belt plant "
                 + plant.getName() + " was planted at "
                 + position + ".");

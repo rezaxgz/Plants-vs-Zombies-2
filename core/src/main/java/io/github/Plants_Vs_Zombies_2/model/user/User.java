@@ -89,6 +89,7 @@ public class User {
         this.settings = new Settings();
         this.gameProgerss = new GameProgerss();
         this.questProgress = new AllQuestsProgress();
+        this.questProgress.ensureInitialized(this);
         this.newsPanel = new NewsPanel();
     }
 
@@ -461,6 +462,13 @@ public class User {
 
     public AllQuestsProgress getQuestProgress() {
         return questProgress;
+    }
+
+    public void restoreQuestProgress(AllQuestsProgress restoredProgress) {
+        if (restoredProgress != null) {
+            questProgress = restoredProgress;
+            questProgress.ensureInitialized(this);
+        }
     }
 
     public NewsPanel getNewsPanel() {

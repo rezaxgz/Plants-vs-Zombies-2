@@ -46,6 +46,7 @@ abstract class GameUpdateLogic extends GameState {
         prepareLoveYourPlants();
         List<Zombie> zombieSnapshot = new ArrayList<>(board.getZombies());
         board.update(deltaSeconds);
+        questRunTracker.capturePlantLosses(board);
         reportSunLandings();
         processZombieDeathDrops(zombieSnapshot);
 

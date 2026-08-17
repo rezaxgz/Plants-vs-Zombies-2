@@ -14,6 +14,7 @@ public final class BouncingGrape extends Entity {
 
     private final int damage;
     private final int maximumHits;
+    private final String sourcePlantName;
     private final Set<Zombie> hitZombies = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private double rowPosition;
@@ -26,7 +27,7 @@ public final class BouncingGrape extends Entity {
 
     public BouncingGrape(double rowPosition, double columnPosition,
             double rowDirection, double columnDirection,
-            int damage, int maximumHits) {
+            int damage, int maximumHits, String sourcePlantName) {
         super(toEntityPosition(rowPosition, columnPosition));
         if (!Double.isFinite(rowPosition) || !Double.isFinite(columnPosition)
                 || !Double.isFinite(rowDirection) || !Double.isFinite(columnDirection)) {
@@ -38,6 +39,10 @@ public final class BouncingGrape extends Entity {
         if (damage < 0 || maximumHits <= 0) {
             throw new IllegalArgumentException("grape damage and hit count are invalid");
         }
+        if (sourcePlantName == null || sourcePlantName.isBlank()) {
+            throw new IllegalArgumentException(
+                    "sourcePlantName cannot be blank");
+        }
         double magnitude = Math.sqrt(rowDirection * rowDirection
                 + columnDirection * columnDirection);
         this.rowPosition = rowPosition;
@@ -48,6 +53,7 @@ public final class BouncingGrape extends Entity {
         this.columnDirection = columnDirection / magnitude;
         this.damage = damage;
         this.maximumHits = maximumHits;
+        this.sourcePlantName = sourcePlantName;
     }
 
     @Override
@@ -119,6 +125,7 @@ public final class BouncingGrape extends Entity {
             return;
         }
         hitZombies.add(zombie);
+        zombie.recordDamageSourcePlant(sourcePlantName);
         zombie.takeDamage(damage);
         hitCount++;
         if (hitCount >= maximumHits) {

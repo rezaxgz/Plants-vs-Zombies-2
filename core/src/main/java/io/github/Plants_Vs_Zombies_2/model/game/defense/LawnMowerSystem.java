@@ -95,6 +95,7 @@ public final class LawnMowerSystem implements java.io.Serializable {
                     || zombie.getType().isBoss()) {
                 continue;
             }
+            zombie.clearDamageSourcePlant();
             zombie.kill();
             zombie.markForRemoval();
             killed.add(zombie);

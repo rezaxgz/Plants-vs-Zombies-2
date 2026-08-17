@@ -12,6 +12,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.scored.ScoredGame;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestRunSummary;
 import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
@@ -149,16 +150,28 @@ public class GameMenu extends Menu {
             progressSynchronized = true;
             return;
         }
-        if (game.getStatus() != GameStatus.WON) {
-            return;
-        }
         if (chapterId != null) {
-            AdventureSession.getInstance()
-                    .completeLevel(chapterId, levelNumber);
-        } else if (minigameId != null) {
+            if (game.getStatus() == GameStatus.WON) {
+                AdventureSession.getInstance()
+                        .completeLevel(chapterId, levelNumber);
+            }
+            synchronizeQuestProgress();
+        } else if (minigameId != null
+                && game.getStatus() == GameStatus.WON) {
             synchronizeMinigameProgress();
         }
         progressSynchronized = true;
+    }
+
+    private void synchronizeQuestProgress() {
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            return;
+        }
+        QuestRunSummary summary = game.createQuestRunSummary(chapterId);
+        pendingProgressResults.addAll(user.getQuestProgress()
+                .recordCompletedRun(user, summary));
+        UserManager.saveAllUsers();
     }
 
     public void synchronizeAdventureProgress() {

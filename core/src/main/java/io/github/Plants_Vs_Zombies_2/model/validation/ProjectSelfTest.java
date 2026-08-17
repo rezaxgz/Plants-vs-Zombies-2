@@ -1,13 +1,23 @@
 package io.github.Plants_Vs_Zombies_2.model.validation;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
+import io.github.Plants_Vs_Zombies_2.model.enums.Gender;
+import io.github.Plants_Vs_Zombies_2.model.auth.QuestPersistenceCheck;
 import io.github.Plants_Vs_Zombies_2.model.game.DifficultyRules;
+import io.github.Plants_Vs_Zombies_2.model.game.Board;
+import io.github.Plants_Vs_Zombies_2.model.game.Game;
+import io.github.Plants_Vs_Zombies_2.model.game.PlantPlacementResult;
 import io.github.Plants_Vs_Zombies_2.model.game.ZombieWave;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.SunType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantFactory;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.model.game.scored.DailyScoredGameFactory;
@@ -19,6 +29,14 @@ import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
+import io.github.Plants_Vs_Zombies_2.model.quest.Quest;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestCondition;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestPriority;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestReward;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestRewardType;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestRunSummary;
+import io.github.Plants_Vs_Zombies_2.model.quest.QuestType;
+import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 /**
  * Dependency-free deterministic checks for critical project rules.
@@ -31,6 +49,14 @@ public final class ProjectSelfTest {
     private int totalCount;
 
     private ProjectSelfTest() {
+    }
+
+    public static void main(String[] args) {
+        ProjectSelfTestReport report = runAll();
+        System.out.println(report.format());
+        if (!report.isSuccessful()) {
+            throw new IllegalStateException("project self-test failed");
+        }
     }
 
     public static ProjectSelfTestReport runAll() {
@@ -49,6 +75,14 @@ public final class ProjectSelfTest {
                 test::checkTimedWarSystems);
         test.run("Timed War level variants are playable",
                 test::checkTimedWarVariants);
+        test.run("phase-one quest catalog and daily rotation",
+                test::checkQuestCatalogAndRotation);
+        test.run("quest rewards are idempotent",
+                test::checkQuestRewardIdempotency);
+        test.run("quest JSON persistence round-trip",
+                QuestPersistenceCheck::run);
+        test.run("quest telemetry follows game events",
+                test::checkQuestTelemetry);
         return new ProjectSelfTestReport(
                 test.passedCount,
                 test.totalCount,
@@ -240,6 +274,104 @@ public final class ProjectSelfTest {
         requireClose(60.0,
                 sun.getSpecialConfig()
                         .getDurationSeconds());
+    }
+
+    private void checkQuestCatalogAndRotation() {
+        User user = new User("quest-self-test", "Password1!",
+                "Quest Tester", "quest@test.local", Gender.MALE);
+        LocalDate firstDate = LocalDate.of(2030, 1, 1);
+        user.getQuestProgress().ensureInitialized(user, firstDate);
+        List<Quest> first = List.copyOf(
+                user.getQuestProgress().getActiveQuests());
+        require(first.size() == 19,
+                "phase-one catalog must contain nineteen quests");
+        require(first.stream().filter(
+                quest -> quest.getType() == QuestType.DAILY).count() == 14,
+                "daily quest count must be fourteen");
+        require(first.stream().filter(
+                quest -> quest.getType() == QuestType.MAIN).count() == 3,
+                "main quest count must be three");
+        require(first.stream().filter(
+                quest -> quest.getType() == QuestType.EPIC).count() == 2,
+                "epic quest count must be two");
+        Set<String> ids = new HashSet<>();
+        for (Quest quest : first) {
+            require(ids.add(quest.getId()),
+                    "quest ids must be unique");
+        }
+
+        Set<String> permanentIds = new HashSet<>();
+        Set<String> firstDailyIds = new HashSet<>();
+        for (Quest quest : first) {
+            if (quest.getType() == QuestType.DAILY) {
+                firstDailyIds.add(quest.getId());
+            } else {
+                permanentIds.add(quest.getId());
+            }
+        }
+        user.getQuestProgress().ensureInitialized(
+                user, firstDate.plusDays(1));
+        List<Quest> second = user.getQuestProgress().getActiveQuests();
+        require(second.size() == 19,
+                "daily refresh changed catalog size");
+        require(second.stream().filter(quest -> quest.getType() != QuestType.DAILY)
+                .allMatch(quest -> permanentIds.contains(quest.getId())),
+                "daily refresh replaced permanent quests");
+        require(second.stream().filter(quest -> quest.getType() == QuestType.DAILY)
+                .noneMatch(quest -> firstDailyIds.contains(quest.getId())),
+                "daily refresh did not replace daily quests");
+    }
+
+    private void checkQuestRewardIdempotency() {
+        User user = new User("quest-reward-test", "Password1!",
+                "Reward Tester", "reward@test.local", Gender.FEMALE);
+        Quest quest = Quest.restore("reward-test", "Reward test",
+                "Already completed for the self-test.", QuestType.MAIN,
+                QuestPriority.HIGH, QuestCondition.COLLECT_SUN, "", 1,
+                new QuestReward(QuestRewardType.COINS, 50),
+                1, true, false);
+        int before = user.getCoins();
+        quest.giveReward(user);
+        quest.giveReward(user);
+        require(user.getCoins() == before + 50,
+                "quest reward was granted more than once");
+        require(quest.isRewardGranted(),
+                "quest did not persist reward-granted state");
+    }
+
+    private void checkQuestTelemetry() {
+        Game game = new Game(new Board(), 500);
+        BasePlant peashooter = PlantFactory.createPlant(
+                "Peashooter", new EntityPosition(0, 0));
+        require(game.plant(peashooter) == PlantPlacementResult.SUCCESS,
+                "quest telemetry setup could not plant Peashooter");
+
+        Sun plantSun = Sun.createPlantSun(
+                50, new EntityPosition(1, 1));
+        game.getBoard().addEntity(plantSun);
+        require(game.collectSun(plantSun),
+                "quest telemetry setup could not collect sun");
+
+        Zombie zombie = game.spawnZombie("Basic", 8, 0);
+        require(zombie != null,
+                "quest telemetry setup could not spawn zombie");
+        zombie.recordDamageSourcePlant("Peashooter");
+        zombie.kill();
+        game.update(0.0f);
+
+        QuestRunSummary summary = game.createQuestRunSummary(
+                "ancient-egypt");
+        require(summary.getCollectedSun() == 50,
+                "collected sun was not tracked");
+        require(summary.getZombieKills() == 1,
+                "zombie death was not tracked");
+        require(summary.usedOnlyOffensivePlant("Peashooter"),
+                "offensive plant usage was not tracked");
+        require(!summary.wasRowNeverPlanted(1)
+                        && !summary.wasColumnNeverPlanted(1),
+                "plant position was not tracked");
+        require("ancientegypt".equals(summary.getChapterId()),
+                "chapter id was not normalized");
     }
 
     private static void require(

@@ -194,6 +194,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
             }
             damageZombieOrFrozenShell(
                     zombie, explosive.getDamage(), false);
+            zombie.recordDamageSourcePlant(explosive.getName());
             if (zombie.isDead()) {
                 reportZombieDeath(zombie);
             }
@@ -213,6 +214,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
             if (zombie.isHypnotized() || !isWaterZombie(zombie)) {
                 continue;
             }
+            zombie.recordDamageSourcePlant(explosive.getName());
             zombie.kill();
             reportZombieDeath(zombie);
             targetCount--;
@@ -229,25 +231,29 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
         }
         switch (explosive.getType().getBehavior()) {
             case CONTACT_MINE:
-                damageArea(center, 0, 0.75, explosive.getDamage(), false);
+                damageArea(center, 0, 0.75, explosive.getDamage(), false,
+                        explosive.getName());
                 break;
             case AREA_CONTACT_MINE:
             case INSTANT_AREA:
-                damageArea(center, 1, 1.0, explosive.getDamage(), false);
+                damageArea(center, 1, 1.0, explosive.getDamage(), false,
+                        explosive.getName());
                 break;
             case SQUASH:
                 damageExplosiveTriggerTarget(explosive);
                 break;
             case GRAPESHOT:
-                damageArea(center, 1, 1.0, explosive.getDamage(), false);
+                damageArea(center, 1, 1.0, explosive.getDamage(), false,
+                        explosive.getName());
                 addGrapeshotProjectiles(explosive, entitiesToAdd);
                 break;
             case LANE_FIRE:
-                damageLaneWithFire(center.getRow(), explosive.getDamage());
+                damageLaneWithFire(center.getRow(), explosive.getDamage(),
+                        explosive.getName());
                 meltLane(center.getRow());
                 break;
             case WHOLE_BOARD:
-                damageAllZombies(explosive.getDamage());
+                damageAllZombies(explosive.getDamage(), explosive.getName());
                 setTileType(center, TileType.CRATER);
                 break;
             case WATER_TRAP:
@@ -257,7 +263,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
                 freezeExplosiveTriggerTarget(explosive);
                 break;
             case WHOLE_BOARD_FREEZE:
-                damageAllZombies(explosive.getDamage());
+                damageAllZombies(explosive.getDamage(), explosive.getName());
                 freezeAllZombies(explosive.getFreezeDurationSeconds());
                 break;
             case MELT_ICE:
@@ -281,6 +287,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
     void damageExplosiveTriggerTarget(Explosive explosive) {
         Zombie target = findExplosiveTriggerTarget(explosive);
         if (target != null) {
+            target.recordDamageSourcePlant(explosive.getName());
             target.takeDamage(explosive.getDamage());
             if (target.isDead()) {
                 reportZombieDeath(target);
@@ -293,6 +300,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
         if (firstTarget == null || targetCount <= 0) {
             return;
         }
+        firstTarget.recordDamageSourcePlant(explosive.getName());
         firstTarget.kill();
         reportZombieDeath(firstTarget);
         targetCount--;
@@ -302,6 +310,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
             }
             if (zombie != firstTarget && !zombie.isHypnotized()
                     && isWaterZombie(zombie)) {
+                zombie.recordDamageSourcePlant(explosive.getName());
                 zombie.kill();
                 reportZombieDeath(zombie);
                 targetCount--;
@@ -317,7 +326,8 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
     }
 
     void damageArea(EntityPosition center, int rowRadius,
-            double columnRadius, int damage, boolean fireDamage) {
+            double columnRadius, int damage, boolean fireDamage,
+            String sourcePlantName) {
         if (fireDamage) {
             meltFrozenPlantsInArea(center, rowRadius, columnRadius);
         }
@@ -327,6 +337,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
                     || Math.abs(zombie.getColumnPosition() - center.getColumn()) > columnRadius) {
                 continue;
             }
+            zombie.recordDamageSourcePlant(sourcePlantName);
             damageZombieOrFrozenShell(
                     zombie, damage, fireDamage);
             if (zombie.isDead()) {
@@ -335,11 +346,13 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
         }
     }
 
-    void damageLaneWithFire(int lane, int damage) {
+    void damageLaneWithFire(int lane, int damage,
+            String sourcePlantName) {
         meltFrozenPlantsInLane(lane);
         for (Zombie zombie : getZombies()) {
             if (!zombie.isHypnotized() && !zombie.isSubmerged()
                     && zombie.getLane() == lane) {
+                zombie.recordDamageSourcePlant(sourcePlantName);
                 damageZombieOrFrozenShell(
                         zombie, damage, true);
                 if (zombie.isDead()) {
@@ -349,7 +362,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
         }
     }
 
-    void damageAllZombies(int damage) {
+    void damageAllZombies(int damage, String sourcePlantName) {
         if (damage <= 0) {
             return;
         }
@@ -357,6 +370,7 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
             if (zombie.isHypnotized() || zombie.isSubmerged()) {
                 continue;
             }
+            zombie.recordDamageSourcePlant(sourcePlantName);
             damageZombieOrFrozenShell(
                     zombie, damage, false);
             if (zombie.isDead()) {
@@ -384,14 +398,15 @@ abstract class BoardExplosiveLogic extends BoardSpecialProjectileLogic {
         };
         for (int index = 0; index < GRAPESHOT_PROJECTILE_COUNT; index++) {
             entitiesToAdd.add(new BouncingGrape(center.getRow(), center.getColumn(),
-                    directions[index][0], directions[index][1], grapeDamage, maximumHits));
+                    directions[index][0], directions[index][1], grapeDamage,
+                    maximumHits, explosive.getName()));
         }
     }
 
     void applyFinishExplosion(Explosive explosive) {
         if (explosive.explodesOnFinish()) {
             damageArea(explosive.getEntityPosition(), 1, 1.0,
-                    FINISH_EXPLOSION_DAMAGE, false);
+                    FINISH_EXPLOSION_DAMAGE, false, explosive.getName());
         }
     }
 }
