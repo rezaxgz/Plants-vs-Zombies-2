@@ -12,6 +12,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -40,6 +41,7 @@ import io.github.Plants_Vs_Zombies_2.model.Constants;
 import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
 import io.github.Plants_Vs_Zombies_2.model.game.Game;
+import io.github.Plants_Vs_Zombies_2.model.game.ZombieWave;
 import io.github.Plants_Vs_Zombies_2.model.game.PlantPlacementResult;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
@@ -86,6 +88,12 @@ public final class GameScreen extends AbstractScreen {
             "IMAGE_UI_HUD_WORLDMAP_BUTTONS_HUD_BACK_SELECTED";
     private static final String RESET_COOLDOWNS_BUTTON =
             "IMAGE_UI_CHOOSER_SEED_CHOOSER_RECALL_BUTTON_ICON";
+    private static final String WAVE_PROGRESS_ZOMBIE_HEAD =
+            "IMAGE_UI_HUD_INGAME_PROGRESS_METER_ZOMBIEHEAD";
+    private static final String WAVE_PROGRESS_FLAG_POLE =
+            "IMAGE_UI_HUD_INGAME_PROGRESS_METER_FLAG_POLE";
+    private static final String WAVE_PROGRESS_FLAG =
+            "IMAGE_UI_HUD_INGAME_PROGRESS_METER_FLAG_DEFAULT";
     private static final String EGYPT_PACKET = "IMAGE_UI_PACKETS_EGYPT";
     private static final String ICEAGE_PACKET = "IMAGE_UI_PACKETS_ICEAGE";
     private static final String BEACH_PACKET = "IMAGE_UI_PACKETS_BEACH";
@@ -106,6 +114,10 @@ public final class GameScreen extends AbstractScreen {
     private static final float RESET_COOLDOWNS_BUTTON_X = 47f;
     private static final float RESET_COOLDOWNS_BUTTON_Y = 14f;
     private static final float RESET_COOLDOWNS_BUTTON_SIZE = 54f;
+    private static final float WAVE_PROGRESS_X = 440f;
+    private static final float WAVE_PROGRESS_Y = 8f;
+    private static final float WAVE_PROGRESS_WIDTH = 400f;
+    private static final float WAVE_PROGRESS_HEIGHT = 66f;
     private static final float SUN_HUD_X = 210f;
     private static final float SUN_HUD_Y = 648f;
     private static final float SUN_HUD_WIDTH = 218f;
@@ -154,6 +166,7 @@ public final class GameScreen extends AbstractScreen {
     private ImageButton pauseButton;
     private ImageButton selectionBackButton;
     private Button resetCooldownsButton;
+    private WaveProgressActor waveProgressActor;
     private Table sunHud;
     private Label sunAmountLabel;
     private Table plantFoodHud;
@@ -190,6 +203,7 @@ public final class GameScreen extends AbstractScreen {
         }
         installChapterBoard(chapter);
         installGameHud();
+        installWaveProgressHud();
 
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
@@ -556,6 +570,19 @@ public final class GameScreen extends AbstractScreen {
         return App.getInstance().getLoggedInUser() != null
                 && App.getInstance().getLoggedInUser()
                         .getSettings().isShowGameMapGrid();
+    }
+
+    private void installWaveProgressHud() {
+        Game game = activeGame();
+        if (game == null || game.getZombieWaves().isEmpty()
+                || waveProgressActor != null) {
+            return;
+        }
+        waveProgressActor = new WaveProgressActor(game);
+        waveProgressActor.setBounds(WAVE_PROGRESS_X, WAVE_PROGRESS_Y,
+                WAVE_PROGRESS_WIDTH, WAVE_PROGRESS_HEIGHT);
+        waveProgressActor.setTouchable(Touchable.disabled);
+        stage.addActor(waveProgressActor);
     }
 
     private void installSeedTray() {
@@ -1853,6 +1880,10 @@ public final class GameScreen extends AbstractScreen {
             plantingOverlayPixel = null;
         }
         sunActors.clear();
+        if (waveProgressActor != null) {
+            waveProgressActor.dispose();
+            waveProgressActor = null;
+        }
         sunLayer = null;
         zombieActors.clear();
         zombieLayer = null;
@@ -1977,6 +2008,151 @@ public final class GameScreen extends AbstractScreen {
             this.y = y;
             this.width = width;
             this.height = height;
+        }
+    }
+
+    /**
+     * PvZ-style wave meter inspired by phase-two image 19. Progress is based
+     * on planned wave zombies that have actually spawned. Because a model
+     * wave is spawned as one batch, the head advances exactly when that wave's
+     * zombies enter the board. Flag positions are weighted by the number of
+     * zombies in each wave instead of being spaced arbitrarily.
+     */
+    private final class WaveProgressActor extends Actor {
+        private static final float BAR_LEFT = 30f;
+        private static final float BAR_RIGHT_MARGIN = 30f;
+        private static final float BAR_Y = 9f;
+        private static final float BAR_HEIGHT = 15f;
+        private static final float FRAME_THICKNESS = 4f;
+        private static final float FLAG_POLE_WIDTH = 29f;
+        private static final float FLAG_POLE_HEIGHT = 38f;
+        private static final float FLAG_WIDTH = 27f;
+        private static final float FLAG_HEIGHT = 22f;
+        private static final float HEAD_WIDTH = 42f;
+        private static final float HEAD_HEIGHT = 45f;
+
+        private final Game game;
+        private final Texture pixel;
+        private final TextureRegion zombieHead;
+        private final TextureRegion flagPole;
+        private final TextureRegion flag;
+
+        private WaveProgressActor(Game game) {
+            this.game = game;
+            Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+            pixmap.setColor(Color.WHITE);
+            pixmap.fill();
+            pixel = new Texture(pixmap);
+            pixmap.dispose();
+            zombieHead = requireAssetRegion(WAVE_PROGRESS_ZOMBIE_HEAD);
+            flagPole = requireAssetRegion(WAVE_PROGRESS_FLAG_POLE);
+            flag = requireAssetRegion(WAVE_PROGRESS_FLAG);
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            List<ZombieWave> waves = game.getZombieWaves();
+            if (waves.isEmpty()) {
+                return;
+            }
+
+            int totalZombies = totalWaveZombieCount(waves);
+            if (totalZombies <= 0) {
+                return;
+            }
+            int spawnedZombies = spawnedWaveZombieCount(waves,
+                    game.getZombieWaveNumber());
+            float progress = Math.max(0f, Math.min(1f,
+                    spawnedZombies / (float) totalZombies));
+
+            float x = getX();
+            float y = getY();
+            float barLeft = x + BAR_LEFT;
+            float barWidth = getWidth() - BAR_LEFT - BAR_RIGHT_MARGIN;
+            float barRight = barLeft + barWidth;
+            float barBottom = y + BAR_Y;
+
+            Color previous = new Color(batch.getColor());
+
+            // Thick, dark outer casing like the original PvZ meter.
+            batch.setColor(0.12f, 0.09f, 0.05f, 0.96f * parentAlpha);
+            batch.draw(pixel,
+                    barLeft - FRAME_THICKNESS,
+                    barBottom - FRAME_THICKNESS,
+                    barWidth + FRAME_THICKNESS * 2f,
+                    BAR_HEIGHT + FRAME_THICKNESS * 2f);
+
+            // Empty portion of the meter.
+            batch.setColor(0.20f, 0.17f, 0.10f, parentAlpha);
+            batch.draw(pixel, barLeft, barBottom, barWidth, BAR_HEIGHT);
+
+            // Image 19 progresses from right toward the house on the left.
+            // Therefore the completed green section grows from right to left.
+            float completedWidth = barWidth * progress;
+            if (completedWidth > 0f) {
+                batch.setColor(0.16f, 0.88f, 0.12f, parentAlpha);
+                batch.draw(pixel, barRight - completedWidth, barBottom,
+                        completedWidth, BAR_HEIGHT);
+                batch.setColor(0.35f, 1f, 0.28f, 0.72f * parentAlpha);
+                batch.draw(pixel, barRight - completedWidth,
+                        barBottom + BAR_HEIGHT * 0.58f,
+                        completedWidth, BAR_HEIGHT * 0.24f);
+            }
+
+            // Every wave boundary is shown with a pole and red flag. The
+            // positions are proportional to how many zombies that wave adds.
+            int cumulative = 0;
+            for (ZombieWave wave : waves) {
+                cumulative += wave.getZombieTypes().size();
+                float boundaryProgress = cumulative / (float) totalZombies;
+                float markerX = barRight - barWidth * boundaryProgress;
+                boolean passed = progress + 0.0001f >= boundaryProgress;
+                float alpha = passed ? 1f : 0.72f;
+
+                batch.setColor(1f, 1f, 1f, alpha * parentAlpha);
+                batch.draw(flagPole,
+                        markerX - FLAG_POLE_WIDTH * 0.5f,
+                        barBottom - 2f,
+                        FLAG_POLE_WIDTH, FLAG_POLE_HEIGHT);
+                batch.draw(flag,
+                        markerX - FLAG_WIDTH * 0.58f,
+                        barBottom + FLAG_POLE_HEIGHT * 0.48f,
+                        FLAG_WIDTH, FLAG_HEIGHT);
+            }
+
+            // The zombie head rides on the boundary between completed and
+            // remaining progress, matching the reference meter's scale.
+            float headX = barRight - barWidth * progress;
+            batch.setColor(1f, 1f, 1f, parentAlpha);
+            batch.draw(zombieHead,
+                    headX - HEAD_WIDTH * 0.5f,
+                    barBottom - HEAD_HEIGHT * 0.32f,
+                    HEAD_WIDTH, HEAD_HEIGHT);
+
+            batch.setColor(previous);
+        }
+
+        private int totalWaveZombieCount(List<ZombieWave> waves) {
+            int total = 0;
+            for (ZombieWave wave : waves) {
+                total += wave.getZombieTypes().size();
+            }
+            return total;
+        }
+
+        private int spawnedWaveZombieCount(List<ZombieWave> waves,
+                int currentWaveNumber) {
+            int spawned = 0;
+            int spawnedWaveCount = Math.max(0,
+                    Math.min(currentWaveNumber, waves.size()));
+            for (int index = 0; index < spawnedWaveCount; index++) {
+                spawned += waves.get(index).getZombieTypes().size();
+            }
+            return spawned;
+        }
+
+        private void dispose() {
+            pixel.dispose();
         }
     }
 
