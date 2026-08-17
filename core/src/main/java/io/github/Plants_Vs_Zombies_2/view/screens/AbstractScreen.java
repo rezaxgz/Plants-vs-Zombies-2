@@ -7,6 +7,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -22,6 +23,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.utils.Timer;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 
@@ -60,7 +62,8 @@ public abstract class AbstractScreen implements Screen {
     protected final Skin skin;
     protected final Stage stage;
     private final Stage backgroundStage;
-    private Image backgroundImage;
+    private final SpriteBatch backgroundBatch;
+    private TextureRegion backgroundRegion;
     protected final Table root;
     protected final Table headerLeading;
     protected final Table content;
@@ -82,6 +85,7 @@ public abstract class AbstractScreen implements Screen {
         // FitViewport. This guarantees that the background always covers the
         // complete OS window, even when the window is not 16:9.
         this.backgroundStage = new Stage(new ScreenViewport());
+        this.backgroundBatch = new SpriteBatch();
         this.stage = new Stage(new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
 
         root = new Table();
@@ -284,18 +288,18 @@ public abstract class AbstractScreen implements Screen {
         backgroundStage.getRoot().clearChildren();
         disposeOwnedBackgroundTexture();
         backgroundTexture = new Texture(Gdx.files.internal(internalPath));
-        installBackgroundImage(new Image(backgroundTexture));
+        backgroundRegion = new TextureRegion(backgroundTexture);
     }
 
     /**
      * Uses an image from libPVZ's TextureBank as a full-window stretched
      * background. The TextureBank owns the underlying texture, so this screen
-     * only owns the Image actor and never disposes that texture.
+     * only keeps a reference to the region and never disposes that texture.
      */
     protected final void setAssetBackground(String imageId) {
         backgroundStage.getRoot().clearChildren();
         disposeOwnedBackgroundTexture();
-        installBackgroundImage(createAssetImage(imageId));
+        backgroundRegion = requireAssetRegion(imageId);
     }
 
     /** Adds an actor above the stretched background but below the normal UI. */
@@ -306,19 +310,24 @@ public abstract class AbstractScreen implements Screen {
         backgroundStage.addActor(actor);
     }
 
-    private void installBackgroundImage(Image image) {
-        backgroundImage = image;
-        backgroundImage.setScaling(Scaling.stretch);
+    private void drawFullWindowBackground() {
+        if (backgroundRegion == null) {
+            return;
+        }
 
-        // A ScreenViewport maps one stage unit to one screen pixel. Set the
-        // image to those exact dimensions instead of relying on fill-parent
-        // layout, which can leave FitViewport-style letterboxing visible.
-        backgroundStage.getViewport().update(
-                Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
-        backgroundImage.setBounds(0f, 0f,
-                backgroundStage.getViewport().getWorldWidth(),
-                backgroundStage.getViewport().getWorldHeight());
-        backgroundStage.addActor(backgroundImage);
+        // Draw directly to the entire framebuffer before either Scene2D stage
+        // changes the GL viewport. This deliberately ignores the UI
+        // FitViewport's letterbox area, so a background always stretches over
+        // every pixel of the client window on 16:9, 16:10, ultrawide, and
+        // high-DPI displays.
+        int width = Gdx.graphics.getWidth();
+        int height = Gdx.graphics.getHeight();
+        HdpiUtils.glViewport(0, 0, width, height);
+        backgroundBatch.getProjectionMatrix().setToOrtho2D(
+                0f, 0f, width, height);
+        backgroundBatch.begin();
+        backgroundBatch.draw(backgroundRegion, 0f, 0f, width, height);
+        backgroundBatch.end();
     }
 
     private void disposeOwnedBackgroundTexture() {
@@ -357,6 +366,15 @@ public abstract class AbstractScreen implements Screen {
         return true;
     }
 
+    /**
+     * Multiplier applied to Scene2D time on this screen. Normal menus stay at
+     * real-time speed; GameScreen overrides this so PAM clips and any other
+     * game-screen actions use the player's 1x/2x/3x game-speed setting.
+     */
+    protected float getSceneTimeScale() {
+        return 1f;
+    }
+
     @Override
     public void render(float delta) {
         refreshResourceLabels();
@@ -364,9 +382,11 @@ public abstract class AbstractScreen implements Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         float frameDelta = Math.min(delta, 1f / 15f);
         if (shouldAdvanceScene()) {
-            backgroundStage.act(frameDelta);
-            stage.act(frameDelta);
+            float sceneDelta = frameDelta * Math.max(0f, getSceneTimeScale());
+            backgroundStage.act(sceneDelta);
+            stage.act(sceneDelta);
         }
+        drawFullWindowBackground();
         backgroundStage.draw();
         stage.draw();
     }
@@ -374,11 +394,6 @@ public abstract class AbstractScreen implements Screen {
     @Override
     public void resize(int width, int height) {
         backgroundStage.getViewport().update(width, height, true);
-        if (backgroundImage != null) {
-            backgroundImage.setBounds(0f, 0f,
-                    backgroundStage.getViewport().getWorldWidth(),
-                    backgroundStage.getViewport().getWorldHeight());
-        }
         stage.getViewport().update(width, height, true);
     }
 
@@ -401,7 +416,8 @@ public abstract class AbstractScreen implements Screen {
     public void dispose() {
         stage.dispose();
         backgroundStage.dispose();
+        backgroundBatch.dispose();
         disposeOwnedBackgroundTexture();
-        backgroundImage = null;
+        backgroundRegion = null;
     }
 }

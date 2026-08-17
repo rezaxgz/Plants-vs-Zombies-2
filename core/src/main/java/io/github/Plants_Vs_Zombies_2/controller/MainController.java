@@ -433,12 +433,12 @@ public final class MainController {
         if (level.getSpecialLevelType() == SpecialLevelType.CONVEYOR_BELT) {
             return launchAdventureGame(chapter, level,
                     Map.of(), List.of(),
-                    "Conveyor Belt levels skip plant selection.");
+                    "Conveyor Belt levels skip plant selection.", false);
         }
         if (level.getSpecialLevelType() == SpecialLevelType.LOCKED_PLANTS) {
             return launchAdventureGame(chapter, level,
                     createForcedLoadout(user, level), List.of(),
-                    "Locked Plants uses its fixed plant loadout.");
+                    "Locked Plants uses its fixed plant loadout.", false);
         }
         if (selection == null || selection.getSelectedPlants().isEmpty()) {
             return CommandResult.error(
@@ -446,7 +446,7 @@ public final class MainController {
         }
         return launchAdventureGame(chapter, level,
                 selection.getSelectedPlantLevels(),
-                selection.getBoostedPlantNames(), null);
+                selection.getBoostedPlantNames(), null, false);
     }
 
     static CommandResult launchAdventureGame(
@@ -454,11 +454,21 @@ public final class MainController {
             Map<String, Integer> selectedPlantLevels,
             List<String> boostedPlantNames,
             String preface) {
+        return launchAdventureGame(chapter, level, selectedPlantLevels,
+                boostedPlantNames, preface, true);
+    }
+
+    private static CommandResult launchAdventureGame(
+            Chapter chapter, Level level,
+            Map<String, Integer> selectedPlantLevels,
+            List<String> boostedPlantNames,
+            String preface, boolean startWavesImmediately) {
         User user = App.getInstance().getLoggedInUser();
         int difficultyLevel = user == null
                 ? 3
                 : user.getSettings().getDifficultyLevel();
-        Game game = level.createGame(difficultyLevel);
+        Game game = level.createGame(
+                difficultyLevel, startWavesImmediately);
         configureUnlockedConveyorPool(user, level, game);
         Set<String> paidBoosts = new LinkedHashSet<>();
         if (boostedPlantNames != null) {

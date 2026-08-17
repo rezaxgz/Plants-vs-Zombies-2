@@ -43,7 +43,7 @@ abstract class GameWaveLogic extends GameAbilityLogic {
     }
 
     void startNextWaveIfPossible() {
-        if (!zombieWavesStarted) {
+        if (!zombieWavesStarted || guiWaveAdvanceHeld) {
             return;
         }
         while (status == GameStatus.ACTIVE && nextWaveIndex < zombieWaves.size()
@@ -51,6 +51,75 @@ abstract class GameWaveLogic extends GameAbilityLogic {
             spawnWave(nextWaveIndex);
             nextWaveIndex++;
         }
+    }
+
+    public boolean isNextWaveReadyForGui() {
+        return zombieWavesStarted
+                && nextWaveIndex < zombieWaves.size()
+                && isPreviousWaveDamagedEnough();
+    }
+
+    public int getNextWaveNumberForGui() {
+        return nextWaveIndex < zombieWaves.size()
+                ? nextWaveIndex + 1
+                : 0;
+    }
+
+    public boolean spawnNextWaveForGui() {
+        if (!isNextWaveReadyForGui()) {
+            return false;
+        }
+        spawnWave(nextWaveIndex);
+        nextWaveIndex++;
+        return true;
+    }
+
+    public boolean willNextWaveTriggerNecromancy() {
+        if (chapterRuleset != ChapterRuleset.DARK_AGES
+                || nextWaveIndex >= zombieWaves.size()) {
+            return false;
+        }
+        for (Grave grave : board.getGraves()) {
+            if (grave.isNecromancyGrave()
+                    && !board.hasZombieAt(grave.getPosition())) {
+                return true;
+            }
+        }
+        for (int row = 0; row < board.getNumberOfRows(); row++) {
+            for (int column = 0; column < board.getNumberOfColumns(); column++) {
+                EntityPosition position = new EntityPosition(row, column);
+                if (board.canAddGraveAt(position)
+                        && board.getTileAt(position) != null
+                        && board.getTileAt(position).getTileType()
+                                == TileType.NECROMANCY) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean willNextWaveTriggerLowBeachEmergence() {
+        int waveNumber = getNextWaveNumberForGui();
+        if (chapterRuleset != ChapterRuleset.BIG_WAVE_BEACH
+                || waveNumber <= 1
+                || !board.isBigWaveBeachRulesEnabled()
+                || board.getWaterColumnCount()
+                        >= board.getMaximumWaterColumnCount()) {
+            return false;
+        }
+        int newlyFloodedColumn = board.getNumberOfColumns()
+                - (board.getWaterColumnCount() + 1);
+        if (newlyFloodedColumn < 0) {
+            return false;
+        }
+        for (int row = 0; row < board.getNumberOfRows(); row++) {
+            if (board.isLowBeachTile(
+                    new EntityPosition(row, newlyFloodedColumn))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     boolean isPreviousWaveDamagedEnough() {

@@ -1,2 +1,3 @@
 add assets to shop menu and make it prettier
 check leaderboard options and design
+zombies collection shows bucket in list but no bucket in details

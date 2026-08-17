@@ -56,6 +56,10 @@ public final class GreenhouseScreen extends AbstractScreen {
 
     private static final int DEBUG_SPROUT_INCREMENT = 5;
     private static final float FEEDBACK_VISIBLE_SECONDS = 3f;
+    private static final float FEEDBACK_X = 286f;
+    private static final float FEEDBACK_Y = 514f;
+    private static final float FEEDBACK_WIDTH = 650f;
+    private static final float FEEDBACK_HEIGHT = 82f;
     private static final String PURPLE_BUTTON_NORMAL =
             "IMAGE_UI_GENERIC_SM_PURPLE_BTN_NORMAL";
     private static final String PURPLE_BUTTON_DOWN =
@@ -101,7 +105,9 @@ public final class GreenhouseScreen extends AbstractScreen {
         feedbackLabel.setAlignment(Align.center);
         feedbackLabel.setWrap(true);
         feedbackLabel.setColor(Color.WHITE);
-        feedbackLabel.setBounds(250f, 84f, 780f, 48f);
+        feedbackLabel.setFontScale(0.9f);
+        feedbackLabel.setBounds(FEEDBACK_X, FEEDBACK_Y,
+                FEEDBACK_WIDTH, FEEDBACK_HEIGHT);
         stage.addActor(feedbackLabel);
 
         boardGrid.top().left();

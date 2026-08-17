@@ -20,7 +20,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantTag;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 
 /** Collects quest telemetry without coupling individual quests to game logic. */
-public final class QuestRunTracker {
+public final class QuestRunTracker implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
     private final Set<BasePlant> trackedPlants = new HashSet<>();
     private final Set<String> offensivePlantNames = new LinkedHashSet<>();
     private final Set<String> offensivePlantFamilies = new LinkedHashSet<>();

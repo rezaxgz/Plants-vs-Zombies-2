@@ -195,6 +195,27 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
         return plantWhatYouGetSystem != null;
     }
 
+    public void setGuiWaveAdvanceHeld(boolean held) {
+        guiWaveAdvanceHeld = held;
+    }
+
+    public boolean isGuiWaveAdvanceHeld() {
+        return guiWaveAdvanceHeld;
+    }
+
+    public boolean startZombieWavesFromGui() {
+        if (zombieWavesStarted) {
+            return true;
+        }
+        if (plantWhatYouGetSystem != null
+                && !plantWhatYouGetSystem.startZombieWaves()) {
+            return false;
+        }
+        zombieWavesStarted = true;
+        pendingResults.add("Zombie waves are ready to start.");
+        return true;
+    }
+
     protected final void beginZombieWaves() {
         if (zombieWavesStarted) {
             return;
