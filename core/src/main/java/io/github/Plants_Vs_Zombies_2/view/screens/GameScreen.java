@@ -3,6 +3,8 @@ package io.github.Plants_Vs_Zombies_2.view.screens;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -10,6 +12,7 @@ import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
@@ -31,6 +34,9 @@ import io.github.Plants_Vs_Zombies_2.controller.PlantSelectionController;
 import io.github.Plants_Vs_Zombies_2.model.App;
 import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
+import io.github.Plants_Vs_Zombies_2.model.game.Game;
+import io.github.Plants_Vs_Zombies_2.model.game.PlantPlacementResult;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
@@ -128,6 +134,13 @@ public final class GameScreen extends AbstractScreen {
     private int previewSunCount;
     private int previewPlantFoodCount;
 
+    private Texture plantingOverlayPixel;
+    private Group plantedPlantLayer;
+    private Image hoveredBoardCell;
+    private Actor cursorPlantActor;
+    private PlantCollectionItem selectedPlantForPlacement;
+    private String plantedPlantRenderSignature = "";
+
     /** Normal model-backed game screen, including resumed saved games. */
     public GameScreen(ScreenNavigator navigator) {
         super(navigator, "");
@@ -142,6 +155,7 @@ public final class GameScreen extends AbstractScreen {
 
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
+            installPlantingInteraction();
             rebuildSeedTray();
         }
     }
@@ -579,10 +593,380 @@ public final class GameScreen extends AbstractScreen {
         costLayer.add(sun).size(16f).padRight(-2f);
         costLayer.add(cost).padRight(5f).padBottom(3f);
         slot.add(costLayer);
+
+        if (isModelBackedGame() && plantingOverlayPixel != null) {
+            BasePlant prototype = loadoutPrototypeFor(plant.getName());
+            if (prototype != null) {
+                CooldownShadeActor cooldownShade =
+                        new CooldownShadeActor(prototype);
+                cooldownShade.setTouchable(Touchable.disabled);
+                slot.add(cooldownShade);
+            }
+            if (isSelectedForPlacement(plant)) {
+                SelectionOutlineActor outline = new SelectionOutlineActor();
+                outline.setTouchable(Touchable.disabled);
+                slot.add(outline);
+            }
+            slot.addListener(new ClickListener(Input.Buttons.LEFT) {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    selectPlantForPlacement(plant);
+                }
+            });
+        }
+
         slot.addListener(new TextTooltip(
                 plant.getName() + (isVisuallyBoosted(plant)
                         ? "\nBoosted" : ""), skin));
         return slot;
+    }
+
+    private void installPlantingInteraction() {
+        if (!isModelBackedGame() || plantingOverlayPixel != null) {
+            return;
+        }
+
+        Pixmap pixel = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixel.setColor(Color.WHITE);
+        pixel.fill();
+        plantingOverlayPixel = new Texture(pixel);
+        pixel.dispose();
+
+        plantedPlantLayer = new Group();
+        plantedPlantLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(plantedPlantLayer);
+
+        hoveredBoardCell = new Image(plantingOverlayPixel);
+        hoveredBoardCell.setTouchable(Touchable.disabled);
+        hoveredBoardCell.setColor(1f, 1f, 1f, 0.28f);
+        hoveredBoardCell.setVisible(false);
+        addBackgroundOverlay(hoveredBoardCell);
+
+        stage.getRoot().addCaptureListener(new InputListener() {
+            @Override
+            public boolean touchDown(InputEvent event, float x, float y,
+                    int pointer, int button) {
+                if (button == Input.Buttons.RIGHT) {
+                    if (selectedPlantForPlacement != null) {
+                        clearSelectedPlantForPlacement();
+                        event.stop();
+                        return true;
+                    }
+                    return false;
+                }
+                if (button != Input.Buttons.LEFT
+                        || !canInteractWithBoard()
+                        || selectedPlantForPlacement == null) {
+                    return false;
+                }
+
+                EntityPosition boardPosition = boardPositionAtScreen(
+                        Gdx.input.getX(), Gdx.input.getY());
+                if (boardPosition == null) {
+                    return false;
+                }
+                plantSelectedPlantAt(boardPosition);
+                event.stop();
+                return true;
+            }
+        });
+
+        rebuildPlantedPlantLayer();
+    }
+
+    private boolean isModelBackedGame() {
+        return previewLevel == null
+                && App.getInstance().getCurrentMenu() instanceof GameMenu;
+    }
+
+    private Game activeGame() {
+        return isModelBackedGame() ? currentGameMenu().getGame() : null;
+    }
+
+    private boolean canInteractWithBoard() {
+        Game game = activeGame();
+        return game != null
+                && !gamePaused
+                && pauseModal == null
+                && plantSelectionModal == null
+                && game.allowsDirectPlanting();
+    }
+
+    private BasePlant loadoutPrototypeFor(String plantName) {
+        Game game = activeGame();
+        if (game == null || plantName == null) {
+            return null;
+        }
+        for (BasePlant prototype : game.getPlantLoadoutPrototypes()) {
+            if (prototype.getName().equalsIgnoreCase(plantName)) {
+                return prototype;
+            }
+        }
+        return null;
+    }
+
+    private boolean isSelectedForPlacement(PlantCollectionItem plant) {
+        return plant != null && selectedPlantForPlacement != null
+                && selectedPlantForPlacement.getName()
+                        .equalsIgnoreCase(plant.getName());
+    }
+
+    private void selectPlantForPlacement(PlantCollectionItem plant) {
+        if (!canInteractWithBoard() || plant == null) {
+            return;
+        }
+        BasePlant prototype = loadoutPrototypeFor(plant.getName());
+        if (prototype == null || isPlantCoolingDown(prototype)) {
+            return;
+        }
+        selectedPlantForPlacement = plant;
+        rebuildCursorPlantActor();
+        rebuildSeedTray();
+    }
+
+    private void clearSelectedPlantForPlacement() {
+        selectedPlantForPlacement = null;
+        if (cursorPlantActor != null) {
+            cursorPlantActor.remove();
+            cursorPlantActor = null;
+        }
+        if (hoveredBoardCell != null) {
+            hoveredBoardCell.setVisible(false);
+        }
+        rebuildSeedTray();
+    }
+
+    private boolean isPlantCoolingDown(BasePlant prototype) {
+        Game game = activeGame();
+        return game != null && prototype != null
+                && game.getPlantCooldownRemainingSeconds(prototype) > 0.001;
+    }
+
+    private float cooldownFraction(BasePlant prototype) {
+        Game game = activeGame();
+        if (game == null || prototype == null
+                || prototype.getRechargeSeconds() <= 0f) {
+            return 0f;
+        }
+        double remaining = game.getPlantCooldownRemainingSeconds(prototype);
+        return Math.max(0f, Math.min(1f,
+                (float) (remaining / prototype.getRechargeSeconds())));
+    }
+
+    private void plantSelectedPlantAt(EntityPosition position) {
+        Game game = activeGame();
+        if (game == null || selectedPlantForPlacement == null
+                || position == null) {
+            return;
+        }
+
+        BasePlant plant = game.createPlantFromLoadout(
+                selectedPlantForPlacement.getName(), position);
+        if (plant == null) {
+            return;
+        }
+        PlantPlacementResult result = game.plant(plant);
+        if (result != PlantPlacementResult.SUCCESS) {
+            return;
+        }
+
+        selectedPlantForPlacement = null;
+        if (cursorPlantActor != null) {
+            cursorPlantActor.remove();
+            cursorPlantActor = null;
+        }
+        if (hoveredBoardCell != null) {
+            hoveredBoardCell.setVisible(false);
+        }
+        refreshSunHud();
+        rebuildSeedTray();
+        rebuildPlantedPlantLayer();
+    }
+
+    private EntityPosition boardPositionAtScreen(int screenX, int screenY) {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (layout == null || Gdx.graphics.getWidth() <= 0
+                || Gdx.graphics.getHeight() <= 0) {
+            return null;
+        }
+
+        float sourceX = screenX * layout.sourceWidth
+                / Gdx.graphics.getWidth();
+        float sourceY = screenY * layout.sourceHeight
+                / Gdx.graphics.getHeight();
+        if (sourceX < layout.left || sourceX >= layout.right
+                || sourceY < layout.top || sourceY >= layout.bottom) {
+            return null;
+        }
+
+        int column = (int) ((sourceX - layout.left)
+                / (layout.right - layout.left) * BOARD_COLUMNS);
+        int row = (int) ((sourceY - layout.top)
+                / (layout.bottom - layout.top) * BOARD_ROWS);
+        if (row < 0 || row >= BOARD_ROWS
+                || column < 0 || column >= BOARD_COLUMNS) {
+            return null;
+        }
+        return new EntityPosition(row, column);
+    }
+
+    private CellBounds screenBoundsForCell(EntityPosition position) {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (layout == null || position == null) {
+            return null;
+        }
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom)
+                / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+        return new CellBounds(
+                boardX + position.getColumn() * cellWidth,
+                boardY + (BOARD_ROWS - 1 - position.getRow()) * cellHeight,
+                cellWidth, cellHeight);
+    }
+
+    private void refreshBoardHover() {
+        if (hoveredBoardCell == null || selectedPlantForPlacement == null
+                || !canInteractWithBoard()) {
+            if (hoveredBoardCell != null) {
+                hoveredBoardCell.setVisible(false);
+            }
+            return;
+        }
+        EntityPosition position = boardPositionAtScreen(
+                Gdx.input.getX(), Gdx.input.getY());
+        CellBounds bounds = screenBoundsForCell(position);
+        if (bounds == null) {
+            hoveredBoardCell.setVisible(false);
+            return;
+        }
+        hoveredBoardCell.setBounds(
+                bounds.x, bounds.y, bounds.width, bounds.height);
+        hoveredBoardCell.setVisible(true);
+    }
+
+    private void rebuildCursorPlantActor() {
+        if (cursorPlantActor != null) {
+            cursorPlantActor.remove();
+            cursorPlantActor = null;
+        }
+        if (selectedPlantForPlacement == null) {
+            return;
+        }
+        cursorPlantActor = createPlantIdleActor(
+                selectedPlantForPlacement.getName());
+        cursorPlantActor.setTouchable(Touchable.disabled);
+        cursorPlantActor.setColor(1f, 1f, 1f, 0.86f);
+        addBackgroundOverlay(cursorPlantActor);
+        refreshCursorPlantPosition();
+    }
+
+    private void refreshCursorPlantPosition() {
+        if (cursorPlantActor == null) {
+            return;
+        }
+        if (!canInteractWithBoard() || selectedPlantForPlacement == null) {
+            cursorPlantActor.setVisible(false);
+            return;
+        }
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (layout == null) {
+            cursorPlantActor.setVisible(false);
+            return;
+        }
+        float cellWidth = Gdx.graphics.getWidth()
+                * (layout.right - layout.left) / layout.sourceWidth
+                / BOARD_COLUMNS;
+        float cellHeight = Gdx.graphics.getHeight()
+                * (layout.bottom - layout.top) / layout.sourceHeight
+                / BOARD_ROWS;
+        float width = cellWidth * 0.92f;
+        float height = cellHeight * 1.18f;
+        float mouseX = Gdx.input.getX();
+        float mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
+        cursorPlantActor.setBounds(
+                mouseX - width * 0.5f,
+                mouseY - height * 0.42f,
+                width, height);
+        cursorPlantActor.setVisible(true);
+    }
+
+    private Actor createPlantIdleActor(String plantName) {
+        PlantAnimationCatalog.Preview preview =
+                PlantAnimationCatalog.find(plantName);
+        if (preview != null) {
+            try {
+                return new PamAnimationActor(
+                        navigator.getPamPlayer(),
+                        preview.getPath(), preview.getClip());
+            } catch (RuntimeException ignored) {
+                // Fall through to packet artwork when an optional PAM is absent.
+            }
+        }
+        Image fallback = createAssetImage(
+                PlantPacketCard.packetAssetFor(plantName));
+        fallback.setScaling(Scaling.fit);
+        return fallback;
+    }
+
+    private void rebuildPlantedPlantLayer() {
+        Game game = activeGame();
+        if (plantedPlantLayer == null || game == null) {
+            return;
+        }
+        plantedPlantLayer.clearChildren();
+        for (BasePlant plant : game.getBoard().getPlants()) {
+            Actor actor = createPlantIdleActor(plant.getName());
+            actor.setTouchable(Touchable.disabled);
+            positionPlantActor(actor, plant.getEntityPosition());
+            plantedPlantLayer.addActor(actor);
+        }
+        plantedPlantRenderSignature = createPlantRenderSignature(game);
+    }
+
+    private void positionPlantActor(Actor actor, EntityPosition position) {
+        CellBounds bounds = screenBoundsForCell(position);
+        if (actor == null || bounds == null) {
+            return;
+        }
+        float width = bounds.width * 0.90f;
+        float height = bounds.height * 1.16f;
+        actor.setBounds(
+                bounds.x + (bounds.width - width) * 0.5f,
+                bounds.y - bounds.height * 0.03f,
+                width, height);
+    }
+
+    private String createPlantRenderSignature(Game game) {
+        StringBuilder signature = new StringBuilder();
+        for (BasePlant plant : game.getBoard().getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            signature.append(plant.getName()).append('@')
+                    .append(position == null ? "?" : position.getRow())
+                    .append(',')
+                    .append(position == null ? "?" : position.getColumn())
+                    .append(';');
+        }
+        return signature.toString();
+    }
+
+    private void refreshPlantedPlantLayerIfNeeded() {
+        Game game = activeGame();
+        if (game == null || plantedPlantLayer == null) {
+            return;
+        }
+        String signature = createPlantRenderSignature(game);
+        if (!signature.equals(plantedPlantRenderSignature)) {
+            rebuildPlantedPlantLayer();
+        }
     }
 
     private void showPlantSelectionModal() {
@@ -1004,12 +1388,34 @@ public final class GameScreen extends AbstractScreen {
 
     @Override
     public void render(float delta) {
+        if (isModelBackedGame() && !gamePaused) {
+            User user = currentUser();
+            float gameSpeed = user == null
+                    ? 1f
+                    : user.getSettings().getGameSpeed();
+            float plantDelta = Math.min(delta, 1f / 15f) * gameSpeed;
+            activeGame().updatePlantsOnly(plantDelta);
+        }
+
         refreshSunHud();
         refreshPlantFoodHud();
+        refreshBoardHover();
+        refreshCursorPlantPosition();
+        refreshPlantedPlantLayerIfNeeded();
         if (previewLevel == null) {
             currentGameMenu().synchronizeProgress();
         }
         super.render(delta);
+    }
+
+    @Override
+    public void resize(int width, int height) {
+        super.resize(width, height);
+        if (isModelBackedGame()) {
+            rebuildPlantedPlantLayer();
+            refreshBoardHover();
+            refreshCursorPlantPosition();
+        }
     }
 
     @Override
@@ -1018,7 +1424,73 @@ public final class GameScreen extends AbstractScreen {
             gridActor.dispose();
             gridActor = null;
         }
+        if (plantingOverlayPixel != null) {
+            plantingOverlayPixel.dispose();
+            plantingOverlayPixel = null;
+        }
         super.dispose();
+    }
+
+    private final class CooldownShadeActor extends Actor {
+        private final BasePlant prototype;
+
+        private CooldownShadeActor(BasePlant prototype) {
+            this.prototype = prototype;
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (plantingOverlayPixel == null) {
+                return;
+            }
+            float fraction = cooldownFraction(prototype);
+            if (fraction <= 0f) {
+                return;
+            }
+            Color previous = new Color(batch.getColor());
+            batch.setColor(0f, 0f, 0f, 0.68f * parentAlpha);
+            batch.draw(plantingOverlayPixel,
+                    getX(), getY(), getWidth(), getHeight() * fraction);
+            batch.setColor(previous);
+        }
+    }
+
+    private final class SelectionOutlineActor extends Actor {
+        private static final float THICKNESS = 3f;
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (plantingOverlayPixel == null) {
+                return;
+            }
+            Color previous = new Color(batch.getColor());
+            batch.setColor(1f, 1f, 1f, 0.92f * parentAlpha);
+            batch.draw(plantingOverlayPixel,
+                    getX(), getY(), getWidth(), THICKNESS);
+            batch.draw(plantingOverlayPixel,
+                    getX(), getY() + getHeight() - THICKNESS,
+                    getWidth(), THICKNESS);
+            batch.draw(plantingOverlayPixel,
+                    getX(), getY(), THICKNESS, getHeight());
+            batch.draw(plantingOverlayPixel,
+                    getX() + getWidth() - THICKNESS, getY(),
+                    THICKNESS, getHeight());
+            batch.setColor(previous);
+        }
+    }
+
+    private static final class CellBounds {
+        private final float x;
+        private final float y;
+        private final float width;
+        private final float height;
+
+        private CellBounds(float x, float y, float width, float height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
     }
 
     /** Board rectangle measured from the supplied 768-resolution textures. */

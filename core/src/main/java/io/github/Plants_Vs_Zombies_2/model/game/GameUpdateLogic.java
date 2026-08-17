@@ -34,6 +34,27 @@ abstract class GameUpdateLogic extends GameState {
         }
     }
 
+    /**
+     * Advances planted entities and seed-packet recharge timers without
+     * advancing the wave controller. The graphical Phase-2 game screen uses
+     * this temporary mode while zombie-wave presentation is still being built.
+     */
+    public void updatePlantsOnly(float deltaSeconds) {
+        validateDeltaSeconds(deltaSeconds);
+        if (status != GameStatus.ACTIVE) {
+            return;
+        }
+
+        deltaSeconds = difficultyRules.scaleGameDelta(deltaSeconds);
+        updatePlantCooldowns(deltaSeconds);
+        prepareLoveYourPlants();
+        board.update(deltaSeconds);
+        questRunTracker.capturePlantLosses(board);
+        reportSunLandings();
+        applyPlantCooldownResetRequests();
+        pendingResults.addAll(board.drainResults());
+    }
+
     public void update(float deltaSeconds) {
         validateDeltaSeconds(deltaSeconds);
         if (status != GameStatus.ACTIVE) {

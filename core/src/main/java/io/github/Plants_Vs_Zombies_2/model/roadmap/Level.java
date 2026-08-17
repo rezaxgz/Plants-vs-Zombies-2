@@ -168,13 +168,24 @@ public final class Level {
     }
 
     public Game createGame(int difficultyLevel) {
+        boolean startWavesImmediately = specialLevelType
+                != SpecialLevelType.PLANT_WHAT_YOU_GET;
+        return createGame(difficultyLevel, startWavesImmediately);
+    }
+
+    /**
+     * Creates a level while allowing the graphical client to hold zombie waves
+     * before they are visually implemented. Phase-1 callers keep using the
+     * normal overload above, so their original wave-start behavior is intact.
+     */
+    public Game createGame(int difficultyLevel,
+            boolean startWavesImmediately) {
         List<ZombieWave> freshWaves = new ArrayList<>();
         for (ZombieWave wave : zombieWaves) {
             freshWaves.add(
                     wave.forDifficulty(difficultyLevel));
         }
 
-        boolean startWavesImmediately = specialLevelType != SpecialLevelType.PLANT_WHAT_YOU_GET;
         Board board = new Board(numberOfRows, numberOfColumns);
         configureChapterBoard(board);
         Game game = new Game(
