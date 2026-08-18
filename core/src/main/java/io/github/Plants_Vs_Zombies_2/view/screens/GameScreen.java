@@ -282,6 +282,8 @@ public final class GameScreen extends AbstractScreen {
             rebuildSeedTray();
         }
         installStructureRendering();
+        addBackgroundOverlay(new LawnMowerRenderer(
+                navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
         installShovelButton();
         installZombieRendering();

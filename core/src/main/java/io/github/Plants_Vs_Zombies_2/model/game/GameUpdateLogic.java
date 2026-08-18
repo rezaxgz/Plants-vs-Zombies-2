@@ -79,7 +79,8 @@ abstract class GameUpdateLogic extends GameState {
         }
 
         if (usesLawnMowers()) {
-            LawnMowerResolution mowerResolution = lawnMowerSystem.resolve(board);
+            LawnMowerResolution mowerResolution = lawnMowerSystem.resolve(
+                    board, deltaSeconds);
             pendingResults.addAll(mowerResolution.getMessages());
             processZombieDeathDrops(
                     mowerResolution.getKilledZombies());
