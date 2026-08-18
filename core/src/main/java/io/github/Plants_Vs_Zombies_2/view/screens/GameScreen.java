@@ -292,6 +292,12 @@ public final class GameScreen extends AbstractScreen {
         installCollectibleDropRendering();
         installRewardNotice();
         installGameAnnouncementSystem();
+        if (menu.getLevel() != null) {
+            gamePaused = true;
+            stage.addActor(new LevelObjectivesOverlay(
+                    skin, menu.getLevel(), VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
+                    () -> gamePaused = false));
+        }
     }
 
     /** Empty level preview for levels that do not use normal plant choosing. */
@@ -2739,8 +2745,31 @@ public final class GameScreen extends AbstractScreen {
         refreshPlantedPlantLayerIfNeeded();
         if (previewLevel == null) {
             currentGameMenu().synchronizeProgress();
+            showFinishedGameMenuIfNeeded();
         }
         super.render(delta);
+    }
+
+    private void showFinishedGameMenuIfNeeded() {
+        Game game = activeGame();
+        if (game == null
+                || game.getStatus()
+                        == io.github.Plants_Vs_Zombies_2.model.game.GameStatus.ACTIVE
+                || stage.getRoot().findActor("game-result-overlay") != null) {
+            return;
+        }
+
+        if (shovelMode) {
+            setShovelMode(false);
+        }
+        gamePaused = true;
+        stage.addActor(new GameResultOverlay(
+                skin, game.getStatus(), VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
+                this::restartLevel,
+                () -> {
+                    gamePaused = false;
+                    navigator.exitGameToAdventure();
+                }));
     }
 
     @Override
