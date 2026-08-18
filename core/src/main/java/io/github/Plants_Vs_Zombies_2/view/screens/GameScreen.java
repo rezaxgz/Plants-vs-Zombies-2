@@ -55,9 +55,15 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.other.PlantFoodDrop;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.PotDrop;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.SunType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.BouncingGrape;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
+import io.github.Plants_Vs_Zombies_2.model.game.structure.BaseStructure;
+import io.github.Plants_Vs_Zombies_2.model.game.structure.Grave;
+import io.github.Plants_Vs_Zombies_2.model.game.structure.GraveReward;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
@@ -111,6 +117,15 @@ public final class GameScreen extends AbstractScreen {
     private static final String ICEAGE_PACKET = "IMAGE_UI_PACKETS_ICEAGE";
     private static final String BEACH_PACKET = "IMAGE_UI_PACKETS_BEACH";
     private static final String DARK_PACKET = "IMAGE_UI_PACKETS_DARK";
+    private static final String EGYPT_GRAVE_PAM =
+            "768/INITIAL/GRAVESTONES/EGYPT_HIEROGLYPH/"
+                    + "EGYPT_HIEROGLYPH.PAM";
+    private static final String DARK_GRAVE_EMPTY_PAM =
+            "768/FULL/GRAVESTONES/DARK_NOOP/DARK_NOOP.PAM";
+    private static final String DARK_GRAVE_SUN_PAM =
+            "768/FULL/GRAVESTONES/DARK_SUN/DARK_SUN.PAM";
+    private static final String DARK_GRAVE_PLANT_FOOD_PAM =
+            "768/FULL/GRAVESTONES/DARK_PLANTFOOD/DARK_PLANTFOOD.PAM";
 
     private static final float SEED_TRAY_X = 16f;
     private static final float SEED_TRAY_Y = 76f;
@@ -226,8 +241,20 @@ public final class GameScreen extends AbstractScreen {
     private Label rewardNoticeLabel;
     private float rewardNoticeRemainingSeconds;
 
+    private Group structureLayer;
+    private final Map<Grave, PamAnimationActor> graveActors =
+            new IdentityHashMap<>();
+    private final Map<Grave, String> graveVisualKeys =
+            new IdentityHashMap<>();
+
     private Group zombieLayer;
     private final Map<Zombie, ZombiePamActor> zombieActors =
+            new IdentityHashMap<>();
+
+    private Group projectileLayer;
+    private final Map<Projectile, ProjectileActor> projectileActors =
+            new IdentityHashMap<>();
+    private final Map<BouncingGrape, PamAnimationActor> grapeActors =
             new IdentityHashMap<>();
 
     private Label gameAnnouncementLabel;
@@ -254,9 +281,11 @@ public final class GameScreen extends AbstractScreen {
             installCooldownResetButton();
             rebuildSeedTray();
         }
+        installStructureRendering();
         installPlantingInteraction();
         installShovelButton();
         installZombieRendering();
+        installProjectileRendering();
         installSunRendering();
         installCollectibleDropRendering();
         installRewardNotice();
@@ -1417,6 +1446,124 @@ public final class GameScreen extends AbstractScreen {
         }
     }
 
+    /**
+     * Renders model structures that can intercept projectiles. Ancient Egypt
+     * begins with several graves, so leaving structures invisible made peas
+     * appear to vanish in empty board cells when they correctly hit a grave.
+     */
+    private void installStructureRendering() {
+        if (!isModelBackedGame() || structureLayer != null) {
+            return;
+        }
+        structureLayer = new Group();
+        structureLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(structureLayer);
+        refreshStructureRendering();
+    }
+
+    private void refreshStructureRendering() {
+        Game game = activeGame();
+        if (game == null || structureLayer == null) {
+            return;
+        }
+
+        IdentityHashMap<Grave, Boolean> present = new IdentityHashMap<>();
+        for (BaseStructure structure : game.getBoard().getStructures()) {
+            if (!(structure instanceof Grave) || structure.isRemoved()) {
+                continue;
+            }
+            Grave grave = (Grave) structure;
+            present.put(grave, Boolean.TRUE);
+
+            String pamPath = gravePamPath(grave);
+            String clip = graveDamageClip(grave);
+            String visualKey = pamPath + '|' + clip;
+            PamAnimationActor actor = graveActors.get(grave);
+            if (actor == null || !visualKey.equals(graveVisualKeys.get(grave))) {
+                if (actor != null) {
+                    actor.remove();
+                }
+                try {
+                    actor = new PamAnimationActor(
+                            navigator.getPamPlayer(), pamPath, clip);
+                } catch (RuntimeException ignored) {
+                    actor = null;
+                }
+                if (actor == null) {
+                    graveActors.remove(grave);
+                    graveVisualKeys.remove(grave);
+                    continue;
+                }
+                actor.setTouchable(Touchable.disabled);
+                graveActors.put(grave, actor);
+                graveVisualKeys.put(grave, visualKey);
+                structureLayer.addActor(actor);
+            }
+            positionGraveActor(actor, grave);
+        }
+
+        Iterator<Map.Entry<Grave, PamAnimationActor>> iterator =
+                graveActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Grave, PamAnimationActor> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                graveVisualKeys.remove(entry.getKey());
+                iterator.remove();
+            }
+        }
+    }
+
+    private String gravePamPath(Grave grave) {
+        Chapter chapter = seedTrayChapter();
+        if (chapter != null && "dark-ages".equals(chapter.getId())) {
+            if (grave.getReward() == GraveReward.SUN) {
+                return DARK_GRAVE_SUN_PAM;
+            }
+            if (grave.getReward() == GraveReward.PLANT_FOOD) {
+                return DARK_GRAVE_PLANT_FOOD_PAM;
+            }
+            return DARK_GRAVE_EMPTY_PAM;
+        }
+        return EGYPT_GRAVE_PAM;
+    }
+
+    private String graveDamageClip(Grave grave) {
+        float healthRatio = Math.max(0f, Math.min(1f,
+                grave.getHitPoints() / (float) Grave.DEFAULT_HIT_POINTS));
+        if (healthRatio > 0.80f) {
+            return "undamaged";
+        }
+        if (healthRatio > 0.60f) {
+            return "damage1";
+        }
+        if (healthRatio > 0.40f) {
+            return "damage2";
+        }
+        if (healthRatio > 0.20f) {
+            return "damage3";
+        }
+        return "damage4";
+    }
+
+    private void positionGraveActor(Actor actor, Grave grave) {
+        if (actor == null || grave == null || grave.getPosition() == null) {
+            return;
+        }
+        CellBounds cell = screenBoundsForCell(grave.getPosition());
+        if (cell == null) {
+            actor.setVisible(false);
+            return;
+        }
+        float width = cell.width * 0.90f;
+        float height = cell.height * 1.28f;
+        actor.setBounds(
+                cell.x + (cell.width - width) * 0.5f,
+                cell.y + cell.height * 0.02f,
+                width, height);
+        actor.setVisible(true);
+    }
+
     private void installZombieRendering() {
         if (!isModelBackedGame() || zombieLayer != null) {
             return;
@@ -1557,6 +1704,180 @@ public final class GameScreen extends AbstractScreen {
         actor.setBounds(centerX - width * 0.5f,
                 footLine, width, height);
         actor.setVisible(true);
+    }
+
+    private void installProjectileRendering() {
+        if (!isModelBackedGame() || projectileLayer != null) {
+            return;
+        }
+        projectileLayer = new Group();
+        projectileLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(projectileLayer);
+        refreshProjectileRendering();
+    }
+
+    private void refreshProjectileRendering() {
+        Game game = activeGame();
+        if (game == null || projectileLayer == null) {
+            return;
+        }
+
+        List<Projectile> currentProjectiles = game.getBoard().getProjectiles();
+        IdentityHashMap<Projectile, Boolean> present = new IdentityHashMap<>();
+        for (Projectile projectile : currentProjectiles) {
+            if (projectile == null || projectile.isRemoved()) {
+                continue;
+            }
+            present.put(projectile, Boolean.TRUE);
+            ProjectileActor actor = projectileActors.get(projectile);
+            boolean firePeaVisual = projectile.hasFireEffect()
+                    && ProjectileVisualCatalog.isPeaFamilyProjectile(projectile);
+            if (actor == null || actor.hasFirePeaVisual() != firePeaVisual) {
+                if (actor != null) {
+                    actor.remove();
+                }
+                actor = createProjectileActor(projectile);
+                if (actor == null) {
+                    continue;
+                }
+                projectileActors.put(projectile, actor);
+                projectileLayer.addActor(actor);
+            }
+            positionProjectileActor(actor, projectile);
+        }
+
+        Iterator<Map.Entry<Projectile, ProjectileActor>> iterator =
+                projectileActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Projectile, ProjectileActor> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+
+        refreshBouncingGrapeRendering(game);
+    }
+
+    private ProjectileActor createProjectileActor(Projectile projectile) {
+        ProjectileVisualCatalog.Preview preview =
+                ProjectileVisualCatalog.find(projectile);
+        if (preview == null) {
+            return null;
+        }
+        try {
+            return new ProjectileActor(preview,
+                    projectile.hasFireEffect()
+                            && ProjectileVisualCatalog.isPeaFamilyProjectile(
+                                    projectile));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private void positionProjectileActor(ProjectileActor actor,
+            Projectile projectile) {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (actor == null || projectile == null || layout == null
+                || Gdx.graphics.getWidth() <= 0
+                || Gdx.graphics.getHeight() <= 0) {
+            return;
+        }
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom) / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+
+        float centerX = boardX
+                + (float) (projectile.getColumnPosition() + 0.5) * cellWidth;
+        float centerY = boardY
+                + (float) (BOARD_ROWS - projectile.getRowPosition() - 0.5)
+                        * cellHeight;
+        if (projectile instanceof LobbedProjectile) {
+            // The Phase-1 lobber already calculates a true parabolic altitude.
+            // Convert that tile-space height into pixels for the Phase-2 view.
+            centerY += (float) ((LobbedProjectile) projectile).getAltitude()
+                    * cellHeight;
+        }
+
+        float size = Math.min(cellWidth, cellHeight)
+                * actor.getProjectileSizeTiles();
+        actor.setBounds(centerX - size * 0.5f, centerY - size * 0.5f,
+                size, size);
+        actor.layoutAnimations();
+        actor.setVisible(centerX > boardX - cellWidth
+                && centerX < boardX + boardWidth + cellWidth
+                && centerY > boardY - cellHeight * 2f
+                && centerY < boardY + boardHeight + cellHeight * 2f);
+    }
+
+    private void refreshBouncingGrapeRendering(Game game) {
+        List<BouncingGrape> grapes = game.getBoard().getBouncingGrapes();
+        IdentityHashMap<BouncingGrape, Boolean> present = new IdentityHashMap<>();
+        ProjectileVisualCatalog.Preview preview = ProjectileVisualCatalog.grape();
+        for (BouncingGrape grape : grapes) {
+            if (grape == null || grape.isRemoved()) {
+                continue;
+            }
+            present.put(grape, Boolean.TRUE);
+            PamAnimationActor actor = grapeActors.get(grape);
+            if (actor == null) {
+                try {
+                    actor = new PamAnimationActor(navigator.getPamPlayer(),
+                            preview.getPath(), preview.getClip());
+                } catch (RuntimeException ignored) {
+                    continue;
+                }
+                actor.setTouchable(Touchable.disabled);
+                grapeActors.put(grape, actor);
+                projectileLayer.addActor(actor);
+            }
+            positionBouncingGrapeActor(actor, grape, preview.getSizeTiles());
+        }
+
+        Iterator<Map.Entry<BouncingGrape, PamAnimationActor>> iterator =
+                grapeActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BouncingGrape, PamAnimationActor> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+    }
+
+    private void positionBouncingGrapeActor(Actor actor, BouncingGrape grape,
+            float sizeTiles) {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (actor == null || grape == null || layout == null) {
+            return;
+        }
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom) / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+        float centerX = boardX
+                + (float) (grape.getColumnPosition() + 0.5) * cellWidth;
+        float centerY = boardY
+                + (float) (BOARD_ROWS - grape.getRowPosition() - 0.5)
+                        * cellHeight;
+        float size = Math.min(cellWidth, cellHeight) * sizeTiles;
+        actor.setBounds(centerX - size * 0.5f, centerY - size * 0.5f,
+                size, size);
     }
 
     private void installSunRendering() {
@@ -2403,7 +2724,9 @@ public final class GameScreen extends AbstractScreen {
             maybeQueueReadyWaveAnnouncement();
         }
 
+        refreshStructureRendering();
         refreshZombieRendering();
+        refreshProjectileRendering();
         refreshSunRendering();
         refreshCollectibleDrops();
         refreshSunHud();
@@ -2423,7 +2746,9 @@ public final class GameScreen extends AbstractScreen {
         super.resize(width, height);
         if (isModelBackedGame()) {
             rebuildPlantedPlantLayer();
+            refreshStructureRendering();
             refreshZombieRendering();
+            refreshProjectileRendering();
             refreshSunRendering();
             refreshCollectibleDrops();
             refreshBoardHover();
@@ -2462,8 +2787,14 @@ public final class GameScreen extends AbstractScreen {
             waveProgressActor = null;
         }
         sunLayer = null;
+        graveActors.clear();
+        graveVisualKeys.clear();
+        structureLayer = null;
         zombieActors.clear();
         zombieLayer = null;
+        projectileActors.clear();
+        grapeActors.clear();
+        projectileLayer = null;
         queuedGameAnnouncements.clear();
         gameAnnouncementLabel = null;
         if (shovelCursor != null) {
@@ -2471,6 +2802,35 @@ public final class GameScreen extends AbstractScreen {
             shovelCursor = null;
         }
         super.dispose();
+    }
+
+    private final class ProjectileActor extends Stack {
+        private final ProjectileVisualCatalog.Preview preview;
+        private final boolean firePeaVisual;
+        private final PamAnimationActor animation;
+
+        private ProjectileActor(ProjectileVisualCatalog.Preview preview,
+                boolean firePeaVisual) {
+            this.preview = preview;
+            this.firePeaVisual = firePeaVisual;
+            setTouchable(Touchable.disabled);
+
+            animation = new PamAnimationActor(navigator.getPamPlayer(),
+                    preview.getPath(), preview.getClip());
+            add(animation);
+        }
+
+        private boolean hasFirePeaVisual() {
+            return firePeaVisual;
+        }
+
+        private float getProjectileSizeTiles() {
+            return preview.getSizeTiles();
+        }
+
+        private void layoutAnimations() {
+            animation.setBounds(0f, 0f, getWidth(), getHeight());
+        }
     }
 
     private final class PlantFoodDropActor extends Actor {
