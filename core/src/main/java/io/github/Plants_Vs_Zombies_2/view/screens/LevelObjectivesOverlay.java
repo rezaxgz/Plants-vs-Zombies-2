@@ -1,0 +1,249 @@
+package io.github.Plants_Vs_Zombies_2.view.screens;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.scenes.scene2d.Group;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.InputListener;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
+import com.badlogic.gdx.scenes.scene2d.ui.Image;
+import com.badlogic.gdx.scenes.scene2d.ui.Label;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.ui.Table;
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
+import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.Scaling;
+
+import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantSpec;
+import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarObjective;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelConfig;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
+
+/**
+ * Phase-2 start-of-level objective card based on documentation image 15.
+ * It blocks the game until CONTINUE is pressed and lists every Phase-1
+ * restriction configured on the current adventure level.
+ */
+final class LevelObjectivesOverlay extends Group {
+    private static final float PANEL_WIDTH = 680f;
+    private static final float PANEL_HEIGHT = 350f;
+    private static final float HEADER_HEIGHT = 68f;
+    private static final float CONTINUE_WIDTH = 210f;
+    private static final float CONTINUE_HEIGHT = 58f;
+
+    private static final Color BACKDROP = new Color(0f, 0f, 0f, 0.24f);
+    private static final Color HEADER = new Color(1f, 0.63f, 0.04f, 1f);
+    private static final Color CONTENT = new Color(0.96f, 0.91f, 0.74f, 1f);
+    private static final Color OBJECTIVE_TEXT = new Color(0.30f, 0.22f, 0.10f, 1f);
+    private static final Color BULLET = new Color(0.83f, 0.91f, 1f, 1f);
+
+    private Texture pixelTexture;
+    private final Runnable onContinue;
+
+    LevelObjectivesOverlay(Skin skin, Level level,
+            float screenWidth, float screenHeight,
+            Runnable onContinue) {
+        if (skin == null || level == null || onContinue == null) {
+            throw new IllegalArgumentException(
+                    "skin, level, and continue action are required");
+        }
+        this.onContinue = onContinue;
+        setBounds(0f, 0f, screenWidth, screenHeight);
+        setTouchable(Touchable.enabled);
+
+        createPixelTexture();
+        installInputBlocker();
+        installCard(skin, level, screenWidth, screenHeight);
+    }
+
+    private void createPixelTexture() {
+        Pixmap pixel = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixel.setColor(Color.WHITE);
+        pixel.fill();
+        pixelTexture = new Texture(pixel);
+        pixel.dispose();
+    }
+
+    private void installInputBlocker() {
+        Image shade = new Image(solid(BACKDROP));
+        shade.setScaling(Scaling.stretch);
+        shade.setBounds(0f, 0f, getWidth(), getHeight());
+        shade.setTouchable(Touchable.enabled);
+        shade.addListener(new InputListener() {
+            @Override
+            public boolean touchDown(InputEvent event, float x, float y,
+                    int pointer, int button) {
+                return true;
+            }
+        });
+        addActor(shade);
+    }
+
+    private void installCard(Skin skin, Level level,
+            float screenWidth, float screenHeight) {
+        float panelX = (screenWidth - PANEL_WIDTH) * 0.5f;
+        float panelY = (screenHeight - PANEL_HEIGHT) * 0.5f + 16f;
+
+        Table frame = new Table();
+        frame.setBackground(skin.getDrawable(
+                "image_ui_dialog_asset_inner_bkgd_10"));
+        frame.pad(19f);
+        frame.setBounds(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT);
+
+        Table header = new Table();
+        header.setBackground(solid(HEADER));
+        Label title = new Label("Level Objectives", skin, "big_outline");
+        title.setAlignment(Align.center);
+        title.setFontScale(0.82f);
+        header.add(title).grow();
+        frame.add(header).growX().height(HEADER_HEIGHT).row();
+
+        Table content = new Table();
+        content.setBackground(solid(CONTENT));
+        content.top().left().pad(24f, 30f, 38f, 30f);
+        List<String> objectives = buildObjectives(level);
+        for (String objective : objectives) {
+            addObjectiveRow(content, skin, objective);
+        }
+        frame.add(content).grow().row();
+        addActor(frame);
+
+        TextButton continueButton = new TextButton(
+                "CONTINUE", skin, "purple");
+        continueButton.setBounds(
+                (screenWidth - CONTINUE_WIDTH) * 0.5f,
+                panelY - CONTINUE_HEIGHT * 0.42f,
+                CONTINUE_WIDTH, CONTINUE_HEIGHT);
+        continueButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                LevelObjectivesOverlay.this.onContinue.run();
+                LevelObjectivesOverlay.this.remove();
+            }
+        });
+        addActor(continueButton);
+    }
+
+    private void addObjectiveRow(Table content, Skin skin, String text) {
+        Label bullet = new Label("o", skin, "medium_outline");
+        bullet.setColor(BULLET);
+        bullet.setFontScale(1.12f);
+        bullet.setAlignment(Align.center);
+
+        Label objective = new Label(text, skin, "secondary");
+        objective.setColor(OBJECTIVE_TEXT);
+        objective.setFontScale(0.90f);
+        objective.setWrap(true);
+        objective.setAlignment(Align.left);
+
+        content.add(bullet).width(28f).height(34f).top().padRight(7f);
+        content.add(objective).growX().minHeight(34f).left().row();
+    }
+
+    private Drawable solid(Color color) {
+        return new TextureRegionDrawable(
+                new TextureRegion(pixelTexture)).tint(color);
+    }
+
+    private static List<String> buildObjectives(Level level) {
+        List<String> objectives = new ArrayList<>();
+        SpecialLevelType type = level.getSpecialLevelType();
+        SpecialLevelConfig config = level.getSpecialConfig();
+
+        if (type == SpecialLevelType.DEAD_LINE) {
+            objectives.add("Do not let any zombie cross the Dead Line at column "
+                    + formatNumber(config.getDeadLineColumn()) + ".");
+        } else {
+            objectives.add("Do not let any zombie reach your house.");
+        }
+
+        switch (type) {
+            case CONVEYOR_BELT:
+                objectives.add("Use the plants supplied by the conveyor belt.");
+                break;
+            case LOCKED_PLANTS:
+                objectives.add("Defend the lawn using only the provided plants: "
+                        + String.join(", ", config.getPlantPool()) + ".");
+                break;
+            case SAVE_OUR_SEEDS:
+                objectives.add(buildSaveOurSeedsObjective(config));
+                break;
+            case TIMED_WAR:
+                objectives.add(buildTimedWarObjective(config));
+                break;
+            case NIGHT_OPS:
+                objectives.add("Survive without any sun falling from the sky.");
+                break;
+            case DEAD_LINE:
+                break;
+            case LOVE_YOUR_PLANTS:
+                objectives.add("Lose fewer than "
+                        + config.getMaximumLostPlants()
+                        + " plants during the level.");
+                break;
+            case PLANT_WHAT_YOU_GET:
+                objectives.add("Sun-producing plants are locked and no sun "
+                        + "falls from the sky; use your starting sun wisely.");
+                break;
+            case NONE:
+                break;
+            default:
+                break;
+        }
+        return objectives;
+    }
+
+    private static String buildTimedWarObjective(SpecialLevelConfig config) {
+        int seconds = Math.max(1,
+                (int) Math.round(config.getDurationSeconds()));
+        if (config.getTimedObjective() == TimedWarObjective.PRODUCE_SUN) {
+            return "Produce at least " + config.getTarget()
+                    + " sun within " + seconds + " seconds.";
+        }
+        return "Defeat at least " + config.getTarget()
+                + " zombies within " + seconds + " seconds.";
+    }
+
+    private static String buildSaveOurSeedsObjective(
+            SpecialLevelConfig config) {
+        List<ProtectedPlantSpec> plants = config.getProtectedPlants();
+        if (plants.isEmpty()) {
+            return "Protect every preset plant until the level is won.";
+        }
+        List<String> descriptions = new ArrayList<>();
+        for (ProtectedPlantSpec plant : plants) {
+            descriptions.add(plant.getPlantType() + " at row "
+                    + (plant.getPosition().getRow() + 1) + ", column "
+                    + (plant.getPosition().getColumn() + 1));
+        }
+        return "Protect every preset plant: "
+                + String.join("; ", descriptions) + ".";
+    }
+
+    private static String formatNumber(double value) {
+        if (Math.abs(value - Math.rint(value)) < 0.0001) {
+            return Integer.toString((int) Math.rint(value));
+        }
+        return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    @Override
+    public boolean remove() {
+        boolean removed = super.remove();
+        if (removed && pixelTexture != null) {
+            pixelTexture.dispose();
+            pixelTexture = null;
+        }
+        return removed;
+    }
+}
