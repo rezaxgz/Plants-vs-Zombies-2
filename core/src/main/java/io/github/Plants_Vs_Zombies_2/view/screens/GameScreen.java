@@ -192,6 +192,7 @@ public final class GameScreen extends AbstractScreen {
             256f, 200f, 994f, 688f);
 
     private BoardGridActor gridActor;
+    private DeadlineLineActor deadlineLineActor;
 
     // These fields are only populated for the Phase-2 empty level preview.
     // No Game object is created or advanced yet.
@@ -764,6 +765,16 @@ public final class GameScreen extends AbstractScreen {
             gridActor = new BoardGridActor(layout);
             addBackgroundOverlay(gridActor);
         }
+
+        Game game = activeGame();
+        if (game != null && game.hasDeadLine()) {
+            deadlineLineActor = new DeadlineLineActor(
+                    layout, game.getDeadLineColumn());
+            // Added after the optional map grid so this thicker marker is
+            // always drawn on top of the ordinary red grid lines. Later
+            // board entities (plants/zombies) still render over it.
+            addBackgroundOverlay(deadlineLineActor);
+        }
     }
 
     private boolean shouldDrawGrid() {
@@ -1052,6 +1063,38 @@ public final class GameScreen extends AbstractScreen {
         pixel.fill();
         plantingOverlayPixel = new Texture(pixel);
         pixel.dispose();
+
+        Game protectedSeedGame = activeGame();
+        if (protectedSeedGame != null && protectedSeedGame.hasSaveOurSeeds()) {
+            Actor protectedSeedHighlights = new Actor() {
+                @Override
+                public void draw(Batch batch, float parentAlpha) {
+                    float previousR = batch.getColor().r;
+                    float previousG = batch.getColor().g;
+                    float previousB = batch.getColor().b;
+                    float previousA = batch.getColor().a;
+                    batch.setColor(1f, 0.05f, 0.05f,
+                            0.34f * parentAlpha);
+                    for (io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantStatus status
+                            : protectedSeedGame.getProtectedPlantStatuses()) {
+                        CellBounds bounds = screenBoundsForCell(
+                                status.getOriginalPosition());
+                        if (bounds == null) {
+                            continue;
+                        }
+                        batch.draw(plantingOverlayPixel,
+                                bounds.x, bounds.y,
+                                bounds.width, bounds.height);
+                    }
+                    batch.setColor(previousR, previousG,
+                            previousB, previousA);
+                }
+            };
+            protectedSeedHighlights.setTouchable(Touchable.disabled);
+            protectedSeedHighlights.setBounds(
+                    0f, 0f, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+            addBackgroundOverlay(protectedSeedHighlights);
+        }
 
         plantedPlantLayer = new Group();
         plantedPlantLayer.setTouchable(Touchable.disabled);
@@ -2805,6 +2848,10 @@ public final class GameScreen extends AbstractScreen {
             gridActor.dispose();
             gridActor = null;
         }
+        if (deadlineLineActor != null) {
+            deadlineLineActor.dispose();
+            deadlineLineActor = null;
+        }
         if (plantingOverlayPixel != null) {
             plantingOverlayPixel.dispose();
             plantingOverlayPixel = null;
@@ -3181,6 +3228,82 @@ public final class GameScreen extends AbstractScreen {
             this.top = top;
             this.right = right;
             this.bottom = bottom;
+        }
+    }
+
+    /**
+     * Permanent visual marker for Dead Line special levels. The model stores
+     * the losing threshold as a zombie column position, whose rendered center
+     * is column + 0.5 cells; draw the line at that exact screen position.
+     */
+    private static final class DeadlineLineActor extends Actor {
+        private static final float OUTLINE_THICKNESS = 14f;
+        private static final float CORE_THICKNESS = 9f;
+        private static final float HIGHLIGHT_THICKNESS = 3f;
+
+        private final BoardLayout layout;
+        private final double lineColumn;
+        private final Texture pixel;
+
+        private DeadlineLineActor(BoardLayout layout, double lineColumn) {
+            this.layout = layout;
+            this.lineColumn = lineColumn;
+            setTouchable(Touchable.disabled);
+
+            Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+            pixmap.setColor(Color.WHITE);
+            pixmap.fill();
+            pixel = new Texture(pixmap);
+            pixmap.dispose();
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (getStage() == null) {
+                return;
+            }
+
+            float worldWidth = getStage().getViewport().getWorldWidth();
+            float worldHeight = getStage().getViewport().getWorldHeight();
+            float boardX = worldWidth * layout.left / layout.sourceWidth;
+            float boardY = worldHeight
+                    * (layout.sourceHeight - layout.bottom)
+                    / layout.sourceHeight;
+            float boardWidth = worldWidth
+                    * (layout.right - layout.left) / layout.sourceWidth;
+            float boardHeight = worldHeight
+                    * (layout.bottom - layout.top) / layout.sourceHeight;
+
+            double clampedColumn = Math.max(-0.5,
+                    Math.min(BOARD_COLUMNS - 0.5, lineColumn));
+            float x = boardX + boardWidth
+                    * (float) ((clampedColumn + 0.5) / BOARD_COLUMNS);
+
+            // Scale the stroke with the framebuffer so it remains visibly
+            // bolder than the normal 2px grid even on high-DPI windows.
+            float scale = Math.max(0.85f,
+                    Math.min(2.5f, worldWidth / VIRTUAL_WIDTH));
+            float outline = OUTLINE_THICKNESS * scale;
+            float core = CORE_THICKNESS * scale;
+            float highlight = HIGHLIGHT_THICKNESS * scale;
+
+            Color previous = new Color(batch.getColor());
+            batch.setColor(0.32f, 0.01f, 0.01f, 0.98f * parentAlpha);
+            batch.draw(pixel, x - outline * 0.5f, boardY,
+                    outline, boardHeight);
+
+            batch.setColor(1f, 0.02f, 0.02f, parentAlpha);
+            batch.draw(pixel, x - core * 0.5f, boardY,
+                    core, boardHeight);
+
+            batch.setColor(1f, 0.42f, 0.18f, 0.92f * parentAlpha);
+            batch.draw(pixel, x - highlight * 0.5f, boardY,
+                    highlight, boardHeight);
+            batch.setColor(previous);
+        }
+
+        private void dispose() {
+            pixel.dispose();
         }
     }
 
