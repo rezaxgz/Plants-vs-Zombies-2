@@ -60,6 +60,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.BouncingGrap
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
@@ -271,6 +272,8 @@ public final class GameScreen extends AbstractScreen {
     private final Map<SunProducer, Integer> plantedSunProductionSequences =
             new IdentityHashMap<>();
     private final Map<Shooter, Integer> plantedShooterAttackSequences =
+            new IdentityHashMap<>();
+    private final Map<Lobber, Integer> plantedLobberAttackSequences =
             new IdentityHashMap<>();
 
     private Group sunLayer;
@@ -1909,11 +1912,14 @@ public final class GameScreen extends AbstractScreen {
                 new IdentityHashMap<>(plantedSunProductionSequences);
         IdentityHashMap<Shooter, Integer> previousAttackSequences =
                 new IdentityHashMap<>(plantedShooterAttackSequences);
+        IdentityHashMap<Lobber, Integer> previousLobberAttackSequences =
+                new IdentityHashMap<>(plantedLobberAttackSequences);
         plantedPlantLayer.clearChildren();
         plantedPlantActors.clear();
         plantedPlantHealth.clear();
         plantedSunProductionSequences.clear();
         plantedShooterAttackSequences.clear();
+        plantedLobberAttackSequences.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
             Actor actor = createPlantIdleActor(plant.getName());
             actor.setTouchable(Touchable.disabled);
@@ -1948,6 +1954,17 @@ public final class GameScreen extends AbstractScreen {
                     playShooterAttackAnimation(shooter, actor);
                 }
                 plantedShooterAttackSequences.put(shooter, currentSequence);
+            }
+            if (plant instanceof Lobber) {
+                Lobber lobber = (Lobber) plant;
+                configureLobberAttackAnimation(lobber, actor);
+                int currentSequence = lobber.getAttackSequence();
+                Integer oldSequence = previousLobberAttackSequences.get(lobber);
+                if (lobber.isAttackAnimationPending()
+                        || oldSequence != null && currentSequence > oldSequence) {
+                    playLobberAttackAnimation(lobber, actor);
+                }
+                plantedLobberAttackSequences.put(lobber, currentSequence);
             }
         }
         plantedPlantRenderSignature = createPlantRenderSignature(game);
@@ -2018,6 +2035,17 @@ public final class GameScreen extends AbstractScreen {
                     playShooterAttackAnimation(shooter, actor);
                 }
             }
+            if (plant instanceof Lobber) {
+                Lobber lobber = (Lobber) plant;
+                Actor actor = plantedPlantActors.get(plant);
+                configureLobberAttackAnimation(lobber, actor);
+                int currentSequence = lobber.getAttackSequence();
+                Integer oldSequence = plantedLobberAttackSequences.put(
+                        lobber, currentSequence);
+                if (oldSequence != null && currentSequence > oldSequence) {
+                    playLobberAttackAnimation(lobber, actor);
+                }
+            }
         }
     }
 
@@ -2041,11 +2069,41 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         boolean started = ((PamAnimationActor) actor).playOnce(
-                animation.getAttackClip(), animation.getIdleClip(), 0.5f,
+                animation.getAttackClip(), animation.getIdleClip(),
+                animation.getProjectileReleaseFraction(),
                 shooter::releaseAttackAnimationProjectiles,
                 shooter::completeAttackAnimation);
         if (!started) {
             shooter.completeAttackAnimation();
+        }
+    }
+
+    private void configureLobberAttackAnimation(
+            Lobber lobber, Actor actor) {
+        boolean canAnimate = actor instanceof PamAnimationActor
+                && PlantAnimationCatalog.lobberAttackAnimation(lobber) != null;
+        lobber.setDeferProjectilesForAttackAnimation(canAnimate);
+    }
+
+    private void playLobberAttackAnimation(
+            Lobber lobber, Actor actor) {
+        if (!(actor instanceof PamAnimationActor)) {
+            lobber.completeAttackAnimation();
+            return;
+        }
+        PlantAnimationCatalog.AttackAnimation animation =
+                PlantAnimationCatalog.lobberAttackAnimation(lobber);
+        if (animation == null) {
+            lobber.completeAttackAnimation();
+            return;
+        }
+        boolean started = ((PamAnimationActor) actor).playOnce(
+                animation.getAttackClip(), animation.getIdleClip(),
+                animation.getProjectileReleaseFraction(),
+                lobber::releaseAttackAnimationProjectiles,
+                lobber::completeAttackAnimation);
+        if (!started) {
+            lobber.completeAttackAnimation();
         }
     }
 
@@ -3541,6 +3599,7 @@ public final class GameScreen extends AbstractScreen {
         private final ProjectileVisualCatalog.Preview preview;
         private final boolean firePeaVisual;
         private final PamAnimationActor animation;
+        private final Image staticImage;
 
         private ProjectileActor(ProjectileVisualCatalog.Preview preview,
                 boolean firePeaVisual) {
@@ -3548,9 +3607,17 @@ public final class GameScreen extends AbstractScreen {
             this.firePeaVisual = firePeaVisual;
             setTouchable(Touchable.disabled);
 
-            animation = new PamAnimationActor(navigator.getPamPlayer(),
-                    preview.getPath(), preview.getClip());
-            add(animation);
+            if (preview.isStaticImage()) {
+                animation = null;
+                staticImage = new Image(requireAssetRegion(preview.getImageId()));
+                staticImage.setScaling(Scaling.fit);
+                add(staticImage);
+            } else {
+                staticImage = null;
+                animation = new PamAnimationActor(navigator.getPamPlayer(),
+                        preview.getPath(), preview.getClip());
+                add(animation);
+            }
         }
 
         private boolean hasFirePeaVisual() {
@@ -3562,7 +3629,12 @@ public final class GameScreen extends AbstractScreen {
         }
 
         private void layoutAnimations() {
-            animation.setBounds(0f, 0f, getWidth(), getHeight());
+            if (animation != null) {
+                animation.setBounds(0f, 0f, getWidth(), getHeight());
+            }
+            if (staticImage != null) {
+                staticImage.setBounds(0f, 0f, getWidth(), getHeight());
+            }
         }
     }
 

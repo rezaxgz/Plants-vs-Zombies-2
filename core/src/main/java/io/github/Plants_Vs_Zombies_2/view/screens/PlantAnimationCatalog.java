@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.LobberPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.ShooterPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
@@ -34,10 +36,17 @@ final class PlantAnimationCatalog {
     static final class AttackAnimation {
         private final String attackClip;
         private final String idleClip;
+        private final float projectileReleaseFraction;
 
         private AttackAnimation(String attackClip, String idleClip) {
+            this(attackClip, idleClip, 0.5f);
+        }
+
+        private AttackAnimation(String attackClip, String idleClip,
+                float projectileReleaseFraction) {
             this.attackClip = attackClip;
             this.idleClip = idleClip;
+            this.projectileReleaseFraction = projectileReleaseFraction;
         }
 
         String getAttackClip() {
@@ -46,6 +55,10 @@ final class PlantAnimationCatalog {
 
         String getIdleClip() {
             return idleClip;
+        }
+
+        float getProjectileReleaseFraction() {
+            return projectileReleaseFraction;
         }
     }
 
@@ -97,6 +110,42 @@ final class PlantAnimationCatalog {
                 return new AttackAnimation("special_stage1", "idle_stage1");
             default:
                 return new AttackAnimation("attack", "idle");
+        }
+    }
+
+    /**
+     * Returns the normal lobber attack clip and the exact projectile release
+     * point authored into the uploaded PAM. The release points are the
+     * {@code use_action} command frames inside each attack clip:
+     * Cabbage 18/50, Kernel 19/56, Butter 19/55, Melon 21/59,
+     * Winter Melon 25/65, and Pepper-pult 13/60. Pepper-pult's attack clip
+     * is 60 frames at 30 FPS (2.0 seconds); its {@code use_action} command is
+     * 13 frames after the attack label, so the projectile is released at
+     * about 0.433 seconds.
+     */
+    static AttackAnimation lobberAttackAnimation(Lobber lobber) {
+        if (lobber == null) {
+            return null;
+        }
+        LobberPlantType type = lobber.getType();
+        switch (type) {
+            case CABBAGE_PULT:
+                return new AttackAnimation("attack", "idle", 18f / 50f);
+            case KERNEL_PULT:
+                if (lobber.wasLastAttackButter()) {
+                    return new AttackAnimation("attack2", "idle", 19f / 55f);
+                }
+                return new AttackAnimation("attack", "idle", 19f / 56f);
+            case MELON_PULT:
+                return new AttackAnimation("attack", "idle", 21f / 59f);
+            case WINTER_MELON:
+                return new AttackAnimation("attack", "idle", 25f / 65f);
+            case PEPPER_PULT:
+                return new AttackAnimation("attack", "idle", 13f / 60f);
+            case ARMA_MINT:
+                return null;
+            default:
+                return null;
         }
     }
 

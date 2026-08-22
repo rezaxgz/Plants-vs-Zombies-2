@@ -273,6 +273,7 @@ abstract class BoardPlantAttackLogic extends BoardUpdateLogic {
                 continue;
             }
             Lobber lobber = (Lobber) entity;
+            entitiesToAdd.addAll(lobber.drainProjectiles());
             warmTilesAroundPepperPult(lobber);
             if (lobber.drainPlantFoodPending()) {
                 addLobberPlantFoodProjectiles(lobber, entitiesToAdd);
