@@ -109,6 +109,8 @@ public final class GameScreen extends AbstractScreen {
             "IMAGE_ZEN_GARDEN_CURSORS_REMOVAL_CURSOR_REMOVAL_CURSOR_133X115";
     private static final String WAVE_PROGRESS_ZOMBIE_HEAD =
             "IMAGE_UI_HUD_INGAME_PROGRESS_METER_ZOMBIEHEAD";
+    private static final String LOVE_YOUR_PLANTS_ICON =
+            "IMAGE_UI_PAUSEMENU_SUNFLOWER_TOPPER";
     private static final String WAVE_PROGRESS_FLAG_POLE =
             "IMAGE_UI_HUD_INGAME_PROGRESS_METER_FLAG_POLE";
     private static final String WAVE_PROGRESS_FLAG =
@@ -149,6 +151,11 @@ public final class GameScreen extends AbstractScreen {
     private static final float WAVE_PROGRESS_Y = 8f;
     private static final float WAVE_PROGRESS_WIDTH = 400f;
     private static final float WAVE_PROGRESS_HEIGHT = 66f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_X =
+            WAVE_PROGRESS_X + WAVE_PROGRESS_WIDTH + 12f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_Y = 15f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_WIDTH = 168f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_HEIGHT = 46f;
     private static final float SUN_HUD_X = 210f;
     private static final float SUN_HUD_Y = 648f;
     private static final float SUN_HUD_WIDTH = 218f;
@@ -219,6 +226,7 @@ public final class GameScreen extends AbstractScreen {
     private boolean shovelMode;
     private boolean usingFallbackShovelCursor;
     private WaveProgressActor waveProgressActor;
+    private TextButton plantWhatYouGetWaveButton;
     private Table sunHud;
     private Label sunAmountLabel;
     private Table plantFoodHud;
@@ -226,6 +234,8 @@ public final class GameScreen extends AbstractScreen {
     private Table timedWarObjectivesHud;
     private Label timedWarSunLeftLabel;
     private Label timedWarZombieKillsLabel;
+    private Table loveYourPlantsHud;
+    private Label loveYourPlantsLabel;
     private Group pauseModal;
     private boolean gamePaused;
     private boolean sunHudDebugMode;
@@ -283,7 +293,9 @@ public final class GameScreen extends AbstractScreen {
         installChapterBoard(chapter);
         installGameHud();
         installWaveProgressHud();
+        installPlantWhatYouGetWaveButton();
         installTimedWarObjectivesHud();
+        installLoveYourPlantsHud();
 
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
@@ -412,17 +424,17 @@ public final class GameScreen extends AbstractScreen {
         timedWarObjectivesHud.setBounds(
                 TIMED_WAR_HUD_X, TIMED_WAR_HUD_Y,
                 TIMED_WAR_HUD_WIDTH, TIMED_WAR_HUD_HEIGHT);
-        timedWarObjectivesHud.add(createTimedWarObjectiveRow(
+        timedWarObjectivesHud.add(createSpecialObjectiveRow(
                 GAME_SUN_ICON, timedWarSunLeftLabel))
                 .width(TIMED_WAR_HUD_WIDTH).height(37f).row();
-        timedWarObjectivesHud.add(createTimedWarObjectiveRow(
+        timedWarObjectivesHud.add(createSpecialObjectiveRow(
                 WAVE_PROGRESS_ZOMBIE_HEAD, timedWarZombieKillsLabel))
                 .width(TIMED_WAR_HUD_WIDTH).height(37f);
         stage.addActor(timedWarObjectivesHud);
         refreshTimedWarObjectivesHud();
     }
 
-    private Actor createTimedWarObjectiveRow(String iconAsset, Label label) {
+    private Actor createSpecialObjectiveRow(String iconAsset, Label label) {
         Stack row = new Stack();
         Image background = createAssetImage(GAME_SUN_BACKGROUND);
         background.setScaling(Scaling.stretch);
@@ -460,6 +472,42 @@ public final class GameScreen extends AbstractScreen {
                         + windowSeconds + "s"
                         + (game.isTimedWarZombieKillRequirementMet()
                                 ? " (met)" : ""));
+    }
+
+    private void installLoveYourPlantsHud() {
+        Game game = activeGame();
+        if (game == null || !game.hasLoveYourPlants()
+                || loveYourPlantsHud != null) {
+            return;
+        }
+
+        loveYourPlantsLabel = new Label("", skin, "medium_outline");
+        loveYourPlantsLabel.setFontScale(0.62f);
+        loveYourPlantsLabel.setAlignment(Align.left);
+
+        loveYourPlantsHud = new Table();
+        loveYourPlantsHud.left().top();
+        loveYourPlantsHud.setBounds(
+                TIMED_WAR_HUD_X, TIMED_WAR_HUD_Y,
+                TIMED_WAR_HUD_WIDTH, TIMED_WAR_HUD_HEIGHT);
+        loveYourPlantsHud.add(createSpecialObjectiveRow(
+                LOVE_YOUR_PLANTS_ICON, loveYourPlantsLabel))
+                .width(TIMED_WAR_HUD_WIDTH).height(37f);
+        stage.addActor(loveYourPlantsHud);
+        refreshLoveYourPlantsHud();
+    }
+
+    private void refreshLoveYourPlantsHud() {
+        Game game = activeGame();
+        if (loveYourPlantsHud == null || loveYourPlantsLabel == null
+                || game == null || !game.hasLoveYourPlants()) {
+            return;
+        }
+
+        int lost = game.getLostPlantCount();
+        int remaining = game.getRemainingPlantLossAllowance();
+        loveYourPlantsLabel.setText(
+                lost + " lost | " + remaining + " more allowed");
     }
 
     private boolean isDebugMode() {
@@ -729,10 +777,12 @@ public final class GameScreen extends AbstractScreen {
         gameAnnouncementLabel.setVisible(false);
         stage.addActor(gameAnnouncementLabel);
 
-        if (!game.haveZombieWavesStarted()) {
-            queueWaveAnnouncements(1, true);
-        } else {
-            maybeQueueReadyWaveAnnouncement();
+        if (!game.hasPlantWhatYouGet()) {
+            if (!game.haveZombieWavesStarted()) {
+                queueWaveAnnouncements(1, true);
+            } else {
+                maybeQueueReadyWaveAnnouncement();
+            }
         }
     }
 
@@ -810,7 +860,8 @@ public final class GameScreen extends AbstractScreen {
 
     private void maybeQueueReadyWaveAnnouncement() {
         Game game = activeGame();
-        if (game == null || gameAnnouncementLabel == null
+        if (game == null || game.hasPlantWhatYouGet()
+                || gameAnnouncementLabel == null
                 || pendingAnnouncementWaveNumber != 0
                 || !queuedGameAnnouncements.isEmpty()
                 || gameAnnouncementLabel.isVisible()
@@ -873,6 +924,86 @@ public final class GameScreen extends AbstractScreen {
                 WAVE_PROGRESS_WIDTH, WAVE_PROGRESS_HEIGHT);
         waveProgressActor.setTouchable(Touchable.disabled);
         stage.addActor(waveProgressActor);
+    }
+
+    private void installPlantWhatYouGetWaveButton() {
+        Game game = activeGame();
+        if (game == null || !game.hasPlantWhatYouGet()
+                || plantWhatYouGetWaveButton != null) {
+            return;
+        }
+
+        plantWhatYouGetWaveButton = new TextButton(
+                "START WAVE", skin, "green");
+        plantWhatYouGetWaveButton.setBounds(
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_X,
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_Y,
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_WIDTH,
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_HEIGHT);
+        plantWhatYouGetWaveButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                startNextPlantWhatYouGetWave();
+            }
+        });
+        stage.addActor(plantWhatYouGetWaveButton);
+        refreshPlantWhatYouGetWaveButton();
+    }
+
+    private void startNextPlantWhatYouGetWave() {
+        Game game = activeGame();
+        if (game == null || !game.hasPlantWhatYouGet()
+                || gamePaused || pauseModal != null
+                || plantSelectionModal != null
+                || pendingAnnouncementWaveNumber != 0
+                || gameAnnouncementLabel != null
+                        && gameAnnouncementLabel.isVisible()) {
+            return;
+        }
+
+        if (!game.haveZombieWavesStarted()
+                && !game.startZombieWavesFromGui()) {
+            return;
+        }
+        if (!game.isNextWaveReadyForGui()) {
+            refreshPlantWhatYouGetWaveButton();
+            return;
+        }
+
+        int waveNumber = game.getNextWaveNumberForGui();
+        if (waveNumber > 0) {
+            queueWaveAnnouncements(waveNumber, false);
+        }
+        refreshPlantWhatYouGetWaveButton();
+    }
+
+    private void refreshPlantWhatYouGetWaveButton() {
+        Game game = activeGame();
+        if (plantWhatYouGetWaveButton == null || game == null
+                || !game.hasPlantWhatYouGet()) {
+            return;
+        }
+
+        int nextWave = game.getNextWaveNumberForGui();
+        if (!game.haveZombieWavesStarted()) {
+            plantWhatYouGetWaveButton.setText("START WAVE");
+        } else if (nextWave <= 0) {
+            plantWhatYouGetWaveButton.setText("ALL WAVES SENT");
+        } else {
+            plantWhatYouGetWaveButton.setText("START WAVE " + nextWave);
+        }
+
+        boolean announcementActive = pendingAnnouncementWaveNumber != 0
+                || gameAnnouncementLabel != null
+                        && gameAnnouncementLabel.isVisible();
+        boolean ready = !game.haveZombieWavesStarted()
+                || game.isNextWaveReadyForGui();
+        boolean disabled = gamePaused || pauseModal != null
+                || plantSelectionModal != null || announcementActive
+                || nextWave <= 0 || !ready;
+        plantWhatYouGetWaveButton.setDisabled(disabled);
+        plantWhatYouGetWaveButton.setTouchable(disabled
+                ? Touchable.disabled : Touchable.enabled);
     }
 
     private void installSeedTray() {
@@ -2861,7 +2992,9 @@ public final class GameScreen extends AbstractScreen {
         refreshCollectibleDrops();
         refreshSunHud();
         refreshPlantFoodHud();
+        refreshPlantWhatYouGetWaveButton();
         refreshTimedWarObjectivesHud();
+        refreshLoveYourPlantsHud();
         refreshBoardHover();
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
@@ -2876,8 +3009,19 @@ public final class GameScreen extends AbstractScreen {
     private String buildGameResultDescription(Game game) {
         if (game == null
                 || game.getStatus()
-                        != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST
-                || !game.hasTimedWar()
+                        != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST) {
+            return null;
+        }
+
+        if (game.hasLoveYourPlants()
+                && game.getLostPlantCount() > game.getMaximumLostPlants()) {
+            return "Love Your Plants failed because "
+                    + game.getLostPlantCount()
+                    + " plants were lost. You may lose at most "
+                    + game.getMaximumLostPlants() + ".";
+        }
+
+        if (!game.hasTimedWar()
                 || !game.didTimedWarFailAfterWavesCleared()) {
             return null;
         }

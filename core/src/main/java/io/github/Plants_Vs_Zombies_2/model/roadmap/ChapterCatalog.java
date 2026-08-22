@@ -97,7 +97,7 @@ public final class ChapterCatalog {
             return 0;
         }
         if (type == SpecialLevelType.PLANT_WHAT_YOU_GET) {
-            return 800;
+            return 3000;
         }
         return normalAmount;
     }

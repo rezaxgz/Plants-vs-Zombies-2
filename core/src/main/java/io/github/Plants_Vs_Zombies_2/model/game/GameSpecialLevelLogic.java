@@ -229,8 +229,7 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
                 maximumLostPlants);
         loveYourPlantsSystem.observePlants(board);
         pendingResults.add(
-                "Love Your Plants started: lose the level "
-                        + "after losing "
+                "Love Your Plants started: do not lose more than "
                         + maximumLostPlants + " plants.");
     }
 
@@ -252,14 +251,22 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
                         .getMaximumLostPlants();
     }
 
+    public int getRemainingPlantLossAllowance() {
+        return loveYourPlantsSystem == null
+                ? 0
+                : loveYourPlantsSystem
+                        .getRemainingPlantLossAllowance();
+    }
+
     public void enablePlantWhatYouGet() {
         plantWhatYouGetSystem = new PlantWhatYouGetSystem();
         disableSkySuns("Plant What You Get");
         pendingResults.add(
                 "Plant What You Get setup started: "
                         + "sun-producing plants are locked, "
-                        + "cooldowns are ignored until "
-                        + "start zombie waves.");
+                        + "plant recharge cooldowns are disabled for the "
+                        + "entire level, and zombie waves wait for you to "
+                        + "start them.");
     }
 
     public boolean hasPlantWhatYouGet() {
@@ -304,8 +311,8 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
         zombieWavesStarted = true;
         startNextWaveIfPossible();
         pendingResults.add(
-                "Zombie waves started; recharge cooldowns "
-                        + "are active now.");
+                "Zombie waves started; plant recharge cooldowns remain "
+                        + "disabled for Plant What You Get.");
         return true;
     }
 

@@ -213,10 +213,10 @@ abstract class GameUpdateLogic extends GameState {
         pendingResults.add(
                 "Love Your Plants failed: "
                         + loveYourPlantsSystem.getLostPlantCount()
-                        + " plants were lost; limit was "
+                        + " plants were lost; only "
                         + loveYourPlantsSystem
                                 .getMaximumLostPlants()
-                        + ".");
+                        + " plants may be lost.");
         return true;
     }
 
