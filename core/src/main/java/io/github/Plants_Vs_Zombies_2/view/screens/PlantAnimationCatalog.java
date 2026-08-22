@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.ShooterPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducerPlantType;
 
@@ -28,6 +30,24 @@ final class PlantAnimationCatalog {
         }
     }
 
+
+    static final class AttackAnimation {
+        private final String attackClip;
+        private final String idleClip;
+
+        private AttackAnimation(String attackClip, String idleClip) {
+            this.attackClip = attackClip;
+            this.idleClip = idleClip;
+        }
+
+        String getAttackClip() {
+            return attackClip;
+        }
+
+        String getIdleClip() {
+            return idleClip;
+        }
+    }
 
     static final class SunProductionAnimation {
         private final String productionClip;
@@ -56,6 +76,29 @@ final class PlantAnimationCatalog {
         return PREVIEWS.get(normalize(plantName));
     }
 
+
+    /**
+     * Returns the one-shot firing clip and idle clip for projectile shooters.
+     * animations.json exposes "attack" for every normal Shooter plant except
+     * Bowling Bulb and Puff-shroom; those two use their asset-equivalent
+     * firing clips ("special" and "special_stage1") instead.
+     */
+    static AttackAnimation shooterAttackAnimation(Shooter shooter) {
+        if (shooter == null) {
+            return null;
+        }
+        ShooterPlantType type = shooter.getType();
+        switch (type) {
+            case APPEASE_MINT:
+                return null;
+            case BOWLING_BULB:
+                return new AttackAnimation("special", "idle");
+            case PUFF_SHROOM:
+                return new AttackAnimation("special_stage1", "idle_stage1");
+            default:
+                return new AttackAnimation("attack", "idle");
+        }
+    }
 
     /**
      * Returns the one-shot sun-production clip and the idle clip to resume.

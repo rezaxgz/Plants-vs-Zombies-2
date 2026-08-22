@@ -26,6 +26,8 @@ final class PamAnimationActor extends Actor {
     private Rectangle oneShotAnimationBounds;
     private float oneShotDurationSeconds;
     private float oneShotStateTime;
+    private float oneShotEventFraction = -1f;
+    private Runnable oneShotEvent;
     private Runnable oneShotCompletion;
     private float stateTime;
     private float hurtFlashRemainingSeconds;
@@ -56,11 +58,20 @@ final class PamAnimationActor extends Actor {
         super.act(delta);
         if (oneShotClip != null) {
             oneShotStateTime += Math.max(0f, delta);
+            if (oneShotEvent != null
+                    && oneShotStateTime >= oneShotDurationSeconds
+                            * oneShotEventFraction) {
+                Runnable event = oneShotEvent;
+                oneShotEvent = null;
+                event.run();
+            }
             if (oneShotStateTime >= oneShotDurationSeconds) {
                 Runnable completion = oneShotCompletion;
                 oneShotClip = null;
                 oneShotAnimationBounds = null;
                 oneShotStateTime = 0f;
+                oneShotEventFraction = -1f;
+                oneShotEvent = null;
                 oneShotCompletion = null;
                 stateTime = 0f;
                 if (completion != null) {
@@ -90,8 +101,21 @@ final class PamAnimationActor extends Actor {
      * the clip ends, immediately before the actor resumes its idle clip.
      */
     boolean playOnce(String clip, String idleClipAfter, Runnable completion) {
+        return playOnce(clip, idleClipAfter, -1f, null, completion);
+    }
+
+    /**
+     * Plays a non-looping clip and invokes {@code event} once when playback
+     * reaches {@code eventFraction} of the clip duration. The duration comes
+     * from the PAM metadata exposed by libPVZ (the same durations catalogued
+     * in animations.json), so a value of {@code 0.5f} is the exact halfway
+     * point for every shooter instead of a hard-coded delay.
+     */
+    boolean playOnce(String clip, String idleClipAfter, float eventFraction,
+            Runnable event, Runnable completion) {
         if (clip == null || clip.isBlank()
-                || idleClipAfter == null || idleClipAfter.isBlank()) {
+                || idleClipAfter == null || idleClipAfter.isBlank()
+                || event != null && (eventFraction < 0f || eventFraction > 1f)) {
             return false;
         }
         Rectangle specialBounds = player.bounds(pamPath, clip);
@@ -105,6 +129,8 @@ final class PamAnimationActor extends Actor {
         oneShotAnimationBounds = specialBounds;
         oneShotDurationSeconds = Math.max(0.01f, duration);
         oneShotStateTime = 0f;
+        oneShotEventFraction = event == null ? -1f : eventFraction;
+        oneShotEvent = event;
         oneShotCompletion = completion;
         return true;
     }

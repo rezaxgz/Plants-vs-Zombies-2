@@ -60,6 +60,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.BouncingGrap
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
@@ -268,6 +269,8 @@ public final class GameScreen extends AbstractScreen {
     private final Map<BasePlant, Integer> plantedPlantHealth =
             new IdentityHashMap<>();
     private final Map<SunProducer, Integer> plantedSunProductionSequences =
+            new IdentityHashMap<>();
+    private final Map<Shooter, Integer> plantedShooterAttackSequences =
             new IdentityHashMap<>();
 
     private Group sunLayer;
@@ -1904,10 +1907,13 @@ public final class GameScreen extends AbstractScreen {
                 new IdentityHashMap<>(plantedPlantHealth);
         IdentityHashMap<SunProducer, Integer> previousProductionSequences =
                 new IdentityHashMap<>(plantedSunProductionSequences);
+        IdentityHashMap<Shooter, Integer> previousAttackSequences =
+                new IdentityHashMap<>(plantedShooterAttackSequences);
         plantedPlantLayer.clearChildren();
         plantedPlantActors.clear();
         plantedPlantHealth.clear();
         plantedSunProductionSequences.clear();
+        plantedShooterAttackSequences.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
             Actor actor = createPlantIdleActor(plant.getName());
             actor.setTouchable(Touchable.disabled);
@@ -1931,6 +1937,17 @@ public final class GameScreen extends AbstractScreen {
                     playSunProductionAnimation(producer, actor);
                 }
                 plantedSunProductionSequences.put(producer, currentSequence);
+            }
+            if (plant instanceof Shooter) {
+                Shooter shooter = (Shooter) plant;
+                configureShooterAttackAnimation(shooter, actor);
+                int currentSequence = shooter.getAttackSequence();
+                Integer oldSequence = previousAttackSequences.get(shooter);
+                if (shooter.isAttackAnimationPending()
+                        || oldSequence != null && currentSequence > oldSequence) {
+                    playShooterAttackAnimation(shooter, actor);
+                }
+                plantedShooterAttackSequences.put(shooter, currentSequence);
             }
         }
         plantedPlantRenderSignature = createPlantRenderSignature(game);
@@ -1990,6 +2007,45 @@ public final class GameScreen extends AbstractScreen {
                     playSunProductionAnimation(producer, actor);
                 }
             }
+            if (plant instanceof Shooter) {
+                Shooter shooter = (Shooter) plant;
+                Actor actor = plantedPlantActors.get(plant);
+                configureShooterAttackAnimation(shooter, actor);
+                int currentSequence = shooter.getAttackSequence();
+                Integer oldSequence = plantedShooterAttackSequences.put(
+                        shooter, currentSequence);
+                if (oldSequence != null && currentSequence > oldSequence) {
+                    playShooterAttackAnimation(shooter, actor);
+                }
+            }
+        }
+    }
+
+    private void configureShooterAttackAnimation(
+            Shooter shooter, Actor actor) {
+        boolean canAnimate = actor instanceof PamAnimationActor
+                && PlantAnimationCatalog.shooterAttackAnimation(shooter) != null;
+        shooter.setDeferProjectilesForAttackAnimation(canAnimate);
+    }
+
+    private void playShooterAttackAnimation(
+            Shooter shooter, Actor actor) {
+        if (!(actor instanceof PamAnimationActor)) {
+            shooter.completeAttackAnimation();
+            return;
+        }
+        PlantAnimationCatalog.AttackAnimation animation =
+                PlantAnimationCatalog.shooterAttackAnimation(shooter);
+        if (animation == null) {
+            shooter.completeAttackAnimation();
+            return;
+        }
+        boolean started = ((PamAnimationActor) actor).playOnce(
+                animation.getAttackClip(), animation.getIdleClip(), 0.5f,
+                shooter::releaseAttackAnimationProjectiles,
+                shooter::completeAttackAnimation);
+        if (!started) {
+            shooter.completeAttackAnimation();
         }
     }
 

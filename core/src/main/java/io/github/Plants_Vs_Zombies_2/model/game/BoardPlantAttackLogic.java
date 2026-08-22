@@ -333,12 +333,16 @@ abstract class BoardPlantAttackLogic extends BoardUpdateLogic {
     void applyPendingShooterBoardEffects(List<Entity> updateSnapshot,
             List<Entity> entitiesToAdd) {
         for (Entity entity : updateSnapshot) {
-            if (!(entity instanceof Shooter) || entity.isRemoved() || ((BasePlant) entity).isDisabled()) {
+            if (!(entity instanceof Shooter) || entity.isRemoved()) {
                 continue;
             }
-            Shooter mint = (Shooter) entity;
-            if (mint.drainFamilyBoostPending()) {
-                applyShooterFamilyBoost(mint, entitiesToAdd);
+            Shooter shooter = (Shooter) entity;
+            entitiesToAdd.addAll(shooter.drainProjectiles());
+            if (shooter.isDisabled()) {
+                continue;
+            }
+            if (shooter.drainFamilyBoostPending()) {
+                applyShooterFamilyBoost(shooter, entitiesToAdd);
             }
         }
     }

@@ -28,6 +28,7 @@ public class Shooter extends BasePlant {
 
     private final ShooterPlantType type;
     private final List<Projectile> pendingProjectiles = new ArrayList<>();
+    private final List<Projectile> attackAnimationProjectiles = new ArrayList<>();
     private final Random random;
 
     private double secondsSinceLastShot;
@@ -38,6 +39,9 @@ public class Shooter extends BasePlant {
     private boolean familyBoostPending;
     private boolean familyBoostActivated;
     private boolean plantFoodUsed;
+    private boolean deferProjectilesForAttackAnimation;
+    private boolean attackAnimationPlaying;
+    private int attackSequence;
 
     public Shooter() {
         this(ShooterPlantType.PEASHOOTER, 1, null);
@@ -104,6 +108,7 @@ public class Shooter extends BasePlant {
     public boolean isReadyToShoot() {
         float interval = type.getActionIntervalSeconds(getLevel());
         return !isRemoved() && type.getBehavior() != ShooterBehavior.FAMILY_BOOST
+                && !isAttackAnimationPending()
                 && interval > 0.0f && secondsSinceLastShot + TIMER_EPSILON >= interval;
     }
 
@@ -175,9 +180,22 @@ public class Shooter extends BasePlant {
         }
         secondsSinceLastShot = 0.0;
         projectileBoardRows = boardRows;
+        int firstShotProjectile = pendingProjectiles.size();
         int damage = getNextShotDamage();
         addPatternProjectiles(boardRows, type.getShotsPerDirection(), damage);
         addRandomMegaGatlingPlantFood(boardRows);
+
+        if (pendingProjectiles.size() > firstShotProjectile) {
+            attackSequence++;
+            if (deferProjectilesForAttackAnimation) {
+                attackAnimationProjectiles.addAll(
+                        pendingProjectiles.subList(firstShotProjectile,
+                                pendingProjectiles.size()));
+                pendingProjectiles.subList(firstShotProjectile,
+                        pendingProjectiles.size()).clear();
+                attackAnimationPlaying = true;
+            }
+        }
         return drainProjectiles();
     }
 
@@ -367,6 +385,50 @@ public class Shooter extends BasePlant {
         List<Projectile> projectiles = new ArrayList<>(pendingProjectiles);
         pendingProjectiles.clear();
         return projectiles;
+    }
+
+    /**
+     * Enables the graphical attack wind-up. While enabled, projectiles created
+     * by a normal shot are held outside the board until the view reports that
+     * the attack PAM has reached its projectile-release point. Non-graphical
+     * callers keep the original immediate projectile behavior.
+     */
+    public void setDeferProjectilesForAttackAnimation(boolean defer) {
+        deferProjectilesForAttackAnimation = defer;
+        if (!defer) {
+            completeAttackAnimation();
+        }
+    }
+
+    /**
+     * Releases the projectile(s) when the firing animation reaches its
+     * halfway point. The animation itself continues to its idle transition.
+     */
+    public void releaseAttackAnimationProjectiles() {
+        releaseAttackAnimationProjectilesInternal();
+    }
+
+    /** Marks the firing animation finished and releases anything as a fail-safe. */
+    public void completeAttackAnimation() {
+        releaseAttackAnimationProjectilesInternal();
+        attackAnimationPlaying = false;
+    }
+
+    private void releaseAttackAnimationProjectilesInternal() {
+        if (attackAnimationProjectiles.isEmpty()) {
+            return;
+        }
+        pendingProjectiles.addAll(attackAnimationProjectiles);
+        attackAnimationProjectiles.clear();
+    }
+
+    public boolean isAttackAnimationPending() {
+        return deferProjectilesForAttackAnimation && attackAnimationPlaying;
+    }
+
+    /** Monotonically increases whenever a normal shot is requested. */
+    public int getAttackSequence() {
+        return attackSequence;
     }
 
     public void resetLifespan() {
