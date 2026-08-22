@@ -5,6 +5,13 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.LobberPlantType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.ShooterPlantType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducerPlantType;
+
 /** Maps the project's 69 plant names to their PvZ2 preview PAM clips. */
 final class PlantAnimationCatalog {
     static final class Preview {
@@ -25,6 +32,54 @@ final class PlantAnimationCatalog {
         }
     }
 
+
+    static final class AttackAnimation {
+        private final String attackClip;
+        private final String idleClip;
+        private final float projectileReleaseFraction;
+
+        private AttackAnimation(String attackClip, String idleClip) {
+            this(attackClip, idleClip, 0.5f);
+        }
+
+        private AttackAnimation(String attackClip, String idleClip,
+                float projectileReleaseFraction) {
+            this.attackClip = attackClip;
+            this.idleClip = idleClip;
+            this.projectileReleaseFraction = projectileReleaseFraction;
+        }
+
+        String getAttackClip() {
+            return attackClip;
+        }
+
+        String getIdleClip() {
+            return idleClip;
+        }
+
+        float getProjectileReleaseFraction() {
+            return projectileReleaseFraction;
+        }
+    }
+
+    static final class SunProductionAnimation {
+        private final String productionClip;
+        private final String idleClip;
+
+        private SunProductionAnimation(String productionClip, String idleClip) {
+            this.productionClip = productionClip;
+            this.idleClip = idleClip;
+        }
+
+        String getProductionClip() {
+            return productionClip;
+        }
+
+        String getIdleClip() {
+            return idleClip;
+        }
+    }
+
     private static final Map<String, Preview> PREVIEWS = createPreviews();
 
     private PlantAnimationCatalog() {
@@ -32,6 +87,105 @@ final class PlantAnimationCatalog {
 
     static Preview find(String plantName) {
         return PREVIEWS.get(normalize(plantName));
+    }
+
+
+    /**
+     * Returns the one-shot firing clip and idle clip for projectile shooters.
+     * animations.json exposes "attack" for every normal Shooter plant except
+     * Bowling Bulb and Puff-shroom; those two use their asset-equivalent
+     * firing clips ("special" and "special_stage1") instead.
+     */
+    static AttackAnimation shooterAttackAnimation(Shooter shooter) {
+        if (shooter == null) {
+            return null;
+        }
+        ShooterPlantType type = shooter.getType();
+        switch (type) {
+            case APPEASE_MINT:
+                return null;
+            case BOWLING_BULB:
+                return new AttackAnimation("special", "idle");
+            case PUFF_SHROOM:
+                return new AttackAnimation("special_stage1", "idle_stage1");
+            default:
+                return new AttackAnimation("attack", "idle");
+        }
+    }
+
+    /**
+     * Returns the normal lobber attack clip and the exact projectile release
+     * point authored into the uploaded PAM. The release points are the
+     * {@code use_action} command frames inside each attack clip:
+     * Cabbage 18/50, Kernel 19/56, Butter 19/55, Melon 21/59,
+     * Winter Melon 25/65, and Pepper-pult 13/60. Pepper-pult's attack clip
+     * is 60 frames at 30 FPS (2.0 seconds); its {@code use_action} command is
+     * 13 frames after the attack label, so the projectile is released at
+     * about 0.433 seconds.
+     */
+    static AttackAnimation lobberAttackAnimation(Lobber lobber) {
+        if (lobber == null) {
+            return null;
+        }
+        LobberPlantType type = lobber.getType();
+        switch (type) {
+            case CABBAGE_PULT:
+                return new AttackAnimation("attack", "idle", 18f / 50f);
+            case KERNEL_PULT:
+                if (lobber.wasLastAttackButter()) {
+                    return new AttackAnimation("attack2", "idle", 19f / 55f);
+                }
+                return new AttackAnimation("attack", "idle", 19f / 56f);
+            case MELON_PULT:
+                return new AttackAnimation("attack", "idle", 21f / 59f);
+            case WINTER_MELON:
+                return new AttackAnimation("attack", "idle", 25f / 65f);
+            case PEPPER_PULT:
+                return new AttackAnimation("attack", "idle", 13f / 60f);
+            case ARMA_MINT:
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Returns the one-shot sun-production clip and the idle clip to resume.
+     * animations.json names the production clip "special" for Sunflower,
+     * Twin Sunflower and Primal Sunflower. Sun-shroom uses the equivalent
+     * stage-specific special_stage1/2/3 clips.
+     */
+    static SunProductionAnimation sunProductionAnimation(SunProducer producer) {
+        if (producer == null) {
+            return null;
+        }
+        SunProducerPlantType type = producer.getType();
+        switch (type) {
+            case SUNFLOWER:
+            case TWIN_SUNFLOWER:
+            case PRIMAL_SUNFLOWER:
+                return new SunProductionAnimation("special", "idle");
+            case SUN_SHROOM:
+                int stage = sunShroomStage(producer);
+                return new SunProductionAnimation(
+                        "special_stage" + stage,
+                        "idle_stage" + stage);
+            default:
+                return null;
+        }
+    }
+
+    private static int sunShroomStage(SunProducer producer) {
+        if (producer.isFullyGrown()) {
+            return 3;
+        }
+        int amount = producer.getType().getSunAmountAt(
+                producer.getElapsedSeconds(), producer.getLevel());
+        if (amount >= producer.getType().getFinalSunAmount(
+                producer.getLevel())) {
+            return 3;
+        }
+        return amount > 25 ? 2 : 1;
     }
 
     private static Map<String, Preview> createPreviews() {

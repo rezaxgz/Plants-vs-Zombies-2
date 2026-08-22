@@ -1,6 +1,7 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -59,12 +60,17 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.BouncingGrap
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.BaseStructure;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.Grave;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.GraveReward;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
+import io.github.Plants_Vs_Zombies_2.model.game.special.ConveyorPlacementResult;
+import io.github.Plants_Vs_Zombies_2.model.game.special.ConveyorPlantPacket;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
@@ -109,6 +115,8 @@ public final class GameScreen extends AbstractScreen {
             "IMAGE_ZEN_GARDEN_CURSORS_REMOVAL_CURSOR_REMOVAL_CURSOR_133X115";
     private static final String WAVE_PROGRESS_ZOMBIE_HEAD =
             "IMAGE_UI_HUD_INGAME_PROGRESS_METER_ZOMBIEHEAD";
+    private static final String LOVE_YOUR_PLANTS_ICON =
+            "IMAGE_UI_PAUSEMENU_SUNFLOWER_TOPPER";
     private static final String WAVE_PROGRESS_FLAG_POLE =
             "IMAGE_UI_HUD_INGAME_PROGRESS_METER_FLAG_POLE";
     private static final String WAVE_PROGRESS_FLAG =
@@ -133,6 +141,11 @@ public final class GameScreen extends AbstractScreen {
     private static final float SEED_TRAY_HEIGHT = 568f;
     private static final float SEED_SLOT_WIDTH = 110f;
     private static final float SEED_SLOT_HEIGHT = 68f;
+    private static final float CONVEYOR_CARD_WIDTH = 108f;
+    private static final float CONVEYOR_CARD_HEIGHT = 64f;
+    private static final float CONVEYOR_CARD_GAP = 4f;
+    private static final float CONVEYOR_CARD_INSET = 4f;
+    private static final float CONVEYOR_CARD_TRAVEL_SPEED = 120f;
     private static final float PAUSE_BUTTON_X = 44f;
     private static final float PAUSE_BUTTON_Y = 650f;
     private static final float PAUSE_BUTTON_SIZE = 58f;
@@ -149,6 +162,11 @@ public final class GameScreen extends AbstractScreen {
     private static final float WAVE_PROGRESS_Y = 8f;
     private static final float WAVE_PROGRESS_WIDTH = 400f;
     private static final float WAVE_PROGRESS_HEIGHT = 66f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_X =
+            WAVE_PROGRESS_X + WAVE_PROGRESS_WIDTH + 12f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_Y = 15f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_WIDTH = 168f;
+    private static final float PLANT_WHAT_YOU_GET_WAVE_BUTTON_HEIGHT = 46f;
     private static final float SUN_HUD_X = 210f;
     private static final float SUN_HUD_Y = 648f;
     private static final float SUN_HUD_WIDTH = 218f;
@@ -157,6 +175,10 @@ public final class GameScreen extends AbstractScreen {
     private static final float PLANT_FOOD_HUD_Y = 586f;
     private static final float PLANT_FOOD_HUD_WIDTH = SUN_HUD_WIDTH;
     private static final float PLANT_FOOD_HUD_HEIGHT = SUN_HUD_HEIGHT;
+    private static final float TIMED_WAR_HUD_X = 440f;
+    private static final float TIMED_WAR_HUD_Y = 566f;
+    private static final float TIMED_WAR_HUD_WIDTH = 276f;
+    private static final float TIMED_WAR_HUD_HEIGHT = 76f;
     private static final float NORMAL_BOARD_SUN_SIZE = 108f;
     private static final float SPECIAL_BOARD_SUN_SIZE = 152f;
     private static final float RADIOACTIVE_BOARD_SUN_SIZE = 164f;
@@ -215,10 +237,16 @@ public final class GameScreen extends AbstractScreen {
     private boolean shovelMode;
     private boolean usingFallbackShovelCursor;
     private WaveProgressActor waveProgressActor;
+    private TextButton plantWhatYouGetWaveButton;
     private Table sunHud;
     private Label sunAmountLabel;
     private Table plantFoodHud;
     private Label plantFoodAmountLabel;
+    private Table timedWarObjectivesHud;
+    private Label timedWarSunLeftLabel;
+    private Label timedWarZombieKillsLabel;
+    private Table loveYourPlantsHud;
+    private Label loveYourPlantsLabel;
     private Group pauseModal;
     private boolean gamePaused;
     private boolean sunHudDebugMode;
@@ -231,7 +259,22 @@ public final class GameScreen extends AbstractScreen {
     private Image hoveredBoardCell;
     private Actor cursorPlantActor;
     private PlantCollectionItem selectedPlantForPlacement;
+    private Group conveyorBelt;
+    private final Map<Long, ConveyorPacketActor> conveyorPacketActors =
+            new HashMap<>();
+    private Long selectedConveyorPacketSequence;
+    private String selectedConveyorPlantName;
     private String plantedPlantRenderSignature = "";
+    private final Map<BasePlant, Actor> plantedPlantActors =
+            new IdentityHashMap<>();
+    private final Map<BasePlant, Integer> plantedPlantHealth =
+            new IdentityHashMap<>();
+    private final Map<SunProducer, Integer> plantedSunProductionSequences =
+            new IdentityHashMap<>();
+    private final Map<Shooter, Integer> plantedShooterAttackSequences =
+            new IdentityHashMap<>();
+    private final Map<Lobber, Integer> plantedLobberAttackSequences =
+            new IdentityHashMap<>();
 
     private Group sunLayer;
     private final Map<Sun, SunActor> sunActors = new IdentityHashMap<>();
@@ -247,9 +290,13 @@ public final class GameScreen extends AbstractScreen {
             new IdentityHashMap<>();
     private final Map<Grave, String> graveVisualKeys =
             new IdentityHashMap<>();
+    private final Map<Grave, Integer> graveHitPoints =
+            new IdentityHashMap<>();
 
     private Group zombieLayer;
     private final Map<Zombie, ZombiePamActor> zombieActors =
+            new IdentityHashMap<>();
+    private final Map<Zombie, Integer> zombieDurability =
             new IdentityHashMap<>();
 
     private Group projectileLayer;
@@ -276,6 +323,9 @@ public final class GameScreen extends AbstractScreen {
         installChapterBoard(chapter);
         installGameHud();
         installWaveProgressHud();
+        installPlantWhatYouGetWaveButton();
+        installTimedWarObjectivesHud();
+        installLoveYourPlantsHud();
 
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
@@ -286,6 +336,7 @@ public final class GameScreen extends AbstractScreen {
         addBackgroundOverlay(new LawnMowerRenderer(
                 navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
+        installConveyorBelt();
         installShovelButton();
         installZombieRendering();
         installProjectileRendering();
@@ -381,6 +432,113 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(plantFoodHud);
         plantFoodHudDebugMode = !isDebugMode();
         refreshPlantFoodHud();
+    }
+
+    private void installTimedWarObjectivesHud() {
+        Game game = activeGame();
+        if (game == null || !game.hasTimedWar()
+                || game.getTimedWarCollectedSunTarget() <= 0
+                || timedWarObjectivesHud != null) {
+            return;
+        }
+
+        timedWarSunLeftLabel = new Label("", skin, "medium_outline");
+        timedWarSunLeftLabel.setFontScale(0.62f);
+        timedWarSunLeftLabel.setAlignment(Align.left);
+
+        timedWarZombieKillsLabel = new Label("", skin, "medium_outline");
+        timedWarZombieKillsLabel.setFontScale(0.62f);
+        timedWarZombieKillsLabel.setAlignment(Align.left);
+
+        timedWarObjectivesHud = new Table();
+        timedWarObjectivesHud.left().top();
+        timedWarObjectivesHud.setBounds(
+                TIMED_WAR_HUD_X, TIMED_WAR_HUD_Y,
+                TIMED_WAR_HUD_WIDTH, TIMED_WAR_HUD_HEIGHT);
+        timedWarObjectivesHud.add(createSpecialObjectiveRow(
+                GAME_SUN_ICON, timedWarSunLeftLabel))
+                .width(TIMED_WAR_HUD_WIDTH).height(37f).row();
+        timedWarObjectivesHud.add(createSpecialObjectiveRow(
+                WAVE_PROGRESS_ZOMBIE_HEAD, timedWarZombieKillsLabel))
+                .width(TIMED_WAR_HUD_WIDTH).height(37f);
+        stage.addActor(timedWarObjectivesHud);
+        refreshTimedWarObjectivesHud();
+    }
+
+    private Actor createSpecialObjectiveRow(String iconAsset, Label label) {
+        Stack row = new Stack();
+        Image background = createAssetImage(GAME_SUN_BACKGROUND);
+        background.setScaling(Scaling.stretch);
+        background.setColor(1f, 1f, 1f, 0.92f);
+        row.add(background);
+
+        Table contents = new Table();
+        contents.left();
+        Image icon = createAssetImage(iconAsset);
+        icon.setScaling(Scaling.fit);
+        contents.add(icon).size(34f).padLeft(5f).padRight(4f);
+        contents.add(label).growX().left().padRight(8f);
+        row.add(contents);
+        return row;
+    }
+
+    private void refreshTimedWarObjectivesHud() {
+        Game game = activeGame();
+        if (timedWarObjectivesHud == null || game == null
+                || !game.hasTimedWar()) {
+            return;
+        }
+
+        int sunsLeft = game.getTimedWarSunLeftToCollect();
+        timedWarSunLeftLabel.setText(sunsLeft + " suns left"
+                + (game.isTimedWarCollectedSunRequirementMet()
+                        ? " (met)" : ""));
+
+        int recentKills = game.getTimedWarRecentZombieKills();
+        int killTarget = game.getTimedWarTarget();
+        int windowSeconds = Math.max(1,
+                (int) Math.round(game.getTimedWarKillWindowSeconds()));
+        timedWarZombieKillsLabel.setText(
+                recentKills + " / " + killTarget + " in last "
+                        + windowSeconds + "s"
+                        + (game.isTimedWarZombieKillRequirementMet()
+                                ? " (met)" : ""));
+    }
+
+    private void installLoveYourPlantsHud() {
+        Game game = activeGame();
+        if (game == null || !game.hasLoveYourPlants()
+                || loveYourPlantsHud != null) {
+            return;
+        }
+
+        loveYourPlantsLabel = new Label("", skin, "medium_outline");
+        loveYourPlantsLabel.setFontScale(0.62f);
+        loveYourPlantsLabel.setAlignment(Align.left);
+
+        loveYourPlantsHud = new Table();
+        loveYourPlantsHud.left().top();
+        loveYourPlantsHud.setBounds(
+                TIMED_WAR_HUD_X, TIMED_WAR_HUD_Y,
+                TIMED_WAR_HUD_WIDTH, TIMED_WAR_HUD_HEIGHT);
+        loveYourPlantsHud.add(createSpecialObjectiveRow(
+                LOVE_YOUR_PLANTS_ICON, loveYourPlantsLabel))
+                .width(TIMED_WAR_HUD_WIDTH).height(37f);
+        stage.addActor(loveYourPlantsHud);
+        refreshLoveYourPlantsHud();
+    }
+
+    private void refreshLoveYourPlantsHud() {
+        Game game = activeGame();
+        if (loveYourPlantsHud == null || loveYourPlantsLabel == null
+                || game == null || !game.hasLoveYourPlants()) {
+            return;
+        }
+
+        int lost = game.getLostPlantCount();
+        int remaining = game.getRemainingPlantLossAllowance();
+        loveYourPlantsLabel.setText(
+                lost + " lost | " + remaining + " more allowed");
     }
 
     private boolean isDebugMode() {
@@ -650,10 +808,12 @@ public final class GameScreen extends AbstractScreen {
         gameAnnouncementLabel.setVisible(false);
         stage.addActor(gameAnnouncementLabel);
 
-        if (!game.haveZombieWavesStarted()) {
-            queueWaveAnnouncements(1, true);
-        } else {
-            maybeQueueReadyWaveAnnouncement();
+        if (!game.hasPlantWhatYouGet()) {
+            if (!game.haveZombieWavesStarted()) {
+                queueWaveAnnouncements(1, true);
+            } else {
+                maybeQueueReadyWaveAnnouncement();
+            }
         }
     }
 
@@ -731,7 +891,8 @@ public final class GameScreen extends AbstractScreen {
 
     private void maybeQueueReadyWaveAnnouncement() {
         Game game = activeGame();
-        if (game == null || gameAnnouncementLabel == null
+        if (game == null || game.hasPlantWhatYouGet()
+                || gameAnnouncementLabel == null
                 || pendingAnnouncementWaveNumber != 0
                 || !queuedGameAnnouncements.isEmpty()
                 || gameAnnouncementLabel.isVisible()
@@ -756,6 +917,16 @@ public final class GameScreen extends AbstractScreen {
 
     private void installChapterBoard(Chapter chapter) {
         BoardLayout layout = layoutForChapter(chapter);
+        if (layout == null && isModelBackedGame()) {
+            Game game = activeGame();
+            if (game != null && game.hasConveyorBelt()) {
+                // Minigames such as Wall-nut Bowling may use a conveyor
+                // without adventure chapter metadata. Phase 2 allows an
+                // arbitrary minigame background, so use the Egypt lawn to
+                // keep the 5x9 board interactive in those games too.
+                layout = EGYPT_BOARD;
+            }
+        }
         if (layout == null) {
             return;
         }
@@ -796,12 +967,198 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(waveProgressActor);
     }
 
+    private void installPlantWhatYouGetWaveButton() {
+        Game game = activeGame();
+        if (game == null || !game.hasPlantWhatYouGet()
+                || plantWhatYouGetWaveButton != null) {
+            return;
+        }
+
+        plantWhatYouGetWaveButton = new TextButton(
+                "START WAVE", skin, "green");
+        plantWhatYouGetWaveButton.setBounds(
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_X,
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_Y,
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_WIDTH,
+                PLANT_WHAT_YOU_GET_WAVE_BUTTON_HEIGHT);
+        plantWhatYouGetWaveButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                startNextPlantWhatYouGetWave();
+            }
+        });
+        stage.addActor(plantWhatYouGetWaveButton);
+        refreshPlantWhatYouGetWaveButton();
+    }
+
+    private void startNextPlantWhatYouGetWave() {
+        Game game = activeGame();
+        if (game == null || !game.hasPlantWhatYouGet()
+                || gamePaused || pauseModal != null
+                || plantSelectionModal != null
+                || pendingAnnouncementWaveNumber != 0
+                || gameAnnouncementLabel != null
+                        && gameAnnouncementLabel.isVisible()) {
+            return;
+        }
+
+        if (!game.haveZombieWavesStarted()
+                && !game.startZombieWavesFromGui()) {
+            return;
+        }
+        if (!game.isNextWaveReadyForGui()) {
+            refreshPlantWhatYouGetWaveButton();
+            return;
+        }
+
+        int waveNumber = game.getNextWaveNumberForGui();
+        if (waveNumber > 0) {
+            queueWaveAnnouncements(waveNumber, false);
+        }
+        refreshPlantWhatYouGetWaveButton();
+    }
+
+    private void refreshPlantWhatYouGetWaveButton() {
+        Game game = activeGame();
+        if (plantWhatYouGetWaveButton == null || game == null
+                || !game.hasPlantWhatYouGet()) {
+            return;
+        }
+
+        int nextWave = game.getNextWaveNumberForGui();
+        if (!game.haveZombieWavesStarted()) {
+            plantWhatYouGetWaveButton.setText("START WAVE");
+        } else if (nextWave <= 0) {
+            plantWhatYouGetWaveButton.setText("ALL WAVES SENT");
+        } else {
+            plantWhatYouGetWaveButton.setText("START WAVE " + nextWave);
+        }
+
+        boolean announcementActive = pendingAnnouncementWaveNumber != 0
+                || gameAnnouncementLabel != null
+                        && gameAnnouncementLabel.isVisible();
+        boolean ready = !game.haveZombieWavesStarted()
+                || game.isNextWaveReadyForGui();
+        boolean disabled = gamePaused || pauseModal != null
+                || plantSelectionModal != null || announcementActive
+                || nextWave <= 0 || !ready;
+        plantWhatYouGetWaveButton.setDisabled(disabled);
+        plantWhatYouGetWaveButton.setTouchable(disabled
+                ? Touchable.disabled : Touchable.enabled);
+    }
+
     private void installSeedTray() {
         seedTray = new Table();
         seedTray.top();
         seedTray.setBounds(SEED_TRAY_X, SEED_TRAY_Y,
                 SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
         stage.addActor(seedTray);
+    }
+
+    private void installConveyorBelt() {
+        Game game = activeGame();
+        if (game == null || !game.hasConveyorBelt()
+                || conveyorBelt != null || plantingOverlayPixel == null) {
+            return;
+        }
+
+        conveyorBelt = new Group();
+        conveyorBelt.setBounds(SEED_TRAY_X, SEED_TRAY_Y,
+                SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+
+        Actor track = new Actor() {
+            @Override
+            public void draw(Batch batch, float parentAlpha) {
+                Color previous = new Color(batch.getColor());
+                batch.setColor(0f, 0f, 0f, 0.46f * parentAlpha);
+                batch.draw(plantingOverlayPixel,
+                        getX(), getY(), getWidth(), getHeight());
+                batch.setColor(previous);
+            }
+        };
+        track.setBounds(0f, 0f, SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+        track.setTouchable(Touchable.disabled);
+        conveyorBelt.addActor(track);
+        stage.addActor(conveyorBelt);
+        refreshConveyorBelt();
+    }
+
+    private void refreshConveyorBelt() {
+        Game game = activeGame();
+        if (conveyorBelt == null || game == null
+                || !game.hasConveyorBelt()) {
+            return;
+        }
+
+        List<ConveyorPlantPacket> packets = game.getConveyorPackets();
+        Iterator<Map.Entry<Long, ConveyorPacketActor>> iterator =
+                conveyorPacketActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Long, ConveyorPacketActor> entry = iterator.next();
+            if (findConveyorPacket(packets, entry.getKey()) == null) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+
+        if (selectedConveyorPacketSequence != null
+                && findConveyorPacket(packets,
+                        selectedConveyorPacketSequence) == null) {
+            selectedConveyorPacketSequence = null;
+            selectedConveyorPlantName = null;
+            rebuildCursorPlantActor();
+        }
+
+        for (int index = 0; index < packets.size(); index++) {
+            ConveyorPlantPacket packet = packets.get(index);
+            ConveyorPacketActor actor = conveyorPacketActors.get(
+                    packet.getSequenceNumber());
+            if (actor == null) {
+                actor = new ConveyorPacketActor(packet);
+                actor.setPosition(CONVEYOR_CARD_INSET, 0f);
+                conveyorPacketActors.put(packet.getSequenceNumber(), actor);
+                conveyorBelt.addActor(actor);
+            }
+            actor.setTargetY(conveyorTargetY(index));
+            actor.setSelected(selectedConveyorPacketSequence != null
+                    && selectedConveyorPacketSequence.longValue()
+                            == packet.getSequenceNumber());
+        }
+    }
+
+    private float conveyorTargetY(int zeroBasedIndex) {
+        float top = SEED_TRAY_HEIGHT - CONVEYOR_CARD_HEIGHT
+                - CONVEYOR_CARD_INSET;
+        return Math.max(CONVEYOR_CARD_INSET,
+                top - zeroBasedIndex
+                        * (CONVEYOR_CARD_HEIGHT + CONVEYOR_CARD_GAP));
+    }
+
+    private static ConveyorPlantPacket findConveyorPacket(
+            List<ConveyorPlantPacket> packets, long sequenceNumber) {
+        if (packets == null) {
+            return null;
+        }
+        for (ConveyorPlantPacket packet : packets) {
+            if (packet.getSequenceNumber() == sequenceNumber) {
+                return packet;
+            }
+        }
+        return null;
+    }
+
+    private int conveyorPacketIndex(long sequenceNumber) {
+        Game game = activeGame();
+        if (game == null || !game.hasConveyorBelt()) {
+            return -1;
+        }
+        List<ConveyorPlantPacket> packets = game.getConveyorPackets();
+        for (int index = 0; index < packets.size(); index++) {
+            if (packets.get(index).getSequenceNumber() == sequenceNumber) {
+                return index + 1;
+            }
+        }
+        return -1;
     }
 
     private void installCooldownResetButton() {
@@ -853,7 +1210,7 @@ public final class GameScreen extends AbstractScreen {
         if (enabled && !canUseShovel()) {
             return;
         }
-        if (enabled && selectedPlantForPlacement != null) {
+        if (enabled && hasPlantPlacementSelection()) {
             clearSelectedPlantForPlacement();
         }
         shovelMode = enabled;
@@ -983,6 +1340,16 @@ public final class GameScreen extends AbstractScreen {
 
     private Chapter seedTrayChapter() {
         return previewChapter != null ? previewChapter : chapterForCurrentGame();
+    }
+
+    private BoardLayout currentBoardLayout() {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (layout != null) {
+            return layout;
+        }
+        Game game = activeGame();
+        return game != null && game.hasConveyorBelt()
+                ? EGYPT_BOARD : null;
     }
 
     private Actor createGameSeedSlot(PlantCollectionItem plant) {
@@ -1116,7 +1483,7 @@ public final class GameScreen extends AbstractScreen {
                         event.stop();
                         return true;
                     }
-                    if (selectedPlantForPlacement != null) {
+                    if (hasPlantPlacementSelection()) {
                         clearSelectedPlantForPlacement();
                         event.stop();
                         return true;
@@ -1139,7 +1506,7 @@ public final class GameScreen extends AbstractScreen {
                     return true;
                 }
                 if (!canInteractWithBoard()
-                        || selectedPlantForPlacement == null) {
+                        || !hasPlantPlacementSelection()) {
                     return false;
                 }
 
@@ -1167,7 +1534,7 @@ public final class GameScreen extends AbstractScreen {
                 && !gamePaused
                 && pauseModal == null
                 && plantSelectionModal == null
-                && game.allowsDirectPlanting();
+                && (game.allowsDirectPlanting() || game.hasConveyorBelt());
     }
 
     private BasePlant loadoutPrototypeFor(String plantName) {
@@ -1211,12 +1578,45 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         selectedPlantForPlacement = plant;
+        selectedConveyorPacketSequence = null;
+        selectedConveyorPlantName = null;
         rebuildCursorPlantActor();
         rebuildSeedTray();
+        refreshConveyorBelt();
+    }
+
+    private void selectConveyorPacket(ConveyorPlantPacket packet) {
+        if (packet == null || !canInteractWithBoard()) {
+            return;
+        }
+        if (shovelMode) {
+            setShovelMode(false);
+        }
+        selectedPlantForPlacement = null;
+        selectedConveyorPacketSequence = packet.getSequenceNumber();
+        selectedConveyorPlantName = packet.getPlantType();
+        rebuildCursorPlantActor();
+        rebuildSeedTray();
+        refreshConveyorBelt();
+    }
+
+    private boolean hasPlantPlacementSelection() {
+        return selectedPlantForPlacement != null
+                || selectedConveyorPacketSequence != null;
+    }
+
+    private String selectedPlacementPlantName() {
+        if (selectedConveyorPacketSequence != null) {
+            return selectedConveyorPlantName;
+        }
+        return selectedPlantForPlacement == null
+                ? null : selectedPlantForPlacement.getName();
     }
 
     private void clearSelectedPlantForPlacement() {
         selectedPlantForPlacement = null;
+        selectedConveyorPacketSequence = null;
+        selectedConveyorPlantName = null;
         if (cursorPlantActor != null) {
             cursorPlantActor.remove();
             cursorPlantActor = null;
@@ -1225,6 +1625,7 @@ public final class GameScreen extends AbstractScreen {
             hoveredBoardCell.setVisible(false);
         }
         rebuildSeedTray();
+        refreshConveyorBelt();
     }
 
     private boolean isPlantCoolingDown(BasePlant prototype) {
@@ -1246,8 +1647,13 @@ public final class GameScreen extends AbstractScreen {
 
     private void plantSelectedPlantAt(EntityPosition position) {
         Game game = activeGame();
-        if (game == null || selectedPlantForPlacement == null
+        if (game == null || !hasPlantPlacementSelection()
                 || position == null) {
+            return;
+        }
+
+        if (selectedConveyorPacketSequence != null) {
+            plantSelectedConveyorPacketAt(position);
             return;
         }
 
@@ -1261,17 +1667,67 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
 
-        selectedPlantForPlacement = null;
-        if (cursorPlantActor != null) {
-            cursorPlantActor.remove();
-            cursorPlantActor = null;
-        }
-        if (hoveredBoardCell != null) {
-            hoveredBoardCell.setVisible(false);
-        }
+        clearSelectedPlantForPlacement();
         refreshSunHud();
-        rebuildSeedTray();
         rebuildPlantedPlantLayer();
+    }
+
+    private void plantSelectedConveyorPacketAt(EntityPosition position) {
+        Game game = activeGame();
+        if (game == null || selectedConveyorPacketSequence == null) {
+            return;
+        }
+
+        int index = conveyorPacketIndex(selectedConveyorPacketSequence);
+        if (index < 1) {
+            clearSelectedPlantForPlacement();
+            return;
+        }
+
+        ConveyorPlacementResult result = game.plantFromConveyor(
+                index, position);
+        if (result != ConveyorPlacementResult.SUCCESS) {
+            showConveyorPlacementError(result);
+            return;
+        }
+
+        clearSelectedPlantForPlacement();
+        refreshConveyorBelt();
+        rebuildPlantedPlantLayer();
+    }
+
+    private void showConveyorPlacementError(ConveyorPlacementResult result) {
+        if (result == null) {
+            return;
+        }
+        switch (result) {
+            case OUTSIDE_BOWLING_ZONE:
+                showGameNotice(
+                        "Launch the Wall-nut on the house side of the red line!",
+                        Color.RED);
+                break;
+            case POSITION_OCCUPIED:
+                showGameNotice("That tile is already occupied!", Color.RED);
+                break;
+            case INVALID_PACKET:
+                clearSelectedPlantForPlacement();
+                showGameNotice("That conveyor card is no longer available!",
+                        Color.RED);
+                break;
+            case INVALID_POSITION:
+                showGameNotice("Choose a tile on the lawn!", Color.RED);
+                break;
+            case UNKNOWN_PLANT:
+                showGameNotice("Unknown plant on the conveyor!", Color.RED);
+                break;
+            case NOT_CONVEYOR_LEVEL:
+                clearSelectedPlantForPlacement();
+                break;
+            case SUCCESS:
+                break;
+            default:
+                break;
+        }
     }
 
     private void pluckPlantAt(EntityPosition position) {
@@ -1289,7 +1745,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private EntityPosition boardPositionAtScreen(int screenX, int screenY) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (layout == null || Gdx.graphics.getWidth() <= 0
                 || Gdx.graphics.getHeight() <= 0) {
             return null;
@@ -1316,7 +1772,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private CellBounds screenBoundsForCell(EntityPosition position) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (layout == null || position == null) {
             return null;
         }
@@ -1343,7 +1799,7 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
 
-        boolean planting = selectedPlantForPlacement != null
+        boolean planting = hasPlantPlacementSelection()
                 && canInteractWithBoard();
         boolean shoveling = shovelMode && canUseShovel();
         if (!planting && !shoveling) {
@@ -1381,11 +1837,11 @@ public final class GameScreen extends AbstractScreen {
             cursorPlantActor.remove();
             cursorPlantActor = null;
         }
-        if (selectedPlantForPlacement == null) {
+        String plantName = selectedPlacementPlantName();
+        if (plantName == null) {
             return;
         }
-        cursorPlantActor = createPlantIdleActor(
-                selectedPlantForPlacement.getName());
+        cursorPlantActor = createPlantIdleActor(plantName);
         cursorPlantActor.setTouchable(Touchable.disabled);
         cursorPlantActor.setColor(1f, 1f, 1f, 0.86f);
         addBackgroundOverlay(cursorPlantActor);
@@ -1401,11 +1857,11 @@ public final class GameScreen extends AbstractScreen {
         if (cursorPlantActor == null) {
             return;
         }
-        if (!canInteractWithBoard() || selectedPlantForPlacement == null) {
+        if (!canInteractWithBoard() || !hasPlantPlacementSelection()) {
             cursorPlantActor.setVisible(false);
             return;
         }
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (layout == null) {
             cursorPlantActor.setVisible(false);
             return;
@@ -1439,8 +1895,8 @@ public final class GameScreen extends AbstractScreen {
                 // Fall through to packet artwork when an optional PAM is absent.
             }
         }
-        Image fallback = createAssetImage(
-                PlantPacketCard.packetAssetFor(plantName));
+        Image fallback = new HurtFlashImage(requireAssetRegion(
+                packetArtworkAssetFor(plantName)));
         fallback.setScaling(Scaling.fit);
         return fallback;
     }
@@ -1450,12 +1906,66 @@ public final class GameScreen extends AbstractScreen {
         if (plantedPlantLayer == null || game == null) {
             return;
         }
+        IdentityHashMap<BasePlant, Integer> previousHealth =
+                new IdentityHashMap<>(plantedPlantHealth);
+        IdentityHashMap<SunProducer, Integer> previousProductionSequences =
+                new IdentityHashMap<>(plantedSunProductionSequences);
+        IdentityHashMap<Shooter, Integer> previousAttackSequences =
+                new IdentityHashMap<>(plantedShooterAttackSequences);
+        IdentityHashMap<Lobber, Integer> previousLobberAttackSequences =
+                new IdentityHashMap<>(plantedLobberAttackSequences);
         plantedPlantLayer.clearChildren();
+        plantedPlantActors.clear();
+        plantedPlantHealth.clear();
+        plantedSunProductionSequences.clear();
+        plantedShooterAttackSequences.clear();
+        plantedLobberAttackSequences.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
             Actor actor = createPlantIdleActor(plant.getName());
             actor.setTouchable(Touchable.disabled);
             positionPlantActor(actor, plant.getEntityPosition());
             plantedPlantLayer.addActor(actor);
+            plantedPlantActors.put(plant, actor);
+
+            int currentHealth = plant.getCurrentHP();
+            Integer oldHealth = previousHealth.get(plant);
+            if (oldHealth != null && currentHealth < oldHealth) {
+                flashHurt(actor);
+            }
+            plantedPlantHealth.put(plant, currentHealth);
+            if (plant instanceof SunProducer) {
+                SunProducer producer = (SunProducer) plant;
+                configureSunProductionAnimation(producer, actor);
+                int currentSequence = producer.getProductionSequence();
+                Integer oldSequence = previousProductionSequences.get(producer);
+                if (producer.isProductionAnimationPending()
+                        || oldSequence != null && currentSequence > oldSequence) {
+                    playSunProductionAnimation(producer, actor);
+                }
+                plantedSunProductionSequences.put(producer, currentSequence);
+            }
+            if (plant instanceof Shooter) {
+                Shooter shooter = (Shooter) plant;
+                configureShooterAttackAnimation(shooter, actor);
+                int currentSequence = shooter.getAttackSequence();
+                Integer oldSequence = previousAttackSequences.get(shooter);
+                if (shooter.isAttackAnimationPending()
+                        || oldSequence != null && currentSequence > oldSequence) {
+                    playShooterAttackAnimation(shooter, actor);
+                }
+                plantedShooterAttackSequences.put(shooter, currentSequence);
+            }
+            if (plant instanceof Lobber) {
+                Lobber lobber = (Lobber) plant;
+                configureLobberAttackAnimation(lobber, actor);
+                int currentSequence = lobber.getAttackSequence();
+                Integer oldSequence = previousLobberAttackSequences.get(lobber);
+                if (lobber.isAttackAnimationPending()
+                        || oldSequence != null && currentSequence > oldSequence) {
+                    playLobberAttackAnimation(lobber, actor);
+                }
+                plantedLobberAttackSequences.put(lobber, currentSequence);
+            }
         }
         plantedPlantRenderSignature = createPlantRenderSignature(game);
     }
@@ -1494,6 +2004,141 @@ public final class GameScreen extends AbstractScreen {
         String signature = createPlantRenderSignature(game);
         if (!signature.equals(plantedPlantRenderSignature)) {
             rebuildPlantedPlantLayer();
+            return;
+        }
+        for (BasePlant plant : game.getBoard().getPlants()) {
+            int currentHealth = plant.getCurrentHP();
+            Integer oldHealth = plantedPlantHealth.put(
+                    plant, currentHealth);
+            if (oldHealth != null && currentHealth < oldHealth) {
+                flashHurt(plantedPlantActors.get(plant));
+            }
+            if (plant instanceof SunProducer) {
+                SunProducer producer = (SunProducer) plant;
+                Actor actor = plantedPlantActors.get(plant);
+                configureSunProductionAnimation(producer, actor);
+                int currentSequence = producer.getProductionSequence();
+                Integer oldSequence = plantedSunProductionSequences.put(
+                        producer, currentSequence);
+                if (oldSequence != null && currentSequence > oldSequence) {
+                    playSunProductionAnimation(producer, actor);
+                }
+            }
+            if (plant instanceof Shooter) {
+                Shooter shooter = (Shooter) plant;
+                Actor actor = plantedPlantActors.get(plant);
+                configureShooterAttackAnimation(shooter, actor);
+                int currentSequence = shooter.getAttackSequence();
+                Integer oldSequence = plantedShooterAttackSequences.put(
+                        shooter, currentSequence);
+                if (oldSequence != null && currentSequence > oldSequence) {
+                    playShooterAttackAnimation(shooter, actor);
+                }
+            }
+            if (plant instanceof Lobber) {
+                Lobber lobber = (Lobber) plant;
+                Actor actor = plantedPlantActors.get(plant);
+                configureLobberAttackAnimation(lobber, actor);
+                int currentSequence = lobber.getAttackSequence();
+                Integer oldSequence = plantedLobberAttackSequences.put(
+                        lobber, currentSequence);
+                if (oldSequence != null && currentSequence > oldSequence) {
+                    playLobberAttackAnimation(lobber, actor);
+                }
+            }
+        }
+    }
+
+    private void configureShooterAttackAnimation(
+            Shooter shooter, Actor actor) {
+        boolean canAnimate = actor instanceof PamAnimationActor
+                && PlantAnimationCatalog.shooterAttackAnimation(shooter) != null;
+        shooter.setDeferProjectilesForAttackAnimation(canAnimate);
+    }
+
+    private void playShooterAttackAnimation(
+            Shooter shooter, Actor actor) {
+        if (!(actor instanceof PamAnimationActor)) {
+            shooter.completeAttackAnimation();
+            return;
+        }
+        PlantAnimationCatalog.AttackAnimation animation =
+                PlantAnimationCatalog.shooterAttackAnimation(shooter);
+        if (animation == null) {
+            shooter.completeAttackAnimation();
+            return;
+        }
+        boolean started = ((PamAnimationActor) actor).playOnce(
+                animation.getAttackClip(), animation.getIdleClip(),
+                animation.getProjectileReleaseFraction(),
+                shooter::releaseAttackAnimationProjectiles,
+                shooter::completeAttackAnimation);
+        if (!started) {
+            shooter.completeAttackAnimation();
+        }
+    }
+
+    private void configureLobberAttackAnimation(
+            Lobber lobber, Actor actor) {
+        boolean canAnimate = actor instanceof PamAnimationActor
+                && PlantAnimationCatalog.lobberAttackAnimation(lobber) != null;
+        lobber.setDeferProjectilesForAttackAnimation(canAnimate);
+    }
+
+    private void playLobberAttackAnimation(
+            Lobber lobber, Actor actor) {
+        if (!(actor instanceof PamAnimationActor)) {
+            lobber.completeAttackAnimation();
+            return;
+        }
+        PlantAnimationCatalog.AttackAnimation animation =
+                PlantAnimationCatalog.lobberAttackAnimation(lobber);
+        if (animation == null) {
+            lobber.completeAttackAnimation();
+            return;
+        }
+        boolean started = ((PamAnimationActor) actor).playOnce(
+                animation.getAttackClip(), animation.getIdleClip(),
+                animation.getProjectileReleaseFraction(),
+                lobber::releaseAttackAnimationProjectiles,
+                lobber::completeAttackAnimation);
+        if (!started) {
+            lobber.completeAttackAnimation();
+        }
+    }
+
+    private void configureSunProductionAnimation(
+            SunProducer producer, Actor actor) {
+        boolean canAnimate = actor instanceof PamAnimationActor
+                && PlantAnimationCatalog.sunProductionAnimation(producer) != null;
+        producer.setDeferProducedSunsForAnimation(canAnimate);
+    }
+
+    private void playSunProductionAnimation(
+            SunProducer producer, Actor actor) {
+        if (!(actor instanceof PamAnimationActor)) {
+            producer.completeProductionAnimation();
+            return;
+        }
+        PlantAnimationCatalog.SunProductionAnimation animation =
+                PlantAnimationCatalog.sunProductionAnimation(producer);
+        if (animation == null) {
+            producer.completeProductionAnimation();
+            return;
+        }
+        boolean started = ((PamAnimationActor) actor).playOnce(
+                animation.getProductionClip(), animation.getIdleClip(),
+                producer::completeProductionAnimation);
+        if (!started) {
+            producer.completeProductionAnimation();
+        }
+    }
+
+    private void flashHurt(Actor actor) {
+        if (actor instanceof PamAnimationActor) {
+            ((PamAnimationActor) actor).flashHurt();
+        } else if (actor instanceof HurtFlashImage) {
+            ((HurtFlashImage) actor).flashHurt();
         }
     }
 
@@ -1525,6 +2170,11 @@ public final class GameScreen extends AbstractScreen {
             }
             Grave grave = (Grave) structure;
             present.put(grave, Boolean.TRUE);
+            int currentHitPoints = grave.getHitPoints();
+            Integer previousHitPoints = graveHitPoints.put(
+                    grave, currentHitPoints);
+            boolean wasDamaged = previousHitPoints != null
+                    && currentHitPoints < previousHitPoints;
 
             String pamPath = gravePamPath(grave);
             String clip = graveDamageClip(grave);
@@ -1550,6 +2200,9 @@ public final class GameScreen extends AbstractScreen {
                 graveVisualKeys.put(grave, visualKey);
                 structureLayer.addActor(actor);
             }
+            if (wasDamaged) {
+                actor.flashHurt();
+            }
             positionGraveActor(actor, grave);
         }
 
@@ -1560,6 +2213,7 @@ public final class GameScreen extends AbstractScreen {
             if (!present.containsKey(entry.getKey())) {
                 entry.getValue().remove();
                 graveVisualKeys.remove(entry.getKey());
+                graveHitPoints.remove(entry.getKey());
                 iterator.remove();
             }
         }
@@ -1638,6 +2292,11 @@ public final class GameScreen extends AbstractScreen {
                 continue;
             }
             present.put(zombie, Boolean.TRUE);
+            int currentDurability = zombie.getCurrentDurability();
+            Integer previousDurability = zombieDurability.put(
+                    zombie, currentDurability);
+            boolean wasDamaged = previousDurability != null
+                    && currentDurability < previousDurability;
             ZombiePamActor actor = zombieActors.get(zombie);
             if (actor == null) {
                 ZombieVisualCatalog.Visual visual =
@@ -1656,6 +2315,9 @@ public final class GameScreen extends AbstractScreen {
                 zombieActors.put(zombie, actor);
                 zombieLayer.addActor(actor);
             }
+            if (wasDamaged) {
+                actor.flashHurt();
+            }
             actor.setEating(isZombieEatingPlant(game, zombie));
             positionZombieActor(actor, zombie);
         }
@@ -1666,6 +2328,7 @@ public final class GameScreen extends AbstractScreen {
             Map.Entry<Zombie, ZombiePamActor> entry = iterator.next();
             if (!present.containsKey(entry.getKey())) {
                 entry.getValue().remove();
+                zombieDurability.remove(entry.getKey());
                 iterator.remove();
             }
         }
@@ -1703,7 +2366,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void positionZombieActor(ZombiePamActor actor, Zombie zombie) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (actor == null || zombie == null || layout == null
                 || Gdx.graphics.getWidth() <= 0
                 || Gdx.graphics.getHeight() <= 0) {
@@ -1828,7 +2491,7 @@ public final class GameScreen extends AbstractScreen {
 
     private void positionProjectileActor(ProjectileActor actor,
             Projectile projectile) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (actor == null || projectile == null || layout == null
                 || Gdx.graphics.getWidth() <= 0
                 || Gdx.graphics.getHeight() <= 0) {
@@ -1906,7 +2569,7 @@ public final class GameScreen extends AbstractScreen {
 
     private void positionBouncingGrapeActor(Actor actor, BouncingGrape grape,
             float sizeTiles) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (actor == null || grape == null || layout == null) {
             return;
         }
@@ -2675,6 +3338,21 @@ public final class GameScreen extends AbstractScreen {
         return App.getInstance().getLoggedInUser();
     }
 
+    private static String packetArtworkAssetFor(String plantName) {
+        if (plantName != null) {
+            if (plantName.equalsIgnoreCase("Bowling Wall-nut")) {
+                return "IMAGE_UI_PACKETS_WALLNUT";
+            }
+            if (plantName.equalsIgnoreCase("Explode-o-nut")) {
+                return "IMAGE_UI_PACKETS_EXPLODEONUT";
+            }
+            if (plantName.equalsIgnoreCase("Giant Wall-nut")) {
+                return "IMAGE_UI_PACKETS_PRIMALWALLNUT";
+            }
+        }
+        return PlantPacketCard.packetAssetFor(plantName);
+    }
+
     private static String packetAssetForChapter(Chapter chapter) {
         if (chapter == null) {
             return EGYPT_PACKET;
@@ -2782,6 +3460,10 @@ public final class GameScreen extends AbstractScreen {
         refreshCollectibleDrops();
         refreshSunHud();
         refreshPlantFoodHud();
+        refreshPlantWhatYouGetWaveButton();
+        refreshTimedWarObjectivesHud();
+        refreshLoveYourPlantsHud();
+        refreshConveyorBelt();
         refreshBoardHover();
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
@@ -2791,6 +3473,32 @@ public final class GameScreen extends AbstractScreen {
             showFinishedGameMenuIfNeeded();
         }
         super.render(delta);
+    }
+
+    private String buildGameResultDescription(Game game) {
+        if (game == null
+                || game.getStatus()
+                        != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST) {
+            return null;
+        }
+
+        if (game.hasLoveYourPlants()
+                && game.getLostPlantCount() > game.getMaximumLostPlants()) {
+            return "Love Your Plants failed because "
+                    + game.getLostPlantCount()
+                    + " plants were lost. You may lose at most "
+                    + game.getMaximumLostPlants() + ".";
+        }
+
+        if (!game.hasTimedWar()
+                || !game.didTimedWarFailAfterWavesCleared()) {
+            return null;
+        }
+        String unmet = game.getTimedWarUnmetRequirements();
+        if (unmet == null || unmet.isBlank()) {
+            return "Timed War failed before all objectives were completed.";
+        }
+        return "Timed War failed because " + unmet + ".";
     }
 
     private void showFinishedGameMenuIfNeeded() {
@@ -2807,7 +3515,8 @@ public final class GameScreen extends AbstractScreen {
         }
         gamePaused = true;
         stage.addActor(new GameResultOverlay(
-                skin, game.getStatus(), VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
+                skin, game.getStatus(), buildGameResultDescription(game),
+                VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
                 this::restartLevel,
                 () -> {
                     gamePaused = false;
@@ -2865,10 +3574,14 @@ public final class GameScreen extends AbstractScreen {
             waveProgressActor = null;
         }
         sunLayer = null;
+        plantedPlantActors.clear();
+        plantedPlantHealth.clear();
         graveActors.clear();
         graveVisualKeys.clear();
+        graveHitPoints.clear();
         structureLayer = null;
         zombieActors.clear();
+        zombieDurability.clear();
         zombieLayer = null;
         projectileActors.clear();
         grapeActors.clear();
@@ -2886,6 +3599,7 @@ public final class GameScreen extends AbstractScreen {
         private final ProjectileVisualCatalog.Preview preview;
         private final boolean firePeaVisual;
         private final PamAnimationActor animation;
+        private final Image staticImage;
 
         private ProjectileActor(ProjectileVisualCatalog.Preview preview,
                 boolean firePeaVisual) {
@@ -2893,9 +3607,17 @@ public final class GameScreen extends AbstractScreen {
             this.firePeaVisual = firePeaVisual;
             setTouchable(Touchable.disabled);
 
-            animation = new PamAnimationActor(navigator.getPamPlayer(),
-                    preview.getPath(), preview.getClip());
-            add(animation);
+            if (preview.isStaticImage()) {
+                animation = null;
+                staticImage = new Image(requireAssetRegion(preview.getImageId()));
+                staticImage.setScaling(Scaling.fit);
+                add(staticImage);
+            } else {
+                staticImage = null;
+                animation = new PamAnimationActor(navigator.getPamPlayer(),
+                        preview.getPath(), preview.getClip());
+                add(animation);
+            }
         }
 
         private boolean hasFirePeaVisual() {
@@ -2907,7 +3629,12 @@ public final class GameScreen extends AbstractScreen {
         }
 
         private void layoutAnimations() {
-            animation.setBounds(0f, 0f, getWidth(), getHeight());
+            if (animation != null) {
+                animation.setBounds(0f, 0f, getWidth(), getHeight());
+            }
+            if (staticImage != null) {
+                staticImage.setBounds(0f, 0f, getWidth(), getHeight());
+            }
         }
     }
 
@@ -2978,6 +3705,82 @@ public final class GameScreen extends AbstractScreen {
             return BOARD_SUN_RADIOACTIVE;
         }
         return GAME_SUN_ICON;
+    }
+
+    private final class ConveyorPacketActor extends Stack {
+        private final ConveyorPlantPacket packet;
+        private SelectionOutlineActor selectionOutline;
+        private float targetY;
+
+        private ConveyorPacketActor(ConveyorPlantPacket packet) {
+            if (packet == null) {
+                throw new IllegalArgumentException(
+                        "conveyor packet cannot be null");
+            }
+            this.packet = packet;
+            setSize(CONVEYOR_CARD_WIDTH, CONVEYOR_CARD_HEIGHT);
+            setTouchable(Touchable.enabled);
+
+            Image background = createAssetImage(
+                    packetAssetForChapter(seedTrayChapter()));
+            background.setScaling(Scaling.stretch);
+            add(background);
+
+            Table artworkLayer = new Table();
+            Image artwork = createAssetImage(
+                    packetArtworkAssetFor(packet.getPlantType()));
+            artwork.setScaling(Scaling.fit);
+            artworkLayer.add(artwork).width(84f).height(54f);
+            add(artworkLayer);
+
+            addListener(new InputListener() {
+                @Override
+                public boolean touchDown(InputEvent event, float x, float y,
+                        int pointer, int button) {
+                    if (button != Input.Buttons.LEFT) {
+                        return false;
+                    }
+                    // Select on press instead of waiting for ClickListener's
+                    // release-time hit test. The packet can move several
+                    // pixels between touchDown and touchUp while travelling
+                    // up the belt, which would otherwise cancel the click.
+                    selectConveyorPacket(ConveyorPacketActor.this.packet);
+                    event.stop();
+                    return true;
+                }
+            });
+            addListener(new TextTooltip(
+                    packet.getPlantType() + "\nConveyor Belt", skin));
+        }
+
+        private void setTargetY(float targetY) {
+            this.targetY = targetY;
+        }
+
+        private void setSelected(boolean selected) {
+            if (selected && selectionOutline == null) {
+                selectionOutline = new SelectionOutlineActor();
+                selectionOutline.setTouchable(Touchable.disabled);
+                add(selectionOutline);
+            } else if (!selected && selectionOutline != null) {
+                selectionOutline.remove();
+                selectionOutline = null;
+            }
+        }
+
+        @Override
+        public void act(float delta) {
+            super.act(delta);
+            float difference = targetY - getY();
+            if (Math.abs(difference) <= 0.5f) {
+                setY(targetY);
+                return;
+            }
+            float travel = CONVEYOR_CARD_TRAVEL_SPEED
+                    * Math.max(0f, delta);
+            setY(getY() + Math.signum(difference)
+                    * Math.min(Math.abs(difference), travel));
+        }
     }
 
     private final class CooldownShadeActor extends Actor {

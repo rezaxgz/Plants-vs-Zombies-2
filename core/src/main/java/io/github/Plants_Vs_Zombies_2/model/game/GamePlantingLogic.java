@@ -28,9 +28,7 @@ abstract class GamePlantingLogic extends GameSpecialLevelLogic {
     }
 
     boolean ignoresPlantCooldown() {
-        return plantWhatYouGetSystem != null
-                && plantWhatYouGetSystem
-                        .isSetupActive();
+        return plantWhatYouGetSystem != null;
     }
 
     public PlantPlacementResult plant(BasePlant plant) {
@@ -88,7 +86,7 @@ abstract class GamePlantingLogic extends GameSpecialLevelLogic {
     }
 
     public double getPlantCooldownRemainingSeconds(BasePlant plant) {
-        if (plant == null) {
+        if (plant == null || ignoresPlantCooldown()) {
             return 0.0;
         }
         return getPlantCooldownRemaining(plant);

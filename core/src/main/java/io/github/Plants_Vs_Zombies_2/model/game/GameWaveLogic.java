@@ -13,6 +13,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.model.game.gameTypes.GameType;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantStatus;
+import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarState;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.Grave;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.GraveReward;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
@@ -373,8 +374,7 @@ abstract class GameWaveLogic extends GameAbilityLogic {
     }
 
     void checkForWin() {
-        if (timedWarSystem != null
-                || zombieWaves.isEmpty()
+        if (zombieWaves.isEmpty()
                 || nextWaveIndex < zombieWaves.size()) {
             return;
         }
@@ -383,6 +383,21 @@ abstract class GameWaveLogic extends GameAbilityLogic {
                 return;
             }
         }
+
+        if (timedWarSystem != null
+                && timedWarSystem.getState() != TimedWarState.SUCCEEDED) {
+            status = GameStatus.LOST;
+            timedWarFailedAfterWavesCleared = true;
+            String unmet = timedWarSystem.describeUnmetRequirements();
+            pendingResults.add(
+                    "Timed War failed after the final zombie was defeated: "
+                            + (unmet.isBlank()
+                                    ? timedWarSystem.describeProgress()
+                                    : unmet)
+                            + ".");
+            return;
+        }
+
         status = GameStatus.WON;
         pendingResults.add("Dear humanz, zis is not done yet; we will come back to eat your brainz, humanz.");
     }

@@ -30,7 +30,7 @@ final class GameResultOverlay extends Group {
     private static final String ACTOR_NAME = "game-result-overlay";
 
     private static final float PANEL_WIDTH = 620f;
-    private static final float PANEL_HEIGHT = 330f;
+    private static final float PANEL_HEIGHT = 370f;
     private static final float HEADER_HEIGHT = 68f;
     private static final float BUTTON_WIDTH = 176f;
     private static final float BUTTON_HEIGHT = 54f;
@@ -48,6 +48,7 @@ final class GameResultOverlay extends Group {
     private boolean actionTaken;
 
     GameResultOverlay(Skin skin, GameStatus status,
+            String resultDescription,
             float screenWidth, float screenHeight,
             Runnable onRestart, Runnable onExit) {
         if (skin == null || status == null
@@ -68,7 +69,8 @@ final class GameResultOverlay extends Group {
 
         createPixelTexture();
         installInputBlocker();
-        installCard(skin, status, screenWidth, screenHeight);
+        installCard(skin, status, resultDescription,
+                screenWidth, screenHeight);
     }
 
     private void createPixelTexture() {
@@ -95,6 +97,7 @@ final class GameResultOverlay extends Group {
     }
 
     private void installCard(Skin skin, GameStatus status,
+            String resultDescription,
             float screenWidth, float screenHeight) {
         boolean won = status == GameStatus.WON;
         float panelX = (screenWidth - PANEL_WIDTH) * 0.5f;
@@ -128,16 +131,19 @@ final class GameResultOverlay extends Group {
         result.setFontScale(0.86f);
         body.add(result).growX().height(60f).row();
 
+        String defaultDescription = won
+                ? "The lawn is safe. Great job!"
+                : "The zombies got through your defenses.";
         Label description = new Label(
-                won
-                        ? "The lawn is safe. Great job!"
-                        : "The zombies got through your defenses.",
+                resultDescription == null || resultDescription.isBlank()
+                        ? defaultDescription
+                        : resultDescription,
                 skin, "secondary");
         description.setColor(BODY_TEXT);
         description.setAlignment(Align.center);
         description.setWrap(true);
         description.setFontScale(0.96f);
-        body.add(description).growX().height(54f).padBottom(12f).row();
+        body.add(description).growX().height(88f).padBottom(12f).row();
 
         Table actions = new Table();
         if (!won) {

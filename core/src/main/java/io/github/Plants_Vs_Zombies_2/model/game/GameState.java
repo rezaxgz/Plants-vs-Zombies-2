@@ -46,6 +46,8 @@ abstract class GameState implements java.io.Serializable {
     LockedPlantsSystem lockedPlantsSystem;
     SaveOurSeedsSystem saveOurSeedsSystem;
     TimedWarSystem timedWarSystem;
+    boolean timedWarCompletionReported;
+    boolean timedWarFailedAfterWavesCleared;
     DeadLineSystem deadLineSystem;
     LoveYourPlantsSystem loveYourPlantsSystem;
     PlantWhatYouGetSystem plantWhatYouGetSystem;

@@ -16,6 +16,7 @@ public final class SpecialLevelConfig {
     private final TimedWarObjective timedObjective;
     private final double durationSeconds;
     private final int target;
+    private final int minimumCollectedSun;
     private final double deadLineColumn;
     private final int maximumLostPlants;
 
@@ -25,6 +26,7 @@ public final class SpecialLevelConfig {
             TimedWarObjective timedObjective,
             double durationSeconds,
             int target,
+            int minimumCollectedSun,
             double deadLineColumn,
             int maximumLostPlants) {
         this.plantPool = immutableCopy(plantPool);
@@ -32,6 +34,7 @@ public final class SpecialLevelConfig {
         this.timedObjective = timedObjective;
         this.durationSeconds = durationSeconds;
         this.target = target;
+        this.minimumCollectedSun = minimumCollectedSun;
         this.deadLineColumn = deadLineColumn;
         this.maximumLostPlants = maximumLostPlants;
     }
@@ -49,7 +52,7 @@ public final class SpecialLevelConfig {
         return new SpecialLevelConfig(
                 Collections.emptyList(),
                 Collections.emptyList(),
-                null, 0.0, 0, -1.0, 0);
+                null, 0.0, 0, 0, -1.0, 0);
     }
 
     public static SpecialLevelConfig plantPool(
@@ -62,7 +65,7 @@ public final class SpecialLevelConfig {
         return new SpecialLevelConfig(
                 plantTypes,
                 Collections.emptyList(),
-                null, 0.0, 0, -1.0, 0);
+                null, 0.0, 0, 0, -1.0, 0);
     }
 
     public static SpecialLevelConfig saveOurSeeds(
@@ -74,7 +77,7 @@ public final class SpecialLevelConfig {
         return new SpecialLevelConfig(
                 Collections.emptyList(),
                 plants,
-                null, 0.0, 0, -1.0, 0);
+                null, 0.0, 0, 0, -1.0, 0);
     }
 
     public static SpecialLevelConfig timedWar(
@@ -92,7 +95,26 @@ public final class SpecialLevelConfig {
                 Collections.emptyList(),
                 Collections.emptyList(),
                 objective, durationSeconds,
-                target, -1.0, 0);
+                target, 0, -1.0, 0);
+    }
+
+    public static SpecialLevelConfig timedWarWithSunCollection(
+            double killWindowSeconds,
+            int requiredKills,
+            int minimumCollectedSun) {
+        if (!Double.isFinite(killWindowSeconds)
+                || killWindowSeconds <= 0.0
+                || requiredKills <= 0
+                || minimumCollectedSun <= 0) {
+            throw new IllegalArgumentException(
+                    "Timed War collection configuration is invalid");
+        }
+        return new SpecialLevelConfig(
+                Collections.emptyList(),
+                Collections.emptyList(),
+                TimedWarObjective.KILL_ZOMBIES,
+                killWindowSeconds, requiredKills,
+                minimumCollectedSun, -1.0, 0);
     }
 
     public static SpecialLevelConfig deadLine(
@@ -105,7 +127,7 @@ public final class SpecialLevelConfig {
         return new SpecialLevelConfig(
                 Collections.emptyList(),
                 Collections.emptyList(),
-                null, 0.0, 0, lineColumn, 0);
+                null, 0.0, 0, 0, lineColumn, 0);
     }
 
     public static SpecialLevelConfig loveYourPlants(
@@ -117,7 +139,7 @@ public final class SpecialLevelConfig {
         return new SpecialLevelConfig(
                 Collections.emptyList(),
                 Collections.emptyList(),
-                null, 0.0, 0, -1.0,
+                null, 0.0, 0, 0, -1.0,
                 maximumLostPlants);
     }
 
@@ -139,6 +161,10 @@ public final class SpecialLevelConfig {
 
     public int getTarget() {
         return target;
+    }
+
+    public int getMinimumCollectedSun() {
+        return minimumCollectedSun;
     }
 
     public double getDeadLineColumn() {

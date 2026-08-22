@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Rectangle;
@@ -36,6 +37,7 @@ final class ZombiePamActor extends Actor {
     private Rectangle sizingBounds;
     private Rectangle footReferenceBounds;
     private float stateTime;
+    private float hurtFlashRemainingSeconds;
     private boolean eating;
     private boolean lastArmorVisible;
 
@@ -75,10 +77,18 @@ final class ZombiePamActor extends Actor {
         setClip(eating ? resolveEatClip() : resolveWalkClip());
     }
 
+    void flashHurt() {
+        hurtFlashRemainingSeconds = HurtFlashEffect.start(
+                hurtFlashRemainingSeconds);
+    }
+
     @Override
     public void act(float delta) {
         super.act(delta);
         stateTime += delta;
+        hurtFlashRemainingSeconds = HurtFlashEffect.advance(
+                hurtFlashRemainingSeconds,
+                HurtFlashEffect.realFrameDeltaSeconds());
     }
 
     @Override
@@ -122,14 +132,31 @@ final class ZombiePamActor extends Actor {
         scaledTransform.scale(scale, scale, 1f);
         scaledTransform.translate(-anchorX, -anchorY, 0f);
 
+        batch.flush();
+        batch.setTransformMatrix(scaledTransform);
+
+        Map<String, Boolean> visibleParts = hasVisibleArmor()
+                ? armorVisibleParts : armorHiddenParts;
         Color actorColor = getColor();
         batch.setColor(actorColor.r, actorColor.g, actorColor.b,
                 actorColor.a * parentAlpha);
-        batch.flush();
-        batch.setTransformMatrix(scaledTransform);
         player.draw(batch, pamPath, currentClip, stateTime,
-                anchorX, anchorY, true,
-                hasVisibleArmor() ? armorVisibleParts : armorHiddenParts);
+                anchorX, anchorY, true, visibleParts);
+
+        float hurtOverlayAlpha = HurtFlashEffect.overlayAlpha(
+                hurtFlashRemainingSeconds);
+        if (hurtOverlayAlpha > 0f) {
+            batch.flush();
+            int oldBlendSrc = batch.getBlendSrcFunc();
+            int oldBlendDst = batch.getBlendDstFunc();
+            batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+            batch.setColor(1f, 1f, 1f,
+                    actorColor.a * parentAlpha * hurtOverlayAlpha);
+            player.draw(batch, pamPath, currentClip, stateTime,
+                    anchorX, anchorY, true, visibleParts);
+            batch.flush();
+            batch.setBlendFunction(oldBlendSrc, oldBlendDst);
+        }
         batch.flush();
         batch.setTransformMatrix(oldTransform);
         batch.setColor(oldColor);

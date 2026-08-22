@@ -180,6 +180,11 @@ final class LevelObjectivesOverlay extends Group {
                 break;
             case TIMED_WAR:
                 objectives.add(buildTimedWarObjective(config));
+                if (config.getMinimumCollectedSun() > 0) {
+                    objectives.add("Collect at least "
+                            + config.getMinimumCollectedSun()
+                            + " sun during the level.");
+                }
                 break;
             case NIGHT_OPS:
                 objectives.add("Survive without any sun falling from the sky.");
@@ -187,13 +192,15 @@ final class LevelObjectivesOverlay extends Group {
             case DEAD_LINE:
                 break;
             case LOVE_YOUR_PLANTS:
-                objectives.add("Lose fewer than "
+                objectives.add("Do not lose more than "
                         + config.getMaximumLostPlants()
                         + " plants during the level.");
                 break;
             case PLANT_WHAT_YOU_GET:
                 objectives.add("Sun-producing plants are locked and no sun "
                         + "falls from the sky; use your starting sun wisely.");
+                objectives.add("Plants have no recharge cooldown. Start each "
+                        + "zombie wave yourself when you are ready.");
                 break;
             case NONE:
                 break;
@@ -211,7 +218,8 @@ final class LevelObjectivesOverlay extends Group {
                     + " sun within " + seconds + " seconds.";
         }
         return "Defeat at least " + config.getTarget()
-                + " zombies within " + seconds + " seconds.";
+                + " zombies within any " + seconds
+                + "-second window.";
     }
 
     private static String buildSaveOurSeedsObjective(

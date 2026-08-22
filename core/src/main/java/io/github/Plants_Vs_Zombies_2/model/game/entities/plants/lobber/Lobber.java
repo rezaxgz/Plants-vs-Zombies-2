@@ -21,6 +21,9 @@ public class Lobber extends BasePlant {
     private static final int PLANT_FOOD_DAMAGE_MULTIPLIER = 5;
 
     private final LobberPlantType type;
+    private final List<LobbedProjectile> pendingProjectiles = new ArrayList<>();
+    private final List<LobbedProjectile> attackAnimationProjectiles =
+            new ArrayList<>();
     private final Random random;
 
     private double secondsSinceLastAttack;
@@ -28,6 +31,10 @@ public class Lobber extends BasePlant {
     private boolean familyBoostPending;
     private boolean plantFoodPending;
     private boolean plantFoodUsed;
+    private boolean deferProjectilesForAttackAnimation;
+    private boolean attackAnimationPlaying;
+    private boolean lastAttackWasButter;
+    private int attackSequence;
 
     public Lobber() {
         this(LobberPlantType.CABBAGE_PULT, 1, null);
@@ -85,7 +92,9 @@ public class Lobber extends BasePlant {
     public boolean isReadyToAttack() {
         float interval = type.getActionIntervalSeconds(getLevel());
         return !isRemoved() && type.getBehavior() != LobberBehavior.FAMILY_BOOST
-                && interval > 0.0f && secondsSinceLastAttack + TIMER_EPSILON >= interval;
+                && !isAttackAnimationPending()
+                && interval > 0.0f
+                && secondsSinceLastAttack + TIMER_EPSILON >= interval;
     }
 
     public LobbedProjectile shoot(Zombie target) {
@@ -93,7 +102,18 @@ public class Lobber extends BasePlant {
             return null;
         }
         secondsSinceLastAttack = 0.0;
-        return createNormalProjectile(target);
+        lastAttackWasButter = false;
+        LobbedProjectile projectile = createNormalProjectile(target);
+        if (projectile == null) {
+            return null;
+        }
+        attackSequence++;
+        if (deferProjectilesForAttackAnimation) {
+            attackAnimationProjectiles.add(projectile);
+            attackAnimationPlaying = true;
+            return null;
+        }
+        return projectile;
     }
 
     private LobbedProjectile createNormalProjectile(Zombie target) {
@@ -102,7 +122,8 @@ public class Lobber extends BasePlant {
                 return createProjectile(target, normalDamageEffects(getDamage()),
                         Collections.emptyList(), 0.0);
             case KERNEL:
-                return createKernelProjectile(target, random.nextDouble() < getButterChance());
+                lastAttackWasButter = random.nextDouble() < getButterChance();
+                return createKernelProjectile(target, lastAttackWasButter);
             case AREA:
                 return createProjectile(target, normalDamageEffects(getDamage()),
                         normalDamageEffects(getSplashDamage()),
@@ -183,6 +204,62 @@ public class Lobber extends BasePlant {
         effects.add(new DamageEffect(Math.max(0, damage)));
         effects.add(new ChillEffect(LobberPlantType.WINTER_CHILL_SECONDS));
         return effects;
+    }
+
+    /**
+     * Returns projectiles whose PAM firing animation has reached its authored
+     * {@code use_action} frame. Board update logic drains this list on the next
+     * simulation tick, keeping the projectile out of the world until the plant
+     * has visibly released it.
+     */
+    public List<LobbedProjectile> drainProjectiles() {
+        if (pendingProjectiles.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<LobbedProjectile> projectiles = new ArrayList<>(pendingProjectiles);
+        pendingProjectiles.clear();
+        return projectiles;
+    }
+
+    /** Enables/disables graphical attack wind-up for normal lobber shots. */
+    public void setDeferProjectilesForAttackAnimation(boolean defer) {
+        deferProjectilesForAttackAnimation = defer;
+        if (!defer) {
+            completeAttackAnimation();
+        }
+    }
+
+    /** Releases the currently animated lob at the PAM's authored fire frame. */
+    public void releaseAttackAnimationProjectiles() {
+        releaseAttackAnimationProjectilesInternal();
+    }
+
+    /** Completes the animation and releases the shot as a safety fallback. */
+    public void completeAttackAnimation() {
+        releaseAttackAnimationProjectilesInternal();
+        attackAnimationPlaying = false;
+    }
+
+    private void releaseAttackAnimationProjectilesInternal() {
+        if (attackAnimationProjectiles.isEmpty()) {
+            return;
+        }
+        pendingProjectiles.addAll(attackAnimationProjectiles);
+        attackAnimationProjectiles.clear();
+    }
+
+    public boolean isAttackAnimationPending() {
+        return deferProjectilesForAttackAnimation && attackAnimationPlaying;
+    }
+
+    /** Monotonically increases whenever a normal lob is requested. */
+    public int getAttackSequence() {
+        return attackSequence;
+    }
+
+    /** Kernel-pult uses its second attack clip when the pending shot is butter. */
+    public boolean wasLastAttackButter() {
+        return lastAttackWasButter;
     }
 
     public void usePlantFood() {

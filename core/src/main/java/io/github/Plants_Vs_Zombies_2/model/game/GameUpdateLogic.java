@@ -180,12 +180,14 @@ abstract class GameUpdateLogic extends GameState {
                 getTrackedZombies(),
                 board.getSuns());
         if (timedState == TimedWarState.SUCCEEDED) {
-            status = GameStatus.WON;
-            pendingResults.add(
-                    "Timed War objective completed: "
-                            + timedWarSystem.describeProgress()
-                            + ".");
-            return true;
+            if (!timedWarCompletionReported) {
+                timedWarCompletionReported = true;
+                pendingResults.add(
+                        "Timed War objectives completed: "
+                                + timedWarSystem.describeProgress()
+                                + ". Clear the remaining waves to win.");
+            }
+            return false;
         }
         if (timedState == TimedWarState.FAILED) {
             status = GameStatus.LOST;
@@ -211,10 +213,10 @@ abstract class GameUpdateLogic extends GameState {
         pendingResults.add(
                 "Love Your Plants failed: "
                         + loveYourPlantsSystem.getLostPlantCount()
-                        + " plants were lost; limit was "
+                        + " plants were lost; only "
                         + loveYourPlantsSystem
                                 .getMaximumLostPlants()
-                        + ".");
+                        + " plants may be lost.");
         return true;
     }
 

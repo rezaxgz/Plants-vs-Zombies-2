@@ -23,6 +23,9 @@ public class SunProducer extends BasePlant {
     private boolean fullyGrown;
     private boolean familyBoostPending;
     private boolean plantFoodUsed;
+    private int productionSequence;
+    private int releasedProductionSequence;
+    private boolean deferProducedSunsForAnimation;
 
     public SunProducer() {
         this(SunProducerPlantType.SUNFLOWER, 1, null);
@@ -137,6 +140,7 @@ public class SunProducer extends BasePlant {
             return;
         }
 
+        productionSequence++;
         Sun sun = Sun.createPlantSun(producedAmount, getEntityPosition());
         activeProducedSuns.add(sun);
         pendingSuns.add(sun);
@@ -154,12 +158,38 @@ public class SunProducer extends BasePlant {
     }
 
     public List<Sun> drainProducedSuns() {
-        if (pendingSuns.isEmpty()) {
+        if (pendingSuns.isEmpty()
+                || deferProducedSunsForAnimation
+                && releasedProductionSequence < productionSequence) {
             return Collections.emptyList();
         }
         List<Sun> produced = new ArrayList<>(pendingSuns);
         pendingSuns.clear();
         return produced;
+    }
+
+    /**
+     * The graphical game enables this for producers that have a native PAM
+     * production animation. The model keeps the new sun out of the board until
+     * the view reports that the one-shot animation has completed. Console and
+     * non-animated uses keep the original immediate-production behavior.
+     */
+    public void setDeferProducedSunsForAnimation(boolean defer) {
+        deferProducedSunsForAnimation = defer;
+        if (!defer) {
+            releasedProductionSequence = productionSequence;
+        }
+    }
+
+    /** Releases all sun-production events requested up to the current one. */
+    public void completeProductionAnimation() {
+        releasedProductionSequence = productionSequence;
+    }
+
+    public boolean isProductionAnimationPending() {
+        return deferProducedSunsForAnimation
+                && !pendingSuns.isEmpty()
+                && releasedProductionSequence < productionSequence;
     }
 
     public void resetActionTimer() {
@@ -203,5 +233,14 @@ public class SunProducer extends BasePlant {
 
     public boolean isFullyGrown() {
         return fullyGrown;
+    }
+
+    /**
+     * Monotonically increases every time this plant actually creates a sun.
+     * The graphical view uses it to start the production PAM exactly when
+     * model-side production occurs, without coupling rendering to timers.
+     */
+    public int getProductionSequence() {
+        return productionSequence;
     }
 }

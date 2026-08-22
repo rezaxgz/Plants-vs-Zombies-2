@@ -86,8 +86,12 @@ abstract class GameRewardLogic extends GameWaveLogic {
             }
         }
         if (!newlyDead.isEmpty()) {
-            onZombieDeaths(Collections.unmodifiableList(
-                    new ArrayList<>(newlyDead)));
+            List<Zombie> deaths = Collections.unmodifiableList(
+                    new ArrayList<>(newlyDead));
+            if (timedWarSystem != null) {
+                timedWarSystem.recordZombieDeaths(deaths);
+            }
+            onZombieDeaths(deaths);
         }
 
         if (!shouldProcessZombieDeathDrops()) {
@@ -171,6 +175,9 @@ abstract class GameRewardLogic extends GameWaveLogic {
 
         sunCount += collectedAmount;
         questRunTracker.recordSunCollected(collectedAmount);
+        if (timedWarSystem != null) {
+            timedWarSystem.recordCollectedSun(collectedAmount);
+        }
         board.removeEntity(sun);
         return true;
     }

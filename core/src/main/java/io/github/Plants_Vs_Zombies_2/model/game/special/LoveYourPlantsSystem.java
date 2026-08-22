@@ -52,7 +52,11 @@ public final class LoveYourPlantsSystem implements java.io.Serializable {
     }
 
     public boolean hasFailed() {
-        return lostPlants.size() >= maximumLostPlants;
+        return lostPlants.size() > maximumLostPlants;
+    }
+
+    public int getRemainingPlantLossAllowance() {
+        return Math.max(0, maximumLostPlants - lostPlants.size());
     }
 
     public int getLostPlantCount() {

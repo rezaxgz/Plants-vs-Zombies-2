@@ -4,6 +4,8 @@ import java.util.Locale;
 
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.effect.ProjectileEffect;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.effect.StunEffect;
 
 /** Maps Phase-1 projectile entities to matching PvZ2 projectile PAM artwork. */
 final class ProjectileVisualCatalog {
@@ -39,6 +41,12 @@ final class ProjectileVisualCatalog {
                     + "T_CABBAGEPULT_PROJECTILE.PAM", "animation", 0.54f);
         }
         if (source.contains("kernelpult")) {
+            if (hasStunEffect(projectile)) {
+                // Kernel-pult's butter is a separate atlas image in the PvZ2
+                // resources, rather than the normal spinning kernel PAM.
+                return imagePreview("IMAGE_EFFECTS_KERNELPULT_PROJECTILE_BUTTER",
+                        0.46f);
+            }
             return preview("768/INITIAL/EFFECTS/T_KERNALPULT_PROJECTILE/"
                     + "T_KERNALPULT_PROJECTILE.PAM", "animation", 0.46f);
         }
@@ -123,6 +131,15 @@ final class ProjectileVisualCatalog {
                 && isPeaFamilySource(normalize(projectile.getSourcePlantName()));
     }
 
+    private static boolean hasStunEffect(Projectile projectile) {
+        for (ProjectileEffect effect : projectile.getEffects()) {
+            if (effect instanceof StunEffect) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean isPeaFamilySource(String source) {
         return source.contains("peashooter")
                 || source.contains("repeater")
@@ -134,7 +151,11 @@ final class ProjectileVisualCatalog {
     }
 
     private static Preview preview(String path, String clip, float sizeTiles) {
-        return new Preview(path, clip, sizeTiles);
+        return new Preview(path, clip, null, sizeTiles);
+    }
+
+    private static Preview imagePreview(String imageId, float sizeTiles) {
+        return new Preview(null, null, imageId, sizeTiles);
     }
 
     private static String normalize(String value) {
@@ -145,11 +166,14 @@ final class ProjectileVisualCatalog {
     static final class Preview {
         private final String path;
         private final String clip;
+        private final String imageId;
         private final float sizeTiles;
 
-        private Preview(String path, String clip, float sizeTiles) {
+        private Preview(String path, String clip, String imageId,
+                float sizeTiles) {
             this.path = path;
             this.clip = clip;
+            this.imageId = imageId;
             this.sizeTiles = sizeTiles;
         }
 
@@ -159,6 +183,14 @@ final class ProjectileVisualCatalog {
 
         String getClip() {
             return clip;
+        }
+
+        String getImageId() {
+            return imageId;
+        }
+
+        boolean isStaticImage() {
+            return imageId != null;
         }
 
         float getSizeTiles() {

@@ -68,6 +68,22 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
             int requiredKills) {
         timedWarSystem = TimedWarSystem.forZombieKills(
                 durationSeconds, requiredKills);
+        timedWarCompletionReported = false;
+        timedWarFailedAfterWavesCleared = false;
+        pendingResults.add(
+                "Timed War started: "
+                        + timedWarSystem.describeObjective()
+                        + ".");
+    }
+
+    public void enableTimedWarZombieKillsAndSunCollection(
+            double killWindowSeconds,
+            int requiredKills,
+            int requiredCollectedSun) {
+        timedWarSystem = TimedWarSystem.forZombieKillsAndCollectedSun(
+                killWindowSeconds, requiredKills, requiredCollectedSun);
+        timedWarCompletionReported = false;
+        timedWarFailedAfterWavesCleared = false;
         pendingResults.add(
                 "Timed War started: "
                         + timedWarSystem.describeObjective()
@@ -79,6 +95,8 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
             int requiredSun) {
         timedWarSystem = TimedWarSystem.forSunProduction(
                 durationSeconds, requiredSun);
+        timedWarCompletionReported = false;
+        timedWarFailedAfterWavesCleared = false;
         pendingResults.add(
                 "Timed War started: "
                         + timedWarSystem.describeObjective()
@@ -111,6 +129,59 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
         return timedWarSystem == null
                 ? 0.0
                 : timedWarSystem.getRemainingSeconds();
+    }
+
+    public int getTimedWarRecentZombieKills() {
+        return timedWarSystem == null
+                ? 0
+                : timedWarSystem.getRecentZombieKills();
+    }
+
+    public boolean isTimedWarZombieKillRequirementMet() {
+        return timedWarSystem != null
+                && timedWarSystem.isZombieKillRequirementMet();
+    }
+
+    public double getTimedWarKillWindowSeconds() {
+        return timedWarSystem == null
+                ? 0.0
+                : timedWarSystem.getWindowSeconds();
+    }
+
+    public int getTimedWarCollectedSun() {
+        return timedWarSystem == null
+                ? 0
+                : timedWarSystem.getCollectedSunProgress();
+    }
+
+    public int getTimedWarCollectedSunTarget() {
+        return timedWarSystem == null
+                ? 0
+                : timedWarSystem.getCollectedSunTarget();
+    }
+
+    public int getTimedWarSunLeftToCollect() {
+        if (timedWarSystem == null) {
+            return 0;
+        }
+        return Math.max(0,
+                timedWarSystem.getCollectedSunTarget()
+                        - timedWarSystem.getCollectedSunProgress());
+    }
+
+    public boolean isTimedWarCollectedSunRequirementMet() {
+        return timedWarSystem != null
+                && timedWarSystem.isCollectedSunRequirementMet();
+    }
+
+    public String getTimedWarUnmetRequirements() {
+        return timedWarSystem == null
+                ? ""
+                : timedWarSystem.describeUnmetRequirements();
+    }
+
+    public boolean didTimedWarFailAfterWavesCleared() {
+        return timedWarFailedAfterWavesCleared;
     }
 
     public void enableNightOps() {
@@ -158,8 +229,7 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
                 maximumLostPlants);
         loveYourPlantsSystem.observePlants(board);
         pendingResults.add(
-                "Love Your Plants started: lose the level "
-                        + "after losing "
+                "Love Your Plants started: do not lose more than "
                         + maximumLostPlants + " plants.");
     }
 
@@ -181,14 +251,22 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
                         .getMaximumLostPlants();
     }
 
+    public int getRemainingPlantLossAllowance() {
+        return loveYourPlantsSystem == null
+                ? 0
+                : loveYourPlantsSystem
+                        .getRemainingPlantLossAllowance();
+    }
+
     public void enablePlantWhatYouGet() {
         plantWhatYouGetSystem = new PlantWhatYouGetSystem();
         disableSkySuns("Plant What You Get");
         pendingResults.add(
                 "Plant What You Get setup started: "
                         + "sun-producing plants are locked, "
-                        + "cooldowns are ignored until "
-                        + "start zombie waves.");
+                        + "plant recharge cooldowns are disabled for the "
+                        + "entire level, and zombie waves wait for you to "
+                        + "start them.");
     }
 
     public boolean hasPlantWhatYouGet() {
@@ -233,8 +311,8 @@ abstract class GameSpecialLevelLogic extends GameLoadoutLogic {
         zombieWavesStarted = true;
         startNextWaveIfPossible();
         pendingResults.add(
-                "Zombie waves started; recharge cooldowns "
-                        + "are active now.");
+                "Zombie waves started; plant recharge cooldowns remain "
+                        + "disabled for Plant What You Get.");
         return true;
     }
 

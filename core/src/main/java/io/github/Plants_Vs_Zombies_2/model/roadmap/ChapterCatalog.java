@@ -9,7 +9,6 @@ import io.github.Plants_Vs_Zombies_2.model.game.ChapterRuleset;
 import io.github.Plants_Vs_Zombies_2.model.game.ZombieWave;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantSpec;
-import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarObjective;
 
 /**
  * Static adventure definition for the four required chapters.
@@ -98,7 +97,7 @@ public final class ChapterCatalog {
             return 0;
         }
         if (type == SpecialLevelType.PLANT_WHAT_YOU_GET) {
-            return 800;
+            return 3000;
         }
         return normalAmount;
     }
@@ -140,9 +139,8 @@ public final class ChapterCatalog {
                 return SpecialLevelConfig.saveOurSeeds(
                         protectedPlants());
             case TIMED_WAR:
-                return SpecialLevelConfig.timedWar(
-                        TimedWarObjective.KILL_ZOMBIES,
-                        30.0, 10);
+                return SpecialLevelConfig.timedWarWithSunCollection(
+                        30.0, 5, 400);
             case NIGHT_OPS:
             case PLANT_WHAT_YOU_GET:
                 return SpecialLevelConfig.none();
