@@ -1,6 +1,7 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -65,6 +66,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.structure.BaseStructure;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.Grave;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.GraveReward;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
+import io.github.Plants_Vs_Zombies_2.model.game.special.ConveyorPlacementResult;
+import io.github.Plants_Vs_Zombies_2.model.game.special.ConveyorPlantPacket;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
@@ -135,6 +138,11 @@ public final class GameScreen extends AbstractScreen {
     private static final float SEED_TRAY_HEIGHT = 568f;
     private static final float SEED_SLOT_WIDTH = 110f;
     private static final float SEED_SLOT_HEIGHT = 68f;
+    private static final float CONVEYOR_CARD_WIDTH = 108f;
+    private static final float CONVEYOR_CARD_HEIGHT = 64f;
+    private static final float CONVEYOR_CARD_GAP = 4f;
+    private static final float CONVEYOR_CARD_INSET = 4f;
+    private static final float CONVEYOR_CARD_TRAVEL_SPEED = 120f;
     private static final float PAUSE_BUTTON_X = 44f;
     private static final float PAUSE_BUTTON_Y = 650f;
     private static final float PAUSE_BUTTON_SIZE = 58f;
@@ -248,6 +256,11 @@ public final class GameScreen extends AbstractScreen {
     private Image hoveredBoardCell;
     private Actor cursorPlantActor;
     private PlantCollectionItem selectedPlantForPlacement;
+    private Group conveyorBelt;
+    private final Map<Long, ConveyorPacketActor> conveyorPacketActors =
+            new HashMap<>();
+    private Long selectedConveyorPacketSequence;
+    private String selectedConveyorPlantName;
     private String plantedPlantRenderSignature = "";
 
     private Group sunLayer;
@@ -306,6 +319,7 @@ public final class GameScreen extends AbstractScreen {
         addBackgroundOverlay(new LawnMowerRenderer(
                 navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
+        installConveyorBelt();
         installShovelButton();
         installZombieRendering();
         installProjectileRendering();
@@ -886,6 +900,16 @@ public final class GameScreen extends AbstractScreen {
 
     private void installChapterBoard(Chapter chapter) {
         BoardLayout layout = layoutForChapter(chapter);
+        if (layout == null && isModelBackedGame()) {
+            Game game = activeGame();
+            if (game != null && game.hasConveyorBelt()) {
+                // Minigames such as Wall-nut Bowling may use a conveyor
+                // without adventure chapter metadata. Phase 2 allows an
+                // arbitrary minigame background, so use the Egypt lawn to
+                // keep the 5x9 board interactive in those games too.
+                layout = EGYPT_BOARD;
+            }
+        }
         if (layout == null) {
             return;
         }
@@ -1014,6 +1038,112 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(seedTray);
     }
 
+    private void installConveyorBelt() {
+        Game game = activeGame();
+        if (game == null || !game.hasConveyorBelt()
+                || conveyorBelt != null || plantingOverlayPixel == null) {
+            return;
+        }
+
+        conveyorBelt = new Group();
+        conveyorBelt.setBounds(SEED_TRAY_X, SEED_TRAY_Y,
+                SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+
+        Actor track = new Actor() {
+            @Override
+            public void draw(Batch batch, float parentAlpha) {
+                Color previous = new Color(batch.getColor());
+                batch.setColor(0f, 0f, 0f, 0.46f * parentAlpha);
+                batch.draw(plantingOverlayPixel,
+                        getX(), getY(), getWidth(), getHeight());
+                batch.setColor(previous);
+            }
+        };
+        track.setBounds(0f, 0f, SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+        track.setTouchable(Touchable.disabled);
+        conveyorBelt.addActor(track);
+        stage.addActor(conveyorBelt);
+        refreshConveyorBelt();
+    }
+
+    private void refreshConveyorBelt() {
+        Game game = activeGame();
+        if (conveyorBelt == null || game == null
+                || !game.hasConveyorBelt()) {
+            return;
+        }
+
+        List<ConveyorPlantPacket> packets = game.getConveyorPackets();
+        Iterator<Map.Entry<Long, ConveyorPacketActor>> iterator =
+                conveyorPacketActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Long, ConveyorPacketActor> entry = iterator.next();
+            if (findConveyorPacket(packets, entry.getKey()) == null) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+
+        if (selectedConveyorPacketSequence != null
+                && findConveyorPacket(packets,
+                        selectedConveyorPacketSequence) == null) {
+            selectedConveyorPacketSequence = null;
+            selectedConveyorPlantName = null;
+            rebuildCursorPlantActor();
+        }
+
+        for (int index = 0; index < packets.size(); index++) {
+            ConveyorPlantPacket packet = packets.get(index);
+            ConveyorPacketActor actor = conveyorPacketActors.get(
+                    packet.getSequenceNumber());
+            if (actor == null) {
+                actor = new ConveyorPacketActor(packet);
+                actor.setPosition(CONVEYOR_CARD_INSET, 0f);
+                conveyorPacketActors.put(packet.getSequenceNumber(), actor);
+                conveyorBelt.addActor(actor);
+            }
+            actor.setTargetY(conveyorTargetY(index));
+            actor.setSelected(selectedConveyorPacketSequence != null
+                    && selectedConveyorPacketSequence.longValue()
+                            == packet.getSequenceNumber());
+        }
+    }
+
+    private float conveyorTargetY(int zeroBasedIndex) {
+        float top = SEED_TRAY_HEIGHT - CONVEYOR_CARD_HEIGHT
+                - CONVEYOR_CARD_INSET;
+        return Math.max(CONVEYOR_CARD_INSET,
+                top - zeroBasedIndex
+                        * (CONVEYOR_CARD_HEIGHT + CONVEYOR_CARD_GAP));
+    }
+
+    private static ConveyorPlantPacket findConveyorPacket(
+            List<ConveyorPlantPacket> packets, long sequenceNumber) {
+        if (packets == null) {
+            return null;
+        }
+        for (ConveyorPlantPacket packet : packets) {
+            if (packet.getSequenceNumber() == sequenceNumber) {
+                return packet;
+            }
+        }
+        return null;
+    }
+
+    private int conveyorPacketIndex(long sequenceNumber) {
+        Game game = activeGame();
+        if (game == null || !game.hasConveyorBelt()) {
+            return -1;
+        }
+        List<ConveyorPlantPacket> packets = game.getConveyorPackets();
+        for (int index = 0; index < packets.size(); index++) {
+            if (packets.get(index).getSequenceNumber() == sequenceNumber) {
+                return index + 1;
+            }
+        }
+        return -1;
+    }
+
     private void installCooldownResetButton() {
         if (!isModelBackedGame() || resetCooldownsButton != null) {
             return;
@@ -1063,7 +1193,7 @@ public final class GameScreen extends AbstractScreen {
         if (enabled && !canUseShovel()) {
             return;
         }
-        if (enabled && selectedPlantForPlacement != null) {
+        if (enabled && hasPlantPlacementSelection()) {
             clearSelectedPlantForPlacement();
         }
         shovelMode = enabled;
@@ -1193,6 +1323,16 @@ public final class GameScreen extends AbstractScreen {
 
     private Chapter seedTrayChapter() {
         return previewChapter != null ? previewChapter : chapterForCurrentGame();
+    }
+
+    private BoardLayout currentBoardLayout() {
+        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        if (layout != null) {
+            return layout;
+        }
+        Game game = activeGame();
+        return game != null && game.hasConveyorBelt()
+                ? EGYPT_BOARD : null;
     }
 
     private Actor createGameSeedSlot(PlantCollectionItem plant) {
@@ -1326,7 +1466,7 @@ public final class GameScreen extends AbstractScreen {
                         event.stop();
                         return true;
                     }
-                    if (selectedPlantForPlacement != null) {
+                    if (hasPlantPlacementSelection()) {
                         clearSelectedPlantForPlacement();
                         event.stop();
                         return true;
@@ -1349,7 +1489,7 @@ public final class GameScreen extends AbstractScreen {
                     return true;
                 }
                 if (!canInteractWithBoard()
-                        || selectedPlantForPlacement == null) {
+                        || !hasPlantPlacementSelection()) {
                     return false;
                 }
 
@@ -1377,7 +1517,7 @@ public final class GameScreen extends AbstractScreen {
                 && !gamePaused
                 && pauseModal == null
                 && plantSelectionModal == null
-                && game.allowsDirectPlanting();
+                && (game.allowsDirectPlanting() || game.hasConveyorBelt());
     }
 
     private BasePlant loadoutPrototypeFor(String plantName) {
@@ -1421,12 +1561,45 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
         selectedPlantForPlacement = plant;
+        selectedConveyorPacketSequence = null;
+        selectedConveyorPlantName = null;
         rebuildCursorPlantActor();
         rebuildSeedTray();
+        refreshConveyorBelt();
+    }
+
+    private void selectConveyorPacket(ConveyorPlantPacket packet) {
+        if (packet == null || !canInteractWithBoard()) {
+            return;
+        }
+        if (shovelMode) {
+            setShovelMode(false);
+        }
+        selectedPlantForPlacement = null;
+        selectedConveyorPacketSequence = packet.getSequenceNumber();
+        selectedConveyorPlantName = packet.getPlantType();
+        rebuildCursorPlantActor();
+        rebuildSeedTray();
+        refreshConveyorBelt();
+    }
+
+    private boolean hasPlantPlacementSelection() {
+        return selectedPlantForPlacement != null
+                || selectedConveyorPacketSequence != null;
+    }
+
+    private String selectedPlacementPlantName() {
+        if (selectedConveyorPacketSequence != null) {
+            return selectedConveyorPlantName;
+        }
+        return selectedPlantForPlacement == null
+                ? null : selectedPlantForPlacement.getName();
     }
 
     private void clearSelectedPlantForPlacement() {
         selectedPlantForPlacement = null;
+        selectedConveyorPacketSequence = null;
+        selectedConveyorPlantName = null;
         if (cursorPlantActor != null) {
             cursorPlantActor.remove();
             cursorPlantActor = null;
@@ -1435,6 +1608,7 @@ public final class GameScreen extends AbstractScreen {
             hoveredBoardCell.setVisible(false);
         }
         rebuildSeedTray();
+        refreshConveyorBelt();
     }
 
     private boolean isPlantCoolingDown(BasePlant prototype) {
@@ -1456,8 +1630,13 @@ public final class GameScreen extends AbstractScreen {
 
     private void plantSelectedPlantAt(EntityPosition position) {
         Game game = activeGame();
-        if (game == null || selectedPlantForPlacement == null
+        if (game == null || !hasPlantPlacementSelection()
                 || position == null) {
+            return;
+        }
+
+        if (selectedConveyorPacketSequence != null) {
+            plantSelectedConveyorPacketAt(position);
             return;
         }
 
@@ -1471,17 +1650,67 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
 
-        selectedPlantForPlacement = null;
-        if (cursorPlantActor != null) {
-            cursorPlantActor.remove();
-            cursorPlantActor = null;
-        }
-        if (hoveredBoardCell != null) {
-            hoveredBoardCell.setVisible(false);
-        }
+        clearSelectedPlantForPlacement();
         refreshSunHud();
-        rebuildSeedTray();
         rebuildPlantedPlantLayer();
+    }
+
+    private void plantSelectedConveyorPacketAt(EntityPosition position) {
+        Game game = activeGame();
+        if (game == null || selectedConveyorPacketSequence == null) {
+            return;
+        }
+
+        int index = conveyorPacketIndex(selectedConveyorPacketSequence);
+        if (index < 1) {
+            clearSelectedPlantForPlacement();
+            return;
+        }
+
+        ConveyorPlacementResult result = game.plantFromConveyor(
+                index, position);
+        if (result != ConveyorPlacementResult.SUCCESS) {
+            showConveyorPlacementError(result);
+            return;
+        }
+
+        clearSelectedPlantForPlacement();
+        refreshConveyorBelt();
+        rebuildPlantedPlantLayer();
+    }
+
+    private void showConveyorPlacementError(ConveyorPlacementResult result) {
+        if (result == null) {
+            return;
+        }
+        switch (result) {
+            case OUTSIDE_BOWLING_ZONE:
+                showGameNotice(
+                        "Launch the Wall-nut on the house side of the red line!",
+                        Color.RED);
+                break;
+            case POSITION_OCCUPIED:
+                showGameNotice("That tile is already occupied!", Color.RED);
+                break;
+            case INVALID_PACKET:
+                clearSelectedPlantForPlacement();
+                showGameNotice("That conveyor card is no longer available!",
+                        Color.RED);
+                break;
+            case INVALID_POSITION:
+                showGameNotice("Choose a tile on the lawn!", Color.RED);
+                break;
+            case UNKNOWN_PLANT:
+                showGameNotice("Unknown plant on the conveyor!", Color.RED);
+                break;
+            case NOT_CONVEYOR_LEVEL:
+                clearSelectedPlantForPlacement();
+                break;
+            case SUCCESS:
+                break;
+            default:
+                break;
+        }
     }
 
     private void pluckPlantAt(EntityPosition position) {
@@ -1499,7 +1728,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private EntityPosition boardPositionAtScreen(int screenX, int screenY) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (layout == null || Gdx.graphics.getWidth() <= 0
                 || Gdx.graphics.getHeight() <= 0) {
             return null;
@@ -1526,7 +1755,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private CellBounds screenBoundsForCell(EntityPosition position) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (layout == null || position == null) {
             return null;
         }
@@ -1553,7 +1782,7 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
 
-        boolean planting = selectedPlantForPlacement != null
+        boolean planting = hasPlantPlacementSelection()
                 && canInteractWithBoard();
         boolean shoveling = shovelMode && canUseShovel();
         if (!planting && !shoveling) {
@@ -1591,11 +1820,11 @@ public final class GameScreen extends AbstractScreen {
             cursorPlantActor.remove();
             cursorPlantActor = null;
         }
-        if (selectedPlantForPlacement == null) {
+        String plantName = selectedPlacementPlantName();
+        if (plantName == null) {
             return;
         }
-        cursorPlantActor = createPlantIdleActor(
-                selectedPlantForPlacement.getName());
+        cursorPlantActor = createPlantIdleActor(plantName);
         cursorPlantActor.setTouchable(Touchable.disabled);
         cursorPlantActor.setColor(1f, 1f, 1f, 0.86f);
         addBackgroundOverlay(cursorPlantActor);
@@ -1611,11 +1840,11 @@ public final class GameScreen extends AbstractScreen {
         if (cursorPlantActor == null) {
             return;
         }
-        if (!canInteractWithBoard() || selectedPlantForPlacement == null) {
+        if (!canInteractWithBoard() || !hasPlantPlacementSelection()) {
             cursorPlantActor.setVisible(false);
             return;
         }
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (layout == null) {
             cursorPlantActor.setVisible(false);
             return;
@@ -1650,7 +1879,7 @@ public final class GameScreen extends AbstractScreen {
             }
         }
         Image fallback = createAssetImage(
-                PlantPacketCard.packetAssetFor(plantName));
+                packetArtworkAssetFor(plantName));
         fallback.setScaling(Scaling.fit);
         return fallback;
     }
@@ -1913,7 +2142,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void positionZombieActor(ZombiePamActor actor, Zombie zombie) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (actor == null || zombie == null || layout == null
                 || Gdx.graphics.getWidth() <= 0
                 || Gdx.graphics.getHeight() <= 0) {
@@ -2038,7 +2267,7 @@ public final class GameScreen extends AbstractScreen {
 
     private void positionProjectileActor(ProjectileActor actor,
             Projectile projectile) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (actor == null || projectile == null || layout == null
                 || Gdx.graphics.getWidth() <= 0
                 || Gdx.graphics.getHeight() <= 0) {
@@ -2116,7 +2345,7 @@ public final class GameScreen extends AbstractScreen {
 
     private void positionBouncingGrapeActor(Actor actor, BouncingGrape grape,
             float sizeTiles) {
-        BoardLayout layout = layoutForChapter(seedTrayChapter());
+        BoardLayout layout = currentBoardLayout();
         if (actor == null || grape == null || layout == null) {
             return;
         }
@@ -2885,6 +3114,21 @@ public final class GameScreen extends AbstractScreen {
         return App.getInstance().getLoggedInUser();
     }
 
+    private static String packetArtworkAssetFor(String plantName) {
+        if (plantName != null) {
+            if (plantName.equalsIgnoreCase("Bowling Wall-nut")) {
+                return "IMAGE_UI_PACKETS_WALLNUT";
+            }
+            if (plantName.equalsIgnoreCase("Explode-o-nut")) {
+                return "IMAGE_UI_PACKETS_EXPLODEONUT";
+            }
+            if (plantName.equalsIgnoreCase("Giant Wall-nut")) {
+                return "IMAGE_UI_PACKETS_PRIMALWALLNUT";
+            }
+        }
+        return PlantPacketCard.packetAssetFor(plantName);
+    }
+
     private static String packetAssetForChapter(Chapter chapter) {
         if (chapter == null) {
             return EGYPT_PACKET;
@@ -2995,6 +3239,7 @@ public final class GameScreen extends AbstractScreen {
         refreshPlantWhatYouGetWaveButton();
         refreshTimedWarObjectivesHud();
         refreshLoveYourPlantsHud();
+        refreshConveyorBelt();
         refreshBoardHover();
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
@@ -3218,6 +3463,82 @@ public final class GameScreen extends AbstractScreen {
             return BOARD_SUN_RADIOACTIVE;
         }
         return GAME_SUN_ICON;
+    }
+
+    private final class ConveyorPacketActor extends Stack {
+        private final ConveyorPlantPacket packet;
+        private SelectionOutlineActor selectionOutline;
+        private float targetY;
+
+        private ConveyorPacketActor(ConveyorPlantPacket packet) {
+            if (packet == null) {
+                throw new IllegalArgumentException(
+                        "conveyor packet cannot be null");
+            }
+            this.packet = packet;
+            setSize(CONVEYOR_CARD_WIDTH, CONVEYOR_CARD_HEIGHT);
+            setTouchable(Touchable.enabled);
+
+            Image background = createAssetImage(
+                    packetAssetForChapter(seedTrayChapter()));
+            background.setScaling(Scaling.stretch);
+            add(background);
+
+            Table artworkLayer = new Table();
+            Image artwork = createAssetImage(
+                    packetArtworkAssetFor(packet.getPlantType()));
+            artwork.setScaling(Scaling.fit);
+            artworkLayer.add(artwork).width(84f).height(54f);
+            add(artworkLayer);
+
+            addListener(new InputListener() {
+                @Override
+                public boolean touchDown(InputEvent event, float x, float y,
+                        int pointer, int button) {
+                    if (button != Input.Buttons.LEFT) {
+                        return false;
+                    }
+                    // Select on press instead of waiting for ClickListener's
+                    // release-time hit test. The packet can move several
+                    // pixels between touchDown and touchUp while travelling
+                    // up the belt, which would otherwise cancel the click.
+                    selectConveyorPacket(ConveyorPacketActor.this.packet);
+                    event.stop();
+                    return true;
+                }
+            });
+            addListener(new TextTooltip(
+                    packet.getPlantType() + "\nConveyor Belt", skin));
+        }
+
+        private void setTargetY(float targetY) {
+            this.targetY = targetY;
+        }
+
+        private void setSelected(boolean selected) {
+            if (selected && selectionOutline == null) {
+                selectionOutline = new SelectionOutlineActor();
+                selectionOutline.setTouchable(Touchable.disabled);
+                add(selectionOutline);
+            } else if (!selected && selectionOutline != null) {
+                selectionOutline.remove();
+                selectionOutline = null;
+            }
+        }
+
+        @Override
+        public void act(float delta) {
+            super.act(delta);
+            float difference = targetY - getY();
+            if (Math.abs(difference) <= 0.5f) {
+                setY(targetY);
+                return;
+            }
+            float travel = CONVEYOR_CARD_TRAVEL_SPEED
+                    * Math.max(0f, delta);
+            setY(getY() + Math.signum(difference)
+                    * Math.min(Math.abs(difference), travel));
+        }
     }
 
     private final class CooldownShadeActor extends Actor {
