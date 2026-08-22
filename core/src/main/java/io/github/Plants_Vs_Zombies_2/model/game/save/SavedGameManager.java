@@ -433,7 +433,16 @@ public final class SavedGameManager {
                     .append("\",\"progress\":").append(game.getTimedWarProgress())
                     .append(",\"target\":").append(game.getTimedWarTarget())
                     .append(",\"remainingSeconds\":")
-                    .append(game.getTimedWarRemainingSeconds()).append('}');
+                    .append(game.getTimedWarRemainingSeconds())
+                    .append(",\"recentZombieKills\":")
+                    .append(game.getTimedWarRecentZombieKills())
+                    .append(",\"killWindowSeconds\":")
+                    .append(game.getTimedWarKillWindowSeconds())
+                    .append(",\"collectedSun\":")
+                    .append(game.getTimedWarCollectedSun())
+                    .append(",\"collectedSunTarget\":")
+                    .append(game.getTimedWarCollectedSunTarget())
+                    .append('}');
         }
         if (game.hasDeadLine()) {
             out.append(",\"deadLineColumn\":").append(game.getDeadLineColumn());

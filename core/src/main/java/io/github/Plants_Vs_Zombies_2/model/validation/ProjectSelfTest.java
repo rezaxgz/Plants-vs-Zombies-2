@@ -229,6 +229,37 @@ public final class ProjectSelfTest {
                 0.0, List.of(zombie), List.of()) == TimedWarState.SUCCEEDED,
                 "kill objective did not succeed");
 
+        TimedWarSystem rollingSystem = TimedWarSystem.forZombieKills(30.0, 2);
+        Zombie first = killedZombie(0);
+        rollingSystem.recordZombieDeaths(List.of(first));
+        rollingSystem.update(31.0, List.of(first), List.of());
+        require(rollingSystem.getState() == TimedWarState.ACTIVE
+                        && rollingSystem.getRecentZombieKills() == 0,
+                "rolling kill window expired the whole objective");
+        Zombie second = killedZombie(1);
+        rollingSystem.recordZombieDeaths(List.of(second));
+        require(rollingSystem.getState() == TimedWarState.ACTIVE,
+                "rolling kill objective completed too early");
+        Zombie third = killedZombie(2);
+        rollingSystem.recordZombieDeaths(List.of(third));
+        require(rollingSystem.getState() == TimedWarState.SUCCEEDED,
+                "rolling kill objective did not complete later in the game");
+
+        TimedWarSystem combined =
+                TimedWarSystem.forZombieKillsAndCollectedSun(30.0, 1, 400);
+        combined.recordZombieDeaths(List.of(killedZombie(3)));
+        combined.recordCollectedSun(275);
+        require(combined.getState() == TimedWarState.ACTIVE
+                        && combined.getCollectedSunProgress() == 275,
+                "combined Timed War ignored the sun requirement");
+        combined.recordCollectedSun(125);
+        require(combined.getState() == TimedWarState.SUCCEEDED,
+                "combined Timed War did not accept collected sun");
+        combined.update(31.0, List.of(), List.of());
+        require(combined.getState() == TimedWarState.SUCCEEDED
+                        && combined.getRecentZombieKills() == 0,
+                "completed Timed War stopped updating its rolling HUD count");
+
         TimedWarSystem sunSystem = TimedWarSystem.forSunProduction(60.0, 50);
         Sun skySun = Sun.createSkySun(
                 SunType.NORMAL,
@@ -238,6 +269,13 @@ public final class ProjectSelfTest {
         require(sunSystem.getProgress() == 0,
                 "sky sun was counted");
         checkPlantSunProgress(sunSystem);
+    }
+
+    private static Zombie killedZombie(int lane) {
+        Zombie zombie = new Zombie(
+                ZombieType.BASIC, 1, lane, 8.0, false);
+        zombie.kill();
+        return zombie;
     }
 
     private static void checkPlantSunProgress(
@@ -264,8 +302,14 @@ public final class ProjectSelfTest {
                 TimedWarObjective.KILL_ZOMBIES);
         Level sun = base.withTimedWarObjective(
                 TimedWarObjective.PRODUCE_SUN);
-        require(kills.getSpecialConfig().getTarget() == 10,
-                "kill target is not 10");
+        require(base.getSpecialConfig().getTarget() == 5,
+                "Frostbite Timed War kill target is not 5");
+        require(base.getSpecialConfig().getMinimumCollectedSun() == 400,
+                "Frostbite Timed War sun collection target is not 400");
+        require(base.createGame(3, false).getBoard().getZombies().isEmpty(),
+                "Frostbite Timed War starts with fixed frozen zombies");
+        require(kills.getSpecialConfig().getTarget() == 5,
+                "kill target is not 5");
         require(sun.getSpecialConfig().getTarget() == 200,
                 "sun target is not 200");
         requireClose(30.0,

@@ -19,7 +19,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
  */
 public final class Level {
     private static final double TIMED_WAR_KILL_SECONDS = 30.0;
-    private static final int TIMED_WAR_KILL_TARGET = 10;
+    private static final int TIMED_WAR_KILL_TARGET = 5;
     private static final double TIMED_WAR_SUN_SECONDS = 60.0;
     private static final int TIMED_WAR_SUN_TARGET = 200;
 
@@ -232,7 +232,10 @@ public final class Level {
             board.setSliderTile(
                     new EntityPosition(3, 5), 1);
         }
-        if (number >= 3) {
+        // Keep pre-encased zombies for the final Frostbite challenge only.
+        // Timed War level 3 must start with an empty lawn and let wave
+        // zombies enter normally after the first-wave announcement.
+        if (number >= 4) {
             board.addFrozenZombie(
                     ZombieType.ICEAGE,
                     new EntityPosition(0, 6));
@@ -336,10 +339,16 @@ public final class Level {
     private void configureTimedWar(Game game) {
         TimedWarObjective objective = specialConfig.getTimedObjective();
         if (objective == TimedWarObjective.KILL_ZOMBIES) {
-            game.enableTimedWarZombieKills(
-                    specialConfig
-                            .getDurationSeconds(),
-                    specialConfig.getTarget());
+            if (specialConfig.getMinimumCollectedSun() > 0) {
+                game.enableTimedWarZombieKillsAndSunCollection(
+                        specialConfig.getDurationSeconds(),
+                        specialConfig.getTarget(),
+                        specialConfig.getMinimumCollectedSun());
+            } else {
+                game.enableTimedWarZombieKills(
+                        specialConfig.getDurationSeconds(),
+                        specialConfig.getTarget());
+            }
         } else {
             game.enableTimedWarSunProduction(
                     specialConfig

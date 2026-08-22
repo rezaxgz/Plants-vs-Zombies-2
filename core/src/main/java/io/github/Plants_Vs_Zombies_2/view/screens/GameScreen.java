@@ -157,6 +157,10 @@ public final class GameScreen extends AbstractScreen {
     private static final float PLANT_FOOD_HUD_Y = 586f;
     private static final float PLANT_FOOD_HUD_WIDTH = SUN_HUD_WIDTH;
     private static final float PLANT_FOOD_HUD_HEIGHT = SUN_HUD_HEIGHT;
+    private static final float TIMED_WAR_HUD_X = 440f;
+    private static final float TIMED_WAR_HUD_Y = 566f;
+    private static final float TIMED_WAR_HUD_WIDTH = 276f;
+    private static final float TIMED_WAR_HUD_HEIGHT = 76f;
     private static final float NORMAL_BOARD_SUN_SIZE = 108f;
     private static final float SPECIAL_BOARD_SUN_SIZE = 152f;
     private static final float RADIOACTIVE_BOARD_SUN_SIZE = 164f;
@@ -219,6 +223,9 @@ public final class GameScreen extends AbstractScreen {
     private Label sunAmountLabel;
     private Table plantFoodHud;
     private Label plantFoodAmountLabel;
+    private Table timedWarObjectivesHud;
+    private Label timedWarSunLeftLabel;
+    private Label timedWarZombieKillsLabel;
     private Group pauseModal;
     private boolean gamePaused;
     private boolean sunHudDebugMode;
@@ -276,6 +283,7 @@ public final class GameScreen extends AbstractScreen {
         installChapterBoard(chapter);
         installGameHud();
         installWaveProgressHud();
+        installTimedWarObjectivesHud();
 
         if (menu.getLevel() != null && menu.getGame().hasConfiguredPlantLoadout()) {
             installSeedTray();
@@ -381,6 +389,77 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(plantFoodHud);
         plantFoodHudDebugMode = !isDebugMode();
         refreshPlantFoodHud();
+    }
+
+    private void installTimedWarObjectivesHud() {
+        Game game = activeGame();
+        if (game == null || !game.hasTimedWar()
+                || game.getTimedWarCollectedSunTarget() <= 0
+                || timedWarObjectivesHud != null) {
+            return;
+        }
+
+        timedWarSunLeftLabel = new Label("", skin, "medium_outline");
+        timedWarSunLeftLabel.setFontScale(0.62f);
+        timedWarSunLeftLabel.setAlignment(Align.left);
+
+        timedWarZombieKillsLabel = new Label("", skin, "medium_outline");
+        timedWarZombieKillsLabel.setFontScale(0.62f);
+        timedWarZombieKillsLabel.setAlignment(Align.left);
+
+        timedWarObjectivesHud = new Table();
+        timedWarObjectivesHud.left().top();
+        timedWarObjectivesHud.setBounds(
+                TIMED_WAR_HUD_X, TIMED_WAR_HUD_Y,
+                TIMED_WAR_HUD_WIDTH, TIMED_WAR_HUD_HEIGHT);
+        timedWarObjectivesHud.add(createTimedWarObjectiveRow(
+                GAME_SUN_ICON, timedWarSunLeftLabel))
+                .width(TIMED_WAR_HUD_WIDTH).height(37f).row();
+        timedWarObjectivesHud.add(createTimedWarObjectiveRow(
+                WAVE_PROGRESS_ZOMBIE_HEAD, timedWarZombieKillsLabel))
+                .width(TIMED_WAR_HUD_WIDTH).height(37f);
+        stage.addActor(timedWarObjectivesHud);
+        refreshTimedWarObjectivesHud();
+    }
+
+    private Actor createTimedWarObjectiveRow(String iconAsset, Label label) {
+        Stack row = new Stack();
+        Image background = createAssetImage(GAME_SUN_BACKGROUND);
+        background.setScaling(Scaling.stretch);
+        background.setColor(1f, 1f, 1f, 0.92f);
+        row.add(background);
+
+        Table contents = new Table();
+        contents.left();
+        Image icon = createAssetImage(iconAsset);
+        icon.setScaling(Scaling.fit);
+        contents.add(icon).size(34f).padLeft(5f).padRight(4f);
+        contents.add(label).growX().left().padRight(8f);
+        row.add(contents);
+        return row;
+    }
+
+    private void refreshTimedWarObjectivesHud() {
+        Game game = activeGame();
+        if (timedWarObjectivesHud == null || game == null
+                || !game.hasTimedWar()) {
+            return;
+        }
+
+        int sunsLeft = game.getTimedWarSunLeftToCollect();
+        timedWarSunLeftLabel.setText(sunsLeft + " suns left"
+                + (game.isTimedWarCollectedSunRequirementMet()
+                        ? " (met)" : ""));
+
+        int recentKills = game.getTimedWarRecentZombieKills();
+        int killTarget = game.getTimedWarTarget();
+        int windowSeconds = Math.max(1,
+                (int) Math.round(game.getTimedWarKillWindowSeconds()));
+        timedWarZombieKillsLabel.setText(
+                recentKills + " / " + killTarget + " in last "
+                        + windowSeconds + "s"
+                        + (game.isTimedWarZombieKillRequirementMet()
+                                ? " (met)" : ""));
     }
 
     private boolean isDebugMode() {
@@ -2782,6 +2861,7 @@ public final class GameScreen extends AbstractScreen {
         refreshCollectibleDrops();
         refreshSunHud();
         refreshPlantFoodHud();
+        refreshTimedWarObjectivesHud();
         refreshBoardHover();
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
@@ -2791,6 +2871,21 @@ public final class GameScreen extends AbstractScreen {
             showFinishedGameMenuIfNeeded();
         }
         super.render(delta);
+    }
+
+    private String buildGameResultDescription(Game game) {
+        if (game == null
+                || game.getStatus()
+                        != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST
+                || !game.hasTimedWar()
+                || !game.didTimedWarFailAfterWavesCleared()) {
+            return null;
+        }
+        String unmet = game.getTimedWarUnmetRequirements();
+        if (unmet == null || unmet.isBlank()) {
+            return "Timed War failed before all objectives were completed.";
+        }
+        return "Timed War failed because " + unmet + ".";
     }
 
     private void showFinishedGameMenuIfNeeded() {
@@ -2807,7 +2902,8 @@ public final class GameScreen extends AbstractScreen {
         }
         gamePaused = true;
         stage.addActor(new GameResultOverlay(
-                skin, game.getStatus(), VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
+                skin, game.getStatus(), buildGameResultDescription(game),
+                VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
                 this::restartLevel,
                 () -> {
                     gamePaused = false;

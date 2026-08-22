@@ -7,6 +7,7 @@ import java.util.regex.Matcher;
 import io.github.Plants_Vs_Zombies_2.model.App;
 import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.game.Game;
+import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarObjective;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.Menu;
 
@@ -34,15 +35,33 @@ public final class SpecialLevelCommandController {
         if (game.hasTimedWar()) {
             found = true;
             output.append(System.lineSeparator())
-                    .append("- Timed War: ")
-                    .append(game.getTimedWarObjective())
-                    .append(" ")
-                    .append(game.getTimedWarProgress())
-                    .append('/')
-                    .append(game.getTimedWarTarget())
-                    .append(" | remaining: ")
-                    .append(formatSeconds(
-                            game.getTimedWarRemainingSeconds()));
+                    .append("- Timed War: ");
+            if (game.getTimedWarObjective()
+                    == TimedWarObjective.KILL_ZOMBIES) {
+                output.append(game.getTimedWarRecentZombieKills())
+                        .append('/')
+                        .append(game.getTimedWarTarget())
+                        .append(" kills in the last ")
+                        .append(formatSeconds(
+                                game.getTimedWarKillWindowSeconds()))
+                        .append(game.isTimedWarZombieKillRequirementMet()
+                                ? " (met)" : "");
+                if (game.getTimedWarCollectedSunTarget() > 0) {
+                    output.append(" | collected sun: ")
+                            .append(game.getTimedWarCollectedSun())
+                            .append('/')
+                            .append(game.getTimedWarCollectedSunTarget());
+                }
+            } else {
+                output.append(game.getTimedWarObjective())
+                        .append(' ')
+                        .append(game.getTimedWarProgress())
+                        .append('/')
+                        .append(game.getTimedWarTarget())
+                        .append(" | remaining: ")
+                        .append(formatSeconds(
+                                game.getTimedWarRemainingSeconds()));
+            }
         }
         if (game.areSkySunsDisabled()) {
             found = true;

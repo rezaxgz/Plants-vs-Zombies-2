@@ -180,6 +180,11 @@ final class LevelObjectivesOverlay extends Group {
                 break;
             case TIMED_WAR:
                 objectives.add(buildTimedWarObjective(config));
+                if (config.getMinimumCollectedSun() > 0) {
+                    objectives.add("Collect at least "
+                            + config.getMinimumCollectedSun()
+                            + " sun during the level.");
+                }
                 break;
             case NIGHT_OPS:
                 objectives.add("Survive without any sun falling from the sky.");
@@ -211,7 +216,8 @@ final class LevelObjectivesOverlay extends Group {
                     + " sun within " + seconds + " seconds.";
         }
         return "Defeat at least " + config.getTarget()
-                + " zombies within " + seconds + " seconds.";
+                + " zombies within any " + seconds
+                + "-second window.";
     }
 
     private static String buildSaveOurSeedsObjective(
