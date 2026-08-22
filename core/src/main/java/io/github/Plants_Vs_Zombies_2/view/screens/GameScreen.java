@@ -60,6 +60,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.BouncingGrap
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.BaseStructure;
@@ -265,6 +266,8 @@ public final class GameScreen extends AbstractScreen {
     private final Map<BasePlant, Actor> plantedPlantActors =
             new IdentityHashMap<>();
     private final Map<BasePlant, Integer> plantedPlantHealth =
+            new IdentityHashMap<>();
+    private final Map<SunProducer, Integer> plantedSunProductionSequences =
             new IdentityHashMap<>();
 
     private Group sunLayer;
@@ -1899,9 +1902,12 @@ public final class GameScreen extends AbstractScreen {
         }
         IdentityHashMap<BasePlant, Integer> previousHealth =
                 new IdentityHashMap<>(plantedPlantHealth);
+        IdentityHashMap<SunProducer, Integer> previousProductionSequences =
+                new IdentityHashMap<>(plantedSunProductionSequences);
         plantedPlantLayer.clearChildren();
         plantedPlantActors.clear();
         plantedPlantHealth.clear();
+        plantedSunProductionSequences.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
             Actor actor = createPlantIdleActor(plant.getName());
             actor.setTouchable(Touchable.disabled);
@@ -1915,6 +1921,17 @@ public final class GameScreen extends AbstractScreen {
                 flashHurt(actor);
             }
             plantedPlantHealth.put(plant, currentHealth);
+            if (plant instanceof SunProducer) {
+                SunProducer producer = (SunProducer) plant;
+                configureSunProductionAnimation(producer, actor);
+                int currentSequence = producer.getProductionSequence();
+                Integer oldSequence = previousProductionSequences.get(producer);
+                if (producer.isProductionAnimationPending()
+                        || oldSequence != null && currentSequence > oldSequence) {
+                    playSunProductionAnimation(producer, actor);
+                }
+                plantedSunProductionSequences.put(producer, currentSequence);
+            }
         }
         plantedPlantRenderSignature = createPlantRenderSignature(game);
     }
@@ -1962,6 +1979,44 @@ public final class GameScreen extends AbstractScreen {
             if (oldHealth != null && currentHealth < oldHealth) {
                 flashHurt(plantedPlantActors.get(plant));
             }
+            if (plant instanceof SunProducer) {
+                SunProducer producer = (SunProducer) plant;
+                Actor actor = plantedPlantActors.get(plant);
+                configureSunProductionAnimation(producer, actor);
+                int currentSequence = producer.getProductionSequence();
+                Integer oldSequence = plantedSunProductionSequences.put(
+                        producer, currentSequence);
+                if (oldSequence != null && currentSequence > oldSequence) {
+                    playSunProductionAnimation(producer, actor);
+                }
+            }
+        }
+    }
+
+    private void configureSunProductionAnimation(
+            SunProducer producer, Actor actor) {
+        boolean canAnimate = actor instanceof PamAnimationActor
+                && PlantAnimationCatalog.sunProductionAnimation(producer) != null;
+        producer.setDeferProducedSunsForAnimation(canAnimate);
+    }
+
+    private void playSunProductionAnimation(
+            SunProducer producer, Actor actor) {
+        if (!(actor instanceof PamAnimationActor)) {
+            producer.completeProductionAnimation();
+            return;
+        }
+        PlantAnimationCatalog.SunProductionAnimation animation =
+                PlantAnimationCatalog.sunProductionAnimation(producer);
+        if (animation == null) {
+            producer.completeProductionAnimation();
+            return;
+        }
+        boolean started = ((PamAnimationActor) actor).playOnce(
+                animation.getProductionClip(), animation.getIdleClip(),
+                producer::completeProductionAnimation);
+        if (!started) {
+            producer.completeProductionAnimation();
         }
     }
 

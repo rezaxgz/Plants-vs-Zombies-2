@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducerPlantType;
+
 /** Maps the project's 69 plant names to their PvZ2 preview PAM clips. */
 final class PlantAnimationCatalog {
     static final class Preview {
@@ -25,6 +28,25 @@ final class PlantAnimationCatalog {
         }
     }
 
+
+    static final class SunProductionAnimation {
+        private final String productionClip;
+        private final String idleClip;
+
+        private SunProductionAnimation(String productionClip, String idleClip) {
+            this.productionClip = productionClip;
+            this.idleClip = idleClip;
+        }
+
+        String getProductionClip() {
+            return productionClip;
+        }
+
+        String getIdleClip() {
+            return idleClip;
+        }
+    }
+
     private static final Map<String, Preview> PREVIEWS = createPreviews();
 
     private PlantAnimationCatalog() {
@@ -32,6 +54,46 @@ final class PlantAnimationCatalog {
 
     static Preview find(String plantName) {
         return PREVIEWS.get(normalize(plantName));
+    }
+
+
+    /**
+     * Returns the one-shot sun-production clip and the idle clip to resume.
+     * animations.json names the production clip "special" for Sunflower,
+     * Twin Sunflower and Primal Sunflower. Sun-shroom uses the equivalent
+     * stage-specific special_stage1/2/3 clips.
+     */
+    static SunProductionAnimation sunProductionAnimation(SunProducer producer) {
+        if (producer == null) {
+            return null;
+        }
+        SunProducerPlantType type = producer.getType();
+        switch (type) {
+            case SUNFLOWER:
+            case TWIN_SUNFLOWER:
+            case PRIMAL_SUNFLOWER:
+                return new SunProductionAnimation("special", "idle");
+            case SUN_SHROOM:
+                int stage = sunShroomStage(producer);
+                return new SunProductionAnimation(
+                        "special_stage" + stage,
+                        "idle_stage" + stage);
+            default:
+                return null;
+        }
+    }
+
+    private static int sunShroomStage(SunProducer producer) {
+        if (producer.isFullyGrown()) {
+            return 3;
+        }
+        int amount = producer.getType().getSunAmountAt(
+                producer.getElapsedSeconds(), producer.getLevel());
+        if (amount >= producer.getType().getFinalSunAmount(
+                producer.getLevel())) {
+            return 3;
+        }
+        return amount > 25 ? 2 : 1;
     }
 
     private static Map<String, Preview> createPreviews() {

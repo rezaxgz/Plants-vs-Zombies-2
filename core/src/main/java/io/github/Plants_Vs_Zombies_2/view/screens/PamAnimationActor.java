@@ -18,10 +18,15 @@ import pvz.libpvz.pam.PamPlayer;
 final class PamAnimationActor extends Actor {
     private final PamPlayer player;
     private final String pamPath;
-    private final String clip;
-    private final Rectangle animationBounds;
+    private String loopingClip;
+    private Rectangle loopingAnimationBounds;
     private final boolean pingPong;
-    private final float clipDurationSeconds;
+    private float loopingClipDurationSeconds;
+    private String oneShotClip;
+    private Rectangle oneShotAnimationBounds;
+    private float oneShotDurationSeconds;
+    private float oneShotStateTime;
+    private Runnable oneShotCompletion;
     private float stateTime;
     private float hurtFlashRemainingSeconds;
 
@@ -42,18 +47,29 @@ final class PamAnimationActor extends Actor {
         }
         this.player = player;
         this.pamPath = pamPath;
-        this.clip = clip;
-        this.animationBounds = player.bounds(pamPath, clip);
         this.pingPong = pingPong;
-        this.clipDurationSeconds = pingPong
-                ? Math.max(0.01f, player.clipDurationSeconds(pamPath, clip))
-                : 0f;
+        setLoopingClip(clip);
     }
 
     @Override
     public void act(float delta) {
         super.act(delta);
-        stateTime += delta;
+        if (oneShotClip != null) {
+            oneShotStateTime += Math.max(0f, delta);
+            if (oneShotStateTime >= oneShotDurationSeconds) {
+                Runnable completion = oneShotCompletion;
+                oneShotClip = null;
+                oneShotAnimationBounds = null;
+                oneShotStateTime = 0f;
+                oneShotCompletion = null;
+                stateTime = 0f;
+                if (completion != null) {
+                    completion.run();
+                }
+            }
+        } else {
+            stateTime += delta;
+        }
         hurtFlashRemainingSeconds = HurtFlashEffect.advance(
                 hurtFlashRemainingSeconds,
                 HurtFlashEffect.realFrameDeltaSeconds());
@@ -64,8 +80,51 @@ final class PamAnimationActor extends Actor {
                 hurtFlashRemainingSeconds);
     }
 
+    /** Plays a non-looping clip once, then resumes the requested idle clip. */
+    boolean playOnce(String clip, String idleClipAfter) {
+        return playOnce(clip, idleClipAfter, null);
+    }
+
+    /**
+     * Plays a non-looping clip once and invokes {@code completion} on the frame
+     * the clip ends, immediately before the actor resumes its idle clip.
+     */
+    boolean playOnce(String clip, String idleClipAfter, Runnable completion) {
+        if (clip == null || clip.isBlank()
+                || idleClipAfter == null || idleClipAfter.isBlank()) {
+            return false;
+        }
+        Rectangle specialBounds = player.bounds(pamPath, clip);
+        float duration = player.clipDurationSeconds(pamPath, clip);
+        if (specialBounds == null || specialBounds.width <= 0f
+                || specialBounds.height <= 0f || duration <= 0f) {
+            return false;
+        }
+        setLoopingClip(idleClipAfter);
+        oneShotClip = clip;
+        oneShotAnimationBounds = specialBounds;
+        oneShotDurationSeconds = Math.max(0.01f, duration);
+        oneShotStateTime = 0f;
+        oneShotCompletion = completion;
+        return true;
+    }
+
+    private void setLoopingClip(String clip) {
+        loopingClip = clip;
+        loopingAnimationBounds = player.bounds(pamPath, clip);
+        loopingClipDurationSeconds = pingPong
+                ? Math.max(0.01f, player.clipDurationSeconds(pamPath, clip))
+                : 0f;
+    }
+
     @Override
     public void draw(Batch batch, float parentAlpha) {
+        // Keep a stable plant scale while a one-shot clip plays. Production
+        // clips can have wider motion bounds than idle; scaling to those
+        // bounds would make the plant visibly shrink for the special.
+        Rectangle animationBounds = loopingAnimationBounds != null
+                ? loopingAnimationBounds
+                : oneShotAnimationBounds;
         if (animationBounds == null
                 || animationBounds.width <= 0f
                 || animationBounds.height <= 0f
@@ -91,12 +150,15 @@ final class PamAnimationActor extends Actor {
         batch.flush();
         batch.setTransformMatrix(scaledTransform);
 
-        float playbackTime = stateTime;
-        boolean loop = true;
-        if (pingPong) {
-            float cycle = clipDurationSeconds * 2f;
+        String clip = oneShotClip != null ? oneShotClip : loopingClip;
+        float playbackTime = oneShotClip != null
+                ? Math.min(oneShotStateTime, oneShotDurationSeconds)
+                : stateTime;
+        boolean loop = oneShotClip == null;
+        if (oneShotClip == null && pingPong) {
+            float cycle = loopingClipDurationSeconds * 2f;
             float phase = stateTime % cycle;
-            playbackTime = phase <= clipDurationSeconds
+            playbackTime = phase <= loopingClipDurationSeconds
                     ? phase
                     : cycle - phase;
             loop = false;
