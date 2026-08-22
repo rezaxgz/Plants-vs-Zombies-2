@@ -1,6 +1,7 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Rectangle;
@@ -22,6 +23,7 @@ final class PamAnimationActor extends Actor {
     private final boolean pingPong;
     private final float clipDurationSeconds;
     private float stateTime;
+    private float hurtFlashRemainingSeconds;
 
     PamAnimationActor(PamPlayer player, String pamPath, String clip) {
         this(player, pamPath, clip, false);
@@ -52,6 +54,14 @@ final class PamAnimationActor extends Actor {
     public void act(float delta) {
         super.act(delta);
         stateTime += delta;
+        hurtFlashRemainingSeconds = HurtFlashEffect.advance(
+                hurtFlashRemainingSeconds,
+                HurtFlashEffect.realFrameDeltaSeconds());
+    }
+
+    void flashHurt() {
+        hurtFlashRemainingSeconds = HurtFlashEffect.start(
+                hurtFlashRemainingSeconds);
     }
 
     @Override
@@ -78,9 +88,6 @@ final class PamAnimationActor extends Actor {
         scaledTransform.scale(scale, scale, 1f);
         scaledTransform.translate(-centerX, -centerY, 0f);
 
-        Color actorColor = getColor();
-        batch.setColor(actorColor.r, actorColor.g, actorColor.b,
-                actorColor.a * parentAlpha);
         batch.flush();
         batch.setTransformMatrix(scaledTransform);
 
@@ -94,8 +101,26 @@ final class PamAnimationActor extends Actor {
                     : cycle - phase;
             loop = false;
         }
+        Color actorColor = getColor();
+        batch.setColor(actorColor.r, actorColor.g, actorColor.b,
+                actorColor.a * parentAlpha);
         player.draw(batch, pamPath, clip, playbackTime,
                 centerX, centerY, loop);
+
+        float hurtOverlayAlpha = HurtFlashEffect.overlayAlpha(
+                hurtFlashRemainingSeconds);
+        if (hurtOverlayAlpha > 0f) {
+            batch.flush();
+            int oldBlendSrc = batch.getBlendSrcFunc();
+            int oldBlendDst = batch.getBlendDstFunc();
+            batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+            batch.setColor(1f, 1f, 1f,
+                    actorColor.a * parentAlpha * hurtOverlayAlpha);
+            player.draw(batch, pamPath, clip, playbackTime,
+                    centerX, centerY, loop);
+            batch.flush();
+            batch.setBlendFunction(oldBlendSrc, oldBlendDst);
+        }
 
         batch.flush();
         batch.setTransformMatrix(oldTransform);

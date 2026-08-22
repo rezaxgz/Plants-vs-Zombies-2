@@ -262,6 +262,10 @@ public final class GameScreen extends AbstractScreen {
     private Long selectedConveyorPacketSequence;
     private String selectedConveyorPlantName;
     private String plantedPlantRenderSignature = "";
+    private final Map<BasePlant, Actor> plantedPlantActors =
+            new IdentityHashMap<>();
+    private final Map<BasePlant, Integer> plantedPlantHealth =
+            new IdentityHashMap<>();
 
     private Group sunLayer;
     private final Map<Sun, SunActor> sunActors = new IdentityHashMap<>();
@@ -277,9 +281,13 @@ public final class GameScreen extends AbstractScreen {
             new IdentityHashMap<>();
     private final Map<Grave, String> graveVisualKeys =
             new IdentityHashMap<>();
+    private final Map<Grave, Integer> graveHitPoints =
+            new IdentityHashMap<>();
 
     private Group zombieLayer;
     private final Map<Zombie, ZombiePamActor> zombieActors =
+            new IdentityHashMap<>();
+    private final Map<Zombie, Integer> zombieDurability =
             new IdentityHashMap<>();
 
     private Group projectileLayer;
@@ -1878,8 +1886,8 @@ public final class GameScreen extends AbstractScreen {
                 // Fall through to packet artwork when an optional PAM is absent.
             }
         }
-        Image fallback = createAssetImage(
-                packetArtworkAssetFor(plantName));
+        Image fallback = new HurtFlashImage(requireAssetRegion(
+                packetArtworkAssetFor(plantName)));
         fallback.setScaling(Scaling.fit);
         return fallback;
     }
@@ -1889,12 +1897,24 @@ public final class GameScreen extends AbstractScreen {
         if (plantedPlantLayer == null || game == null) {
             return;
         }
+        IdentityHashMap<BasePlant, Integer> previousHealth =
+                new IdentityHashMap<>(plantedPlantHealth);
         plantedPlantLayer.clearChildren();
+        plantedPlantActors.clear();
+        plantedPlantHealth.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
             Actor actor = createPlantIdleActor(plant.getName());
             actor.setTouchable(Touchable.disabled);
             positionPlantActor(actor, plant.getEntityPosition());
             plantedPlantLayer.addActor(actor);
+            plantedPlantActors.put(plant, actor);
+
+            int currentHealth = plant.getCurrentHP();
+            Integer oldHealth = previousHealth.get(plant);
+            if (oldHealth != null && currentHealth < oldHealth) {
+                flashHurt(actor);
+            }
+            plantedPlantHealth.put(plant, currentHealth);
         }
         plantedPlantRenderSignature = createPlantRenderSignature(game);
     }
@@ -1933,6 +1953,23 @@ public final class GameScreen extends AbstractScreen {
         String signature = createPlantRenderSignature(game);
         if (!signature.equals(plantedPlantRenderSignature)) {
             rebuildPlantedPlantLayer();
+            return;
+        }
+        for (BasePlant plant : game.getBoard().getPlants()) {
+            int currentHealth = plant.getCurrentHP();
+            Integer oldHealth = plantedPlantHealth.put(
+                    plant, currentHealth);
+            if (oldHealth != null && currentHealth < oldHealth) {
+                flashHurt(plantedPlantActors.get(plant));
+            }
+        }
+    }
+
+    private void flashHurt(Actor actor) {
+        if (actor instanceof PamAnimationActor) {
+            ((PamAnimationActor) actor).flashHurt();
+        } else if (actor instanceof HurtFlashImage) {
+            ((HurtFlashImage) actor).flashHurt();
         }
     }
 
@@ -1964,6 +2001,11 @@ public final class GameScreen extends AbstractScreen {
             }
             Grave grave = (Grave) structure;
             present.put(grave, Boolean.TRUE);
+            int currentHitPoints = grave.getHitPoints();
+            Integer previousHitPoints = graveHitPoints.put(
+                    grave, currentHitPoints);
+            boolean wasDamaged = previousHitPoints != null
+                    && currentHitPoints < previousHitPoints;
 
             String pamPath = gravePamPath(grave);
             String clip = graveDamageClip(grave);
@@ -1989,6 +2031,9 @@ public final class GameScreen extends AbstractScreen {
                 graveVisualKeys.put(grave, visualKey);
                 structureLayer.addActor(actor);
             }
+            if (wasDamaged) {
+                actor.flashHurt();
+            }
             positionGraveActor(actor, grave);
         }
 
@@ -1999,6 +2044,7 @@ public final class GameScreen extends AbstractScreen {
             if (!present.containsKey(entry.getKey())) {
                 entry.getValue().remove();
                 graveVisualKeys.remove(entry.getKey());
+                graveHitPoints.remove(entry.getKey());
                 iterator.remove();
             }
         }
@@ -2077,6 +2123,11 @@ public final class GameScreen extends AbstractScreen {
                 continue;
             }
             present.put(zombie, Boolean.TRUE);
+            int currentDurability = zombie.getCurrentDurability();
+            Integer previousDurability = zombieDurability.put(
+                    zombie, currentDurability);
+            boolean wasDamaged = previousDurability != null
+                    && currentDurability < previousDurability;
             ZombiePamActor actor = zombieActors.get(zombie);
             if (actor == null) {
                 ZombieVisualCatalog.Visual visual =
@@ -2095,6 +2146,9 @@ public final class GameScreen extends AbstractScreen {
                 zombieActors.put(zombie, actor);
                 zombieLayer.addActor(actor);
             }
+            if (wasDamaged) {
+                actor.flashHurt();
+            }
             actor.setEating(isZombieEatingPlant(game, zombie));
             positionZombieActor(actor, zombie);
         }
@@ -2105,6 +2159,7 @@ public final class GameScreen extends AbstractScreen {
             Map.Entry<Zombie, ZombiePamActor> entry = iterator.next();
             if (!present.containsKey(entry.getKey())) {
                 entry.getValue().remove();
+                zombieDurability.remove(entry.getKey());
                 iterator.remove();
             }
         }
@@ -3350,10 +3405,14 @@ public final class GameScreen extends AbstractScreen {
             waveProgressActor = null;
         }
         sunLayer = null;
+        plantedPlantActors.clear();
+        plantedPlantHealth.clear();
         graveActors.clear();
         graveVisualKeys.clear();
+        graveHitPoints.clear();
         structureLayer = null;
         zombieActors.clear();
+        zombieDurability.clear();
         zombieLayer = null;
         projectileActors.clear();
         grapeActors.clear();
