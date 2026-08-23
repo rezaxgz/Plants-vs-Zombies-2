@@ -2,7 +2,9 @@ package io.github.Plants_Vs_Zombies_2.model.game.minigame;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import io.github.Plants_Vs_Zombies_2.model.game.Board;
@@ -12,6 +14,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantFactory;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 
 /**
  * Reverse-defense minigame: the player buys zombies and eats five brains.
@@ -32,6 +35,7 @@ public final class IZombie extends Game {
     private final List<IZombieSunProducer> sunProducers;
     private final double[] nextSunProductionAt;
     private final boolean[] brainsAvailable;
+    private final Map<ZombieType, Double> cardReadyAtSeconds;
 
     public IZombie(IZombieLevel level) {
         this(level, new Random());
@@ -49,6 +53,7 @@ public final class IZombie extends Game {
         this.sunProducers = new ArrayList<>();
         this.nextSunProductionAt = new double[getBoard().getNumberOfRows()];
         this.brainsAvailable = new boolean[getBoard().getNumberOfRows()];
+        this.cardReadyAtSeconds = new EnumMap<>(ZombieType.class);
         disableSkySuns("I, Zombie uses zombie-produced sun");
         initializeBrains();
         placeRandomPlants();
@@ -234,6 +239,9 @@ public final class IZombie extends Game {
         if (hasZombieAt(position)) {
             return IZombiePlacementResult.POSITION_OCCUPIED;
         }
+        if (getCardCooldownRemainingSeconds(card) > 0.001) {
+            return IZombiePlacementResult.RECHARGING;
+        }
         if (!spendSun(card.getCost())) {
             return IZombiePlacementResult.NOT_ENOUGH_SUN;
         }
@@ -241,10 +249,25 @@ public final class IZombie extends Game {
         Zombie zombie = new Zombie(card.getType(), 0,
                 position.getRow(), position.getColumn(), false);
         getBoard().addZombie(zombie);
+        cardReadyAtSeconds.put(card.getType(),
+                getElapsedSeconds() + card.getRechargeSeconds());
         addPendingResult("Placed " + card.getType().getAlias()
                 + " at " + position + " for " + card.getCost()
                 + " sun.");
         return IZombiePlacementResult.SUCCESS;
+    }
+
+    public double getCardCooldownRemainingSeconds(IZombieCard card) {
+        if (card == null) {
+            return 0.0;
+        }
+        double readyAt = cardReadyAtSeconds.getOrDefault(
+                card.getType(), 0.0);
+        return Math.max(0.0, readyAt - getElapsedSeconds());
+    }
+
+    public boolean isCardReady(IZombieCard card) {
+        return getCardCooldownRemainingSeconds(card) <= 0.001;
     }
 
     private boolean hasZombieAt(EntityPosition position) {

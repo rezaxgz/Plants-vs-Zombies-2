@@ -56,6 +56,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.other.PlantFoodDrop;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.PotDrop;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.Sun;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.other.SunType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.other.VaseSeedPacket;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.BouncingGrape;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
@@ -64,10 +65,21 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombie;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombieCard;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombiePlacementResult;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.BowlingWallnut;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.BowlingWallnutType;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.VaseBreakResult;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.VaseBreaker;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.VaseSeedPlantingResult;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.WallnutBowling;
 import io.github.Plants_Vs_Zombies_2.model.game.plantSelector.PlantSelection;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.BaseStructure;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.Grave;
 import io.github.Plants_Vs_Zombies_2.model.game.structure.GraveReward;
+import io.github.Plants_Vs_Zombies_2.model.game.structure.Vase;
+import io.github.Plants_Vs_Zombies_2.model.game.structure.VaseType;
 import io.github.Plants_Vs_Zombies_2.model.game.save.SavedGameManager;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ConveyorPlacementResult;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ConveyorPlantPacket;
@@ -134,6 +146,18 @@ public final class GameScreen extends AbstractScreen {
             "768/FULL/GRAVESTONES/DARK_SUN/DARK_SUN.PAM";
     private static final String DARK_GRAVE_PLANT_FOOD_PAM =
             "768/FULL/GRAVESTONES/DARK_PLANTFOOD/DARK_PLANTFOOD.PAM";
+    private static final String VASE_BROWN_ASSET =
+            "IMAGE_VASEBREAKER_VASE_BROWN_VASE_BROWN_115X150";
+    private static final String VASE_GREEN_ASSET =
+            "IMAGE_VASEBREAKER_VASE_GREEN_VASE_GREEN_115X150";
+    private static final String VASE_GARGANTUAR_ASSET =
+            "IMAGE_VASEBREAKER_VASE_GARGANTUAR_VASE_GARGANTUAR_115X150";
+    private static final String I_ZOMBIE_BRAIN_PAM =
+            "768/FULL/ZOMBIE/POWER_BRAIN_PROJECTILE/"
+                    + "POWER_BRAIN_PROJECTILE.PAM";
+    private static final String I_ZOMBIE_BRAIN_FALLBACK_ASSET =
+            "IMAGE_EFFECTS_PRIZE_PINATA_VALENBRAINZ_"
+                    + "PRIZE_PINATA_VALENBRAINZ_109X109";
 
     private static final float SEED_TRAY_X = 16f;
     private static final float SEED_TRAY_Y = 76f;
@@ -146,6 +170,15 @@ public final class GameScreen extends AbstractScreen {
     private static final float CONVEYOR_CARD_GAP = 4f;
     private static final float CONVEYOR_CARD_INSET = 4f;
     private static final float CONVEYOR_CARD_TRAVEL_SPEED = 120f;
+    private static final float VASE_SEED_CARD_WIDTH = 108f;
+    private static final float VASE_SEED_CARD_HEIGHT = 64f;
+    private static final float VASE_SEED_CARD_GAP = 4f;
+    private static final float VASE_SEED_CARD_INSET = 4f;
+    private static final float VASE_SEED_HEADER_HEIGHT = 30f;
+    private static final float I_ZOMBIE_CARD_WIDTH = 108f;
+    private static final float I_ZOMBIE_CARD_HEIGHT = 98f;
+    private static final float I_ZOMBIE_CARD_GAP = 5f;
+    private static final float I_ZOMBIE_HEADER_HEIGHT = 30f;
     private static final float PAUSE_BUTTON_X = 44f;
     private static final float PAUSE_BUTTON_Y = 650f;
     private static final float PAUSE_BUTTON_SIZE = 58f;
@@ -215,6 +248,7 @@ public final class GameScreen extends AbstractScreen {
 
     private BoardGridActor gridActor;
     private DeadlineLineActor deadlineLineActor;
+    private DeadlineLineActor wallnutBowlingLineActor;
 
     // These fields are only populated for the Phase-2 empty level preview.
     // No Game object is created or advanced yet.
@@ -292,11 +326,26 @@ public final class GameScreen extends AbstractScreen {
             new IdentityHashMap<>();
     private final Map<Grave, Integer> graveHitPoints =
             new IdentityHashMap<>();
+    private final Map<Vase, Image> vaseActors = new IdentityHashMap<>();
+
+    private Group vaseSeedTray;
+    private final Map<VaseSeedPacket, VaseSeedPacketActor> vaseSeedPacketActors =
+            new IdentityHashMap<>();
+    private VaseSeedPacket selectedVaseSeedPacket;
+
+    private Table iZombieTray;
+    private IZombieCard selectedIZombieCard;
+    private Group iZombieBoardOverlay;
+    private final List<Actor> iZombieBrainActors = new ArrayList<>();
 
     private Group zombieLayer;
     private final Map<Zombie, ZombiePamActor> zombieActors =
             new IdentityHashMap<>();
     private final Map<Zombie, Integer> zombieDurability =
+            new IdentityHashMap<>();
+
+    private Group bowlingWallnutLayer;
+    private final Map<BowlingWallnut, BowlingWallnutActor> bowlingWallnutActors =
             new IdentityHashMap<>();
 
     private Group projectileLayer;
@@ -319,6 +368,8 @@ public final class GameScreen extends AbstractScreen {
         Chapter chapter = chapterForCurrentGame();
         if (chapter != null && menu.getLevel() != null) {
             installPreviewLevelTitle(chapter, menu.getLevel());
+        } else if (menu.isMinigame()) {
+            installMinigameTitle(menu);
         }
         installChapterBoard(chapter);
         installGameHud();
@@ -336,9 +387,13 @@ public final class GameScreen extends AbstractScreen {
         addBackgroundOverlay(new LawnMowerRenderer(
                 navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
+        installIZombieBoardOverlay();
+        installVaseBreakerSeedTray();
         installConveyorBelt();
+        installIZombieTray();
         installShovelButton();
         installZombieRendering();
+        installBowlingWallnutRendering();
         installProjectileRendering();
         installSunRendering();
         installCollectibleDropRendering();
@@ -348,6 +403,13 @@ public final class GameScreen extends AbstractScreen {
             gamePaused = true;
             stage.addActor(new LevelObjectivesOverlay(
                     skin, menu.getLevel(), VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
+                    () -> gamePaused = false));
+        } else if (menu.isMinigame()) {
+            gamePaused = true;
+            stage.addActor(new LevelObjectivesOverlay(
+                    skin, menu.getMinigameDisplayName() + " Objectives",
+                    buildMinigameObjectives(menu),
+                    VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
                     () -> gamePaused = false));
         }
     }
@@ -700,11 +762,17 @@ public final class GameScreen extends AbstractScreen {
         panel.add(hint).growX().height(44f).padBottom(24f).row();
 
         Table actions = new Table();
+        GameMenu activeMenu = previewLevel == null ? currentGameMenu() : null;
+        boolean minigame = activeMenu != null && activeMenu.isMinigame();
         TextButton saveAndExit = new TextButton(
-                "SAVE AND EXIT", skin, "brown");
+                minigame ? "EXIT" : "SAVE AND EXIT", skin, "brown");
         saveAndExit.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
+                if (minigame) {
+                    navigator.exitMinigameToTravelLog();
+                    return;
+                }
                 try {
                     saveCurrentGameAndExit();
                 } catch (RuntimeException exception) {
@@ -743,6 +811,10 @@ public final class GameScreen extends AbstractScreen {
             throw new IllegalStateException("level has not started yet");
         }
         GameMenu menu = currentGameMenu();
+        if (menu.isMinigame()) {
+            navigator.exitMinigameToTravelLog();
+            return;
+        }
         User user = currentUser();
         SavedGameManager.saveAdventureGame(user, menu);
         gamePaused = false;
@@ -772,6 +844,15 @@ public final class GameScreen extends AbstractScreen {
         }
 
         GameMenu menu = currentGameMenu();
+        if (menu != null && menu.isMinigame()) {
+            CommandResult result = navigator.startMinigameFromTravelLog(
+                    menu.getMinigameId(), menu.getMinigameLevel());
+            if (result.isSuccsesful()) {
+                return;
+            }
+            closePauseModal();
+            return;
+        }
         User user = currentUser();
         Chapter chapter = menu == null || menu.getChapterId() == null
                 ? null
@@ -793,6 +874,16 @@ public final class GameScreen extends AbstractScreen {
     private void installGameAnnouncementSystem() {
         Game game = activeGame();
         if (game == null || gameAnnouncementLabel != null) {
+            return;
+        }
+
+        GameMenu menu = currentGameMenu();
+        // Vase Breaker and I, Zombie do not advance through normal zombie
+        // waves.  Do not hold their simulation behind a bogus "ZOMBIES ARE
+        // COMING" announcement.  Wall-nut Bowling does have waves and keeps
+        // the standard announcement flow.
+        if (menu != null && menu.isMinigame()
+                && !(game instanceof WallnutBowling)) {
             return;
         }
 
@@ -915,15 +1006,69 @@ public final class GameScreen extends AbstractScreen {
         stage.addActor(levelTitle);
     }
 
+    private void installMinigameTitle(GameMenu menu) {
+        Label title = new Label(
+                menu.getMinigameDisplayName() + " - Level "
+                        + menu.getMinigameLevel(),
+                skin, "big_outline");
+        title.setFontScale(0.72f);
+        title.setAlignment(Align.right);
+        title.setBounds(382f, 646f, 334f, 48f);
+        stage.addActor(title);
+    }
+
+    private List<String> buildMinigameObjectives(GameMenu menu) {
+        List<String> objectives = new ArrayList<>();
+        Game game = menu.getGame();
+        if (game instanceof VaseBreaker) {
+            VaseBreaker vaseBreaker = (VaseBreaker) game;
+            objectives.add("Break every vase and defeat every hostile zombie "
+                    + "released from them.");
+            objectives.add("Plant revealed one-use seed packets before their "
+                    + "time limit expires ("
+                    + formatObjectiveSeconds(vaseBreaker.getLevel()
+                            .getSeedPacketLifeSpanSeconds())
+                    + " seconds).");
+        } else if (game instanceof WallnutBowling) {
+            WallnutBowling bowling = (WallnutBowling) game;
+            objectives.add("Defeat all " + bowling.getLevel().getZombieCount()
+                    + " zombies across " + bowling.getLevel().getWaveCount()
+                    + " waves.");
+            objectives.add("Launch Wall-nuts from the conveyor only from "
+                    + "columns 1 through "
+                    + (bowling.getRedLineColumn() + 1) + ".");
+        } else if (game instanceof IZombie) {
+            IZombie iZombie = (IZombie) game;
+            objectives.add("Eat all five brains by placing zombies on the "
+                    + "right side of the red line.");
+            objectives.add("Choose zombies from the card tray. Each card "
+                    + "shows its sun cost and must recharge after use.");
+            objectives.add("Use your starting " + IZombie.INITIAL_SUN
+                    + " sun and the five sun-producer zombies to keep your "
+                    + "attack going.");
+            objectives.add("The red line is after column "
+                    + (iZombie.getRedLineColumn() + 1) + ".");
+        } else {
+            objectives.add("Complete the minigame objective.");
+        }
+        return objectives;
+    }
+
+    private static String formatObjectiveSeconds(float seconds) {
+        if (Math.abs(seconds - Math.round(seconds)) < 0.001f) {
+            return Integer.toString(Math.round(seconds));
+        }
+        return String.format(java.util.Locale.ROOT, "%.1f", seconds);
+    }
+
     private void installChapterBoard(Chapter chapter) {
         BoardLayout layout = layoutForChapter(chapter);
         if (layout == null && isModelBackedGame()) {
-            Game game = activeGame();
-            if (game != null && game.hasConveyorBelt()) {
-                // Minigames such as Wall-nut Bowling may use a conveyor
-                // without adventure chapter metadata. Phase 2 allows an
-                // arbitrary minigame background, so use the Egypt lawn to
-                // keep the 5x9 board interactive in those games too.
+            GameMenu menu = currentGameMenu();
+            if (menu != null && menu.isMinigame()) {
+                // Minigames have no adventure chapter metadata. Phase 2
+                // allows an arbitrary minigame background, so use the Egypt
+                // lawn to keep their 5x9 board visible and interactive.
                 layout = EGYPT_BOARD;
             }
         }
@@ -945,6 +1090,16 @@ public final class GameScreen extends AbstractScreen {
             // always drawn on top of the ordinary red grid lines. Later
             // board entities (plants/zombies) still render over it.
             addBackgroundOverlay(deadlineLineActor);
+        }
+        if (game instanceof WallnutBowling) {
+            wallnutBowlingLineActor = new DeadlineLineActor(
+                    layout,
+                    ((WallnutBowling) game).getRedLineColumn() + 0.5);
+            // Wall-nut Bowling's red line sits after the last launchable
+            // column. DeadlineLineActor draws at the center of the supplied
+            // logical position, so shift by half a cell to place the line on
+            // the right edge of the permitted launch zone.
+            addBackgroundOverlay(wallnutBowlingLineActor);
         }
     }
 
@@ -1161,6 +1316,96 @@ public final class GameScreen extends AbstractScreen {
         return -1;
     }
 
+    private void installVaseBreakerSeedTray() {
+        Game game = activeGame();
+        if (!(game instanceof VaseBreaker) || vaseSeedTray != null
+                || plantingOverlayPixel == null) {
+            return;
+        }
+
+        vaseSeedTray = new Group();
+        vaseSeedTray.setBounds(SEED_TRAY_X, SEED_TRAY_Y,
+                SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+
+        Actor track = new Actor() {
+            @Override
+            public void draw(Batch batch, float parentAlpha) {
+                Color previous = new Color(batch.getColor());
+                batch.setColor(0f, 0f, 0f, 0.46f * parentAlpha);
+                batch.draw(plantingOverlayPixel,
+                        getX(), getY(), getWidth(), getHeight());
+                batch.setColor(previous);
+            }
+        };
+        track.setBounds(0f, 0f, SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+        track.setTouchable(Touchable.disabled);
+        vaseSeedTray.addActor(track);
+
+        Label header = new Label("VASE PLANTS", skin, "medium_outline");
+        header.setFontScale(0.55f);
+        header.setAlignment(Align.center);
+        header.setBounds(2f, SEED_TRAY_HEIGHT - VASE_SEED_HEADER_HEIGHT,
+                SEED_TRAY_WIDTH - 4f, VASE_SEED_HEADER_HEIGHT);
+        header.setTouchable(Touchable.disabled);
+        vaseSeedTray.addActor(header);
+
+        stage.addActor(vaseSeedTray);
+        refreshVaseBreakerSeedTray();
+    }
+
+    private void refreshVaseBreakerSeedTray() {
+        Game game = activeGame();
+        if (vaseSeedTray == null || !(game instanceof VaseBreaker)) {
+            return;
+        }
+
+        List<VaseSeedPacket> packets =
+                ((VaseBreaker) game).getAvailableSeedPackets();
+        Iterator<Map.Entry<VaseSeedPacket, VaseSeedPacketActor>> iterator =
+                vaseSeedPacketActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<VaseSeedPacket, VaseSeedPacketActor> entry =
+                    iterator.next();
+            if (!packets.contains(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+
+        if (selectedVaseSeedPacket != null
+                && !packets.contains(selectedVaseSeedPacket)) {
+            selectedVaseSeedPacket = null;
+            rebuildCursorPlantActor();
+        }
+
+        float top = SEED_TRAY_HEIGHT - VASE_SEED_HEADER_HEIGHT
+                - VASE_SEED_CARD_HEIGHT - VASE_SEED_CARD_INSET;
+        for (int index = 0; index < packets.size(); index++) {
+            VaseSeedPacket packet = packets.get(index);
+            VaseSeedPacketActor actor = vaseSeedPacketActors.get(packet);
+            if (actor == null) {
+                actor = new VaseSeedPacketActor(packet);
+                vaseSeedPacketActors.put(packet, actor);
+                vaseSeedTray.addActor(actor);
+            }
+            float y = Math.max(VASE_SEED_CARD_INSET,
+                    top - index
+                            * (VASE_SEED_CARD_HEIGHT + VASE_SEED_CARD_GAP));
+            actor.setBounds(VASE_SEED_CARD_INSET, y,
+                    VASE_SEED_CARD_WIDTH, VASE_SEED_CARD_HEIGHT);
+            actor.setSelected(packet == selectedVaseSeedPacket);
+            actor.refreshTimer();
+        }
+    }
+
+    private void refreshVaseSeedSelectionOutlines() {
+        for (Map.Entry<VaseSeedPacket, VaseSeedPacketActor> entry
+                : vaseSeedPacketActors.entrySet()) {
+            entry.getValue().setSelected(
+                    entry.getKey() == selectedVaseSeedPacket);
+        }
+    }
+
     private void installCooldownResetButton() {
         if (!isModelBackedGame() || resetCooldownsButton != null) {
             return;
@@ -1348,7 +1593,15 @@ public final class GameScreen extends AbstractScreen {
             return layout;
         }
         Game game = activeGame();
-        return game != null && game.hasConveyorBelt()
+        if (game == null) {
+            return null;
+        }
+        GameMenu menu = currentGameMenu();
+        // installChapterBoard() uses the Egypt lawn for every minigame that
+        // has no adventure chapter. Coordinate conversion must use the same
+        // fallback, otherwise minigame entities can exist in the model but
+        // cannot be positioned, hovered, or clicked on the graphical board.
+        return menu != null && menu.isMinigame()
                 ? EGYPT_BOARD : null;
     }
 
@@ -1483,8 +1736,8 @@ public final class GameScreen extends AbstractScreen {
                         event.stop();
                         return true;
                     }
-                    if (hasPlantPlacementSelection()) {
-                        clearSelectedPlantForPlacement();
+                    if (hasBoardPlacementSelection()) {
+                        clearBoardPlacementSelection();
                         event.stop();
                         return true;
                     }
@@ -1505,12 +1758,20 @@ public final class GameScreen extends AbstractScreen {
                     event.stop();
                     return true;
                 }
+                if (tryBreakVaseAt(boardPosition)) {
+                    event.stop();
+                    return true;
+                }
                 if (!canInteractWithBoard()
-                        || !hasPlantPlacementSelection()) {
+                        || !hasBoardPlacementSelection()) {
                     return false;
                 }
 
-                plantSelectedPlantAt(boardPosition);
+                if (selectedIZombieCard != null) {
+                    placeSelectedIZombieAt(boardPosition);
+                } else {
+                    plantSelectedPlantAt(boardPosition);
+                }
                 event.stop();
                 return true;
             }
@@ -1534,7 +1795,9 @@ public final class GameScreen extends AbstractScreen {
                 && !gamePaused
                 && pauseModal == null
                 && plantSelectionModal == null
-                && (game.allowsDirectPlanting() || game.hasConveyorBelt());
+                && (game.allowsDirectPlanting() || game.hasConveyorBelt()
+                        || game instanceof VaseBreaker
+                        || game instanceof IZombie);
     }
 
     private BasePlant loadoutPrototypeFor(String plantName) {
@@ -1580,9 +1843,12 @@ public final class GameScreen extends AbstractScreen {
         selectedPlantForPlacement = plant;
         selectedConveyorPacketSequence = null;
         selectedConveyorPlantName = null;
+        selectedVaseSeedPacket = null;
+        selectedIZombieCard = null;
         rebuildCursorPlantActor();
         rebuildSeedTray();
         refreshConveyorBelt();
+        refreshVaseSeedSelectionOutlines();
     }
 
     private void selectConveyorPacket(ConveyorPlantPacket packet) {
@@ -1595,17 +1861,47 @@ public final class GameScreen extends AbstractScreen {
         selectedPlantForPlacement = null;
         selectedConveyorPacketSequence = packet.getSequenceNumber();
         selectedConveyorPlantName = packet.getPlantType();
+        selectedVaseSeedPacket = null;
+        selectedIZombieCard = null;
         rebuildCursorPlantActor();
         rebuildSeedTray();
         refreshConveyorBelt();
+        refreshVaseSeedSelectionOutlines();
+    }
+
+    private void selectVaseSeedPacket(VaseSeedPacket packet) {
+        if (packet == null || packet.isRemoved()
+                || !canInteractWithBoard()) {
+            return;
+        }
+        if (shovelMode) {
+            setShovelMode(false);
+        }
+        selectedPlantForPlacement = null;
+        selectedConveyorPacketSequence = null;
+        selectedConveyorPlantName = null;
+        selectedVaseSeedPacket = packet;
+        selectedIZombieCard = null;
+        rebuildCursorPlantActor();
+        rebuildSeedTray();
+        refreshConveyorBelt();
+        refreshVaseSeedSelectionOutlines();
     }
 
     private boolean hasPlantPlacementSelection() {
         return selectedPlantForPlacement != null
-                || selectedConveyorPacketSequence != null;
+                || selectedConveyorPacketSequence != null
+                || selectedVaseSeedPacket != null;
+    }
+
+    private boolean hasBoardPlacementSelection() {
+        return hasPlantPlacementSelection() || selectedIZombieCard != null;
     }
 
     private String selectedPlacementPlantName() {
+        if (selectedVaseSeedPacket != null) {
+            return selectedVaseSeedPacket.getPlantType();
+        }
         if (selectedConveyorPacketSequence != null) {
             return selectedConveyorPlantName;
         }
@@ -1617,6 +1913,8 @@ public final class GameScreen extends AbstractScreen {
         selectedPlantForPlacement = null;
         selectedConveyorPacketSequence = null;
         selectedConveyorPlantName = null;
+        selectedVaseSeedPacket = null;
+        selectedIZombieCard = null;
         if (cursorPlantActor != null) {
             cursorPlantActor.remove();
             cursorPlantActor = null;
@@ -1626,6 +1924,206 @@ public final class GameScreen extends AbstractScreen {
         }
         rebuildSeedTray();
         refreshConveyorBelt();
+        refreshVaseSeedSelectionOutlines();
+    }
+
+    private void clearBoardPlacementSelection() {
+        clearSelectedPlantForPlacement();
+        rebuildIZombieTray();
+    }
+
+    private void selectIZombieCard(IZombieCard card) {
+        if (card == null || !(activeGame() instanceof IZombie)
+                || !canInteractWithBoard()) {
+            return;
+        }
+        IZombie iZombie = (IZombie) activeGame();
+        double remaining = iZombie.getCardCooldownRemainingSeconds(card);
+        if (remaining > 0.001) {
+            showGameNotice(card.getType().getAlias()
+                    + " is recharging ("
+                    + String.format(java.util.Locale.ROOT, "%.1fs", remaining)
+                    + ")!", Color.RED);
+            return;
+        }
+        if (iZombie.getSunCount() < card.getCost()) {
+            showGameNotice("Not enough sun for "
+                    + card.getType().getAlias() + "!", Color.RED);
+            return;
+        }
+        if (shovelMode) {
+            setShovelMode(false);
+        }
+        selectedPlantForPlacement = null;
+        selectedConveyorPacketSequence = null;
+        selectedConveyorPlantName = null;
+        selectedVaseSeedPacket = null;
+        selectedIZombieCard = card;
+        rebuildCursorPlantActor();
+        rebuildIZombieTray();
+    }
+
+    private void placeSelectedIZombieAt(EntityPosition position) {
+        Game game = activeGame();
+        IZombieCard card = selectedIZombieCard;
+        if (!(game instanceof IZombie) || card == null || position == null) {
+            return;
+        }
+        IZombiePlacementResult result = ((IZombie) game).placeZombie(
+                card.getType().name(), position);
+        switch (result) {
+            case SUCCESS:
+                selectedIZombieCard = null;
+                rebuildIZombieTray();
+                refreshSunHud();
+                refreshZombieRendering();
+                break;
+            case NOT_ENOUGH_SUN:
+                showGameNotice("Not enough sun for that zombie!", Color.RED);
+                break;
+            case RECHARGING:
+                showGameNotice("That zombie card is still recharging!",
+                        Color.RED);
+                break;
+            case LEFT_OF_RED_LINE:
+                showGameNotice("Place zombies on the right side of the red line!",
+                        Color.RED);
+                break;
+            case POSITION_OCCUPIED:
+                showGameNotice("That tile already has a zombie!", Color.RED);
+                break;
+            case GAME_NOT_ACTIVE:
+            case UNKNOWN_ZOMBIE:
+            case BOSS_NOT_ALLOWED:
+            case INVALID_POSITION:
+            default:
+                break;
+        }
+    }
+
+    private void installIZombieTray() {
+        if (!(activeGame() instanceof IZombie) || iZombieTray != null) {
+            return;
+        }
+        iZombieTray = new Table();
+        iZombieTray.top();
+        iZombieTray.setBounds(SEED_TRAY_X, SEED_TRAY_Y,
+                SEED_TRAY_WIDTH, SEED_TRAY_HEIGHT);
+        stage.addActor(iZombieTray);
+        rebuildIZombieTray();
+    }
+
+    private void installIZombieBoardOverlay() {
+        if (!(activeGame() instanceof IZombie)
+                || iZombieBoardOverlay != null
+                || plantingOverlayPixel == null) {
+            return;
+        }
+
+        iZombieBoardOverlay = new Group();
+        iZombieBoardOverlay.setTouchable(Touchable.disabled);
+
+        Actor redLine = new Actor() {
+            @Override
+            public void draw(Batch batch, float parentAlpha) {
+                Color previous = new Color(batch.getColor());
+                batch.setColor(1f, 0.05f, 0.05f,
+                        0.82f * parentAlpha);
+                batch.draw(plantingOverlayPixel,
+                        getX(), getY(), getWidth(), getHeight());
+                batch.setColor(previous);
+            }
+        };
+        redLine.setName("i-zombie-red-line");
+        redLine.setTouchable(Touchable.disabled);
+        iZombieBoardOverlay.addActor(redLine);
+
+        for (int row = 0; row < BOARD_ROWS; row++) {
+            Actor brain;
+            try {
+                brain = new PamAnimationActor(
+                        navigator.getPamPlayer(), I_ZOMBIE_BRAIN_PAM,
+                        "animation");
+            } catch (RuntimeException exception) {
+                Image fallback = createAssetImage(
+                        I_ZOMBIE_BRAIN_FALLBACK_ASSET);
+                fallback.setScaling(Scaling.fit);
+                brain = fallback;
+            }
+            brain.setTouchable(Touchable.disabled);
+            iZombieBrainActors.add(brain);
+            iZombieBoardOverlay.addActor(brain);
+        }
+
+        addBackgroundOverlay(iZombieBoardOverlay);
+        refreshIZombieBoardOverlay();
+    }
+
+    private void refreshIZombieBoardOverlay() {
+        if (iZombieBoardOverlay == null
+                || !(activeGame() instanceof IZombie)) {
+            return;
+        }
+        IZombie game = (IZombie) activeGame();
+
+        CellBounds topLeft = screenBoundsForCell(
+                new EntityPosition(0, 0));
+        CellBounds bottomLeft = screenBoundsForCell(
+                new EntityPosition(BOARD_ROWS - 1, 0));
+        CellBounds redLineCell = screenBoundsForCell(
+                new EntityPosition(0, game.getRedLineColumn()));
+        if (topLeft == null || bottomLeft == null || redLineCell == null) {
+            iZombieBoardOverlay.setVisible(false);
+            return;
+        }
+        iZombieBoardOverlay.setVisible(true);
+        iZombieBoardOverlay.setBounds(0f, 0f, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+
+        Actor redLine = iZombieBoardOverlay.findActor("i-zombie-red-line");
+        if (redLine != null) {
+            float bottom = bottomLeft.y;
+            float top = topLeft.y + topLeft.height;
+            redLine.setBounds(
+                    redLineCell.x + redLineCell.width - 3.5f,
+                    bottom, 7f, top - bottom);
+        }
+
+        for (int row = 0; row < iZombieBrainActors.size(); row++) {
+            Actor brain = iZombieBrainActors.get(row);
+            CellBounds rowCell = screenBoundsForCell(
+                    new EntityPosition(row, 0));
+            if (rowCell == null) {
+                brain.setVisible(false);
+                continue;
+            }
+            float size = Math.min(rowCell.width, rowCell.height) * 0.72f;
+            brain.setBounds(
+                    rowCell.x - size * 0.88f,
+                    rowCell.y + (rowCell.height - size) * 0.5f,
+                    size, size);
+            brain.setVisible(game.isBrainAvailable(row));
+        }
+    }
+
+    private void rebuildIZombieTray() {
+        if (iZombieTray == null || !(activeGame() instanceof IZombie)) {
+            return;
+        }
+        IZombie game = (IZombie) activeGame();
+        iZombieTray.clearChildren();
+
+        Label heading = new Label("ZOMBIES", skin, "medium_outline");
+        heading.setFontScale(0.62f);
+        heading.setAlignment(Align.center);
+        iZombieTray.add(heading).width(SEED_TRAY_WIDTH)
+                .height(I_ZOMBIE_HEADER_HEIGHT).row();
+
+        for (IZombieCard card : game.getLevel().getZombieCards()) {
+            iZombieTray.add(new IZombieCardActor(card))
+                    .width(I_ZOMBIE_CARD_WIDTH)
+                    .height(I_ZOMBIE_CARD_HEIGHT)
+                    .padBottom(I_ZOMBIE_CARD_GAP).row();
+        }
     }
 
     private boolean isPlantCoolingDown(BasePlant prototype) {
@@ -1652,6 +2150,10 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
 
+        if (selectedVaseSeedPacket != null) {
+            plantSelectedVaseSeedAt(position);
+            return;
+        }
         if (selectedConveyorPacketSequence != null) {
             plantSelectedConveyorPacketAt(position);
             return;
@@ -1670,6 +2172,84 @@ public final class GameScreen extends AbstractScreen {
         clearSelectedPlantForPlacement();
         refreshSunHud();
         rebuildPlantedPlantLayer();
+    }
+
+    private boolean tryBreakVaseAt(EntityPosition position) {
+        Game game = activeGame();
+        if (!(game instanceof VaseBreaker) || position == null
+                || gamePaused || pauseModal != null
+                || plantSelectionModal != null) {
+            return false;
+        }
+        BaseStructure structure = game.getBoard().getStructureAt(position);
+        if (!(structure instanceof Vase) || structure.isRemoved()) {
+            return false;
+        }
+
+        VaseBreakResult result = ((VaseBreaker) game).breakVase(position);
+        switch (result) {
+            case SUCCESS_EMPTY:
+                showGameNotice("The vase was empty.", Color.WHITE);
+                break;
+            case SUCCESS_SEED_PACKET:
+                showGameNotice("A plant seed packet was revealed!",
+                        Color.WHITE);
+                break;
+            case SUCCESS_ZOMBIE:
+                showGameNotice("A zombie was released!", Color.WHITE);
+                break;
+            case GAME_NOT_ACTIVE:
+            case INVALID_POSITION:
+            case NO_VASE:
+            default:
+                break;
+        }
+        refreshStructureRendering();
+        refreshVaseBreakerSeedTray();
+        refreshZombieRendering();
+        return true;
+    }
+
+    private void plantSelectedVaseSeedAt(EntityPosition position) {
+        Game game = activeGame();
+        VaseSeedPacket packet = selectedVaseSeedPacket;
+        if (!(game instanceof VaseBreaker) || packet == null) {
+            return;
+        }
+
+        VaseSeedPlantingResult result = ((VaseBreaker) game).plantFromSeed(
+                packet.getEntityPosition(), position);
+        switch (result) {
+            case SUCCESS:
+                clearSelectedPlantForPlacement();
+                refreshVaseBreakerSeedTray();
+                rebuildPlantedPlantLayer();
+                break;
+            case DESTINATION_BLOCKED:
+                showGameNotice("That tile is blocked or occupied!",
+                        Color.RED);
+                break;
+            case INVALID_DESTINATION:
+                showGameNotice("Choose a tile on the lawn!", Color.RED);
+                break;
+            case NO_SEED_PACKET:
+            case INVALID_SOURCE:
+                clearSelectedPlantForPlacement();
+                refreshVaseBreakerSeedTray();
+                showGameNotice(
+                        "That vase seed packet is no longer available!",
+                        Color.RED);
+                break;
+            case UNKNOWN_PLANT:
+                showGameNotice("Unknown plant in vase seed packet!",
+                        Color.RED);
+                break;
+            case GAME_NOT_ACTIVE:
+                clearSelectedPlantForPlacement();
+                break;
+            default:
+                break;
+        }
     }
 
     private void plantSelectedConveyorPacketAt(EntityPosition position) {
@@ -1799,7 +2379,7 @@ public final class GameScreen extends AbstractScreen {
             return;
         }
 
-        boolean planting = hasPlantPlacementSelection()
+        boolean planting = hasBoardPlacementSelection()
                 && canInteractWithBoard();
         boolean shoveling = shovelMode && canUseShovel();
         if (!planting && !shoveling) {
@@ -1810,6 +2390,13 @@ public final class GameScreen extends AbstractScreen {
         EntityPosition position = boardPositionAtScreen(
                 Gdx.input.getX(), Gdx.input.getY());
         if (position == null) {
+            hoveredBoardCell.setVisible(false);
+            return;
+        }
+        if (selectedIZombieCard != null
+                && activeGame() instanceof IZombie
+                && position.getColumn()
+                        <= ((IZombie) activeGame()).getRedLineColumn()) {
             hoveredBoardCell.setVisible(false);
             return;
         }
@@ -1837,6 +2424,17 @@ public final class GameScreen extends AbstractScreen {
             cursorPlantActor.remove();
             cursorPlantActor = null;
         }
+        if (selectedIZombieCard != null) {
+            cursorPlantActor = createIZombiePreviewActor(selectedIZombieCard);
+            if (cursorPlantActor == null) {
+                return;
+            }
+            cursorPlantActor.setTouchable(Touchable.disabled);
+            cursorPlantActor.setColor(1f, 1f, 1f, 0.86f);
+            addBackgroundOverlay(cursorPlantActor);
+            refreshCursorPlantPosition();
+            return;
+        }
         String plantName = selectedPlacementPlantName();
         if (plantName == null) {
             return;
@@ -1857,7 +2455,7 @@ public final class GameScreen extends AbstractScreen {
         if (cursorPlantActor == null) {
             return;
         }
-        if (!canInteractWithBoard() || !hasPlantPlacementSelection()) {
+        if (!canInteractWithBoard() || !hasBoardPlacementSelection()) {
             cursorPlantActor.setVisible(false);
             return;
         }
@@ -1872,10 +2470,34 @@ public final class GameScreen extends AbstractScreen {
         float cellHeight = Gdx.graphics.getHeight()
                 * (layout.bottom - layout.top) / layout.sourceHeight
                 / BOARD_ROWS;
-        float width = cellWidth * 0.92f;
-        float height = cellHeight * 1.18f;
         float mouseX = Gdx.input.getX();
         float mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
+        if (selectedIZombieCard != null) {
+            float width = cellWidth * 1.04f;
+            float height = cellHeight * 1.56f;
+            cursorPlantActor.setBounds(
+                    mouseX - width * 0.5f,
+                    mouseY - height * 0.22f,
+                    width, height);
+            cursorPlantActor.setVisible(true);
+            return;
+        }
+        if (activeGame() instanceof WallnutBowling
+                && selectedConveyorPacketSequence != null) {
+            // Bowling packets used to fall through to their seed-packet
+            // artwork and were then stretched to almost a whole board cell,
+            // producing the oversized pickup image. Use a compact square
+            // preview matching the rolling Wall-nut actor instead.
+            float size = Math.min(cellWidth, cellHeight) * 0.82f;
+            cursorPlantActor.setBounds(
+                    mouseX - size * 0.5f,
+                    mouseY - size * 0.5f,
+                    size, size);
+            cursorPlantActor.setVisible(true);
+            return;
+        }
+        float width = cellWidth * 0.92f;
+        float height = cellHeight * 1.18f;
         cursorPlantActor.setBounds(
                 mouseX - width * 0.5f,
                 mouseY - height * 0.42f,
@@ -1883,7 +2505,37 @@ public final class GameScreen extends AbstractScreen {
         cursorPlantActor.setVisible(true);
     }
 
+    private Actor createIZombiePreviewActor(IZombieCard card) {
+        ZombieVisualCatalog.Visual visual = card == null
+                ? null : ZombieVisualCatalog.find(card.getType());
+        if (visual == null) {
+            return null;
+        }
+        try {
+            return new PamAnimationActor(
+                    navigator.getPamPlayer(), visual.getPamPath(),
+                    visual.getIdleClip());
+        } catch (RuntimeException exception) {
+            Image fallback = createAssetImage(visual.getPacketAsset());
+            fallback.setScaling(Scaling.fit);
+            return fallback;
+        }
+    }
+
     private Actor createPlantIdleActor(String plantName) {
+        if (activeGame() instanceof WallnutBowling) {
+            BowlingWallnutType bowlingType = BowlingWallnutType.find(
+                    plantName);
+            if (bowlingType != null) {
+                try {
+                    return new PamAnimationActor(
+                            navigator.getPamPlayer(),
+                            bowlingWallnutPamPath(bowlingType), "idle");
+                } catch (RuntimeException ignored) {
+                    // Fall through to the normal plant/packet lookup.
+                }
+            }
+        }
         PlantAnimationCatalog.Preview preview =
                 PlantAnimationCatalog.find(plantName);
         if (preview != null) {
@@ -1899,6 +2551,16 @@ public final class GameScreen extends AbstractScreen {
                 packetArtworkAssetFor(plantName)));
         fallback.setScaling(Scaling.fit);
         return fallback;
+    }
+
+    private static String bowlingWallnutPamPath(BowlingWallnutType type) {
+        if (type == BowlingWallnutType.EXPLOSIVE) {
+            return "768/INITIAL/PLANT/EXPLODEONUT/EXPLODEONUT.PAM";
+        }
+        if (type == BowlingWallnutType.LARGE) {
+            return "768/FULL/PLANT/PRIMAL_WALLNUT/PRIMAL_WALLNUT.PAM";
+        }
+        return "768/INITIAL/PLANT/WALLNUT/WALLNUT.PAM";
     }
 
     private void rebuildPlantedPlantLayer() {
@@ -2217,6 +2879,59 @@ public final class GameScreen extends AbstractScreen {
                 iterator.remove();
             }
         }
+
+        IdentityHashMap<Vase, Boolean> presentVases = new IdentityHashMap<>();
+        for (BaseStructure structure : game.getBoard().getStructures()) {
+            if (!(structure instanceof Vase) || structure.isRemoved()) {
+                continue;
+            }
+            Vase vase = (Vase) structure;
+            presentVases.put(vase, Boolean.TRUE);
+            Image actor = vaseActors.get(vase);
+            if (actor == null) {
+                actor = createAssetImage(vaseAsset(vase.getType()));
+                actor.setScaling(Scaling.fit);
+                actor.setTouchable(Touchable.disabled);
+                vaseActors.put(vase, actor);
+                structureLayer.addActor(actor);
+            }
+            positionVaseActor(actor, vase);
+        }
+
+        Iterator<Map.Entry<Vase, Image>> vaseIterator =
+                vaseActors.entrySet().iterator();
+        while (vaseIterator.hasNext()) {
+            Map.Entry<Vase, Image> entry = vaseIterator.next();
+            if (!presentVases.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                vaseIterator.remove();
+            }
+        }
+    }
+
+    private static String vaseAsset(VaseType type) {
+        if (type == VaseType.PLANT) {
+            return VASE_GREEN_ASSET;
+        }
+        if (type == VaseType.GIANT) {
+            return VASE_GARGANTUAR_ASSET;
+        }
+        return VASE_BROWN_ASSET;
+    }
+
+    private void positionVaseActor(Actor actor, Vase vase) {
+        CellBounds cell = screenBoundsForCell(vase.getPosition());
+        if (cell == null) {
+            actor.setVisible(false);
+            return;
+        }
+        float height = cell.height * 0.96f;
+        float width = height * 115f / 150f;
+        actor.setBounds(
+                cell.x + (cell.width - width) * 0.5f,
+                cell.y + cell.height * 0.02f,
+                width, height);
+        actor.setVisible(true);
     }
 
     private String gravePamPath(Grave grave) {
@@ -2418,6 +3133,95 @@ public final class GameScreen extends AbstractScreen {
         actor.setBounds(centerX - width * 0.5f,
                 footLine, width, height);
         actor.setVisible(true);
+    }
+
+    private void installBowlingWallnutRendering() {
+        if (!(activeGame() instanceof WallnutBowling)
+                || bowlingWallnutLayer != null) {
+            return;
+        }
+        bowlingWallnutLayer = new Group();
+        bowlingWallnutLayer.setTouchable(Touchable.disabled);
+        // Keep rolling Wall-nuts above zombies so an impact is always visible.
+        addBackgroundOverlay(bowlingWallnutLayer);
+        refreshBowlingWallnutRendering();
+    }
+
+    private void refreshBowlingWallnutRendering() {
+        if (!(activeGame() instanceof WallnutBowling)
+                || bowlingWallnutLayer == null) {
+            return;
+        }
+
+        WallnutBowling bowling = (WallnutBowling) activeGame();
+        List<BowlingWallnut> current = bowling.getRollingWallnuts();
+        IdentityHashMap<BowlingWallnut, Boolean> present =
+                new IdentityHashMap<>();
+        for (BowlingWallnut wallnut : current) {
+            if (wallnut == null || wallnut.isRemoved()) {
+                continue;
+            }
+            present.put(wallnut, Boolean.TRUE);
+            BowlingWallnutActor actor = bowlingWallnutActors.get(wallnut);
+            if (actor == null) {
+                try {
+                    actor = new BowlingWallnutActor(wallnut);
+                } catch (RuntimeException ignored) {
+                    continue;
+                }
+                bowlingWallnutActors.put(wallnut, actor);
+                bowlingWallnutLayer.addActor(actor);
+            }
+            actor.refreshImpact();
+            positionBowlingWallnutActor(actor, wallnut);
+        }
+
+        Iterator<Map.Entry<BowlingWallnut, BowlingWallnutActor>> iterator =
+                bowlingWallnutActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BowlingWallnut, BowlingWallnutActor> entry =
+                    iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                iterator.remove();
+            }
+        }
+    }
+
+    private void positionBowlingWallnutActor(BowlingWallnutActor actor,
+            BowlingWallnut wallnut) {
+        BoardLayout layout = currentBoardLayout();
+        if (actor == null || wallnut == null || layout == null
+                || Gdx.graphics.getWidth() <= 0
+                || Gdx.graphics.getHeight() <= 0) {
+            return;
+        }
+
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom) / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+
+        float centerX = boardX
+                + (float) (wallnut.getColumnPosition() + 0.5) * cellWidth;
+        float centerY = boardY
+                + (float) (BOARD_ROWS - wallnut.getRowPosition() - 0.5)
+                        * cellHeight;
+        float size = Math.min(cellWidth, cellHeight) * 0.82f;
+        actor.setBounds(centerX - size * 0.5f, centerY - size * 0.5f,
+                size, size);
+        actor.setOrigin(size * 0.5f, size * 0.5f);
+        actor.setVisible(centerX > boardX - cellWidth
+                && centerX < boardX + boardWidth + cellWidth
+                && centerY > boardY - cellHeight
+                && centerY < boardY + boardHeight + cellHeight);
     }
 
     private void installProjectileRendering() {
@@ -3455,6 +4259,7 @@ public final class GameScreen extends AbstractScreen {
 
         refreshStructureRendering();
         refreshZombieRendering();
+        refreshBowlingWallnutRendering();
         refreshProjectileRendering();
         refreshSunRendering();
         refreshCollectibleDrops();
@@ -3463,7 +4268,9 @@ public final class GameScreen extends AbstractScreen {
         refreshPlantWhatYouGetWaveButton();
         refreshTimedWarObjectivesHud();
         refreshLoveYourPlantsHud();
+        refreshVaseBreakerSeedTray();
         refreshConveyorBelt();
+        refreshIZombieBoardOverlay();
         refreshBoardHover();
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
@@ -3476,9 +4283,15 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private String buildGameResultDescription(Game game) {
-        if (game == null
-                || game.getStatus()
-                        != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST) {
+        if (game == null) {
+            return null;
+        }
+        GameMenu menu = currentGameMenu();
+        if (menu != null && menu.isMinigame()) {
+            return buildMinigameResultDescription(game);
+        }
+        if (game.getStatus()
+                != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST) {
             return null;
         }
 
@@ -3501,6 +4314,32 @@ public final class GameScreen extends AbstractScreen {
         return "Timed War failed because " + unmet + ".";
     }
 
+    private String buildMinigameResultDescription(Game game) {
+        boolean won = game.getStatus()
+                == io.github.Plants_Vs_Zombies_2.model.game.GameStatus.WON;
+        if (game instanceof VaseBreaker) {
+            return won
+                    ? "All vases are broken and every hostile zombie was defeated."
+                    : "A released zombie reached the house before you cleared the minigame.";
+        }
+        if (game instanceof WallnutBowling) {
+            return won
+                    ? "Every bowling wave was cleared."
+                    : "A zombie reached the house before all bowling waves were cleared.";
+        }
+        if (game instanceof IZombie) {
+            IZombie iZombie = (IZombie) game;
+            return won
+                    ? "All five brains were eaten."
+                    : "I, Zombie ended with " + iZombie.getEatenBrainCount()
+                            + " of 5 brains eaten. All sun producers are gone, "
+                            + "no attacking zombie remains, and the remaining "
+                            + iZombie.getSunCount() + " sun cannot buy another "
+                            + "zombie.";
+        }
+        return won ? "Minigame complete!" : "Minigame failed.";
+    }
+
     private void showFinishedGameMenuIfNeeded() {
         Game game = activeGame();
         if (game == null
@@ -3520,7 +4359,12 @@ public final class GameScreen extends AbstractScreen {
                 this::restartLevel,
                 () -> {
                     gamePaused = false;
-                    navigator.exitGameToAdventure();
+                    GameMenu menu = currentGameMenu();
+                    if (menu != null && menu.isMinigame()) {
+                        navigator.exitMinigameToTravelLog();
+                    } else {
+                        navigator.exitGameToAdventure();
+                    }
                 }));
     }
 
@@ -3531,9 +4375,11 @@ public final class GameScreen extends AbstractScreen {
             rebuildPlantedPlantLayer();
             refreshStructureRendering();
             refreshZombieRendering();
+            refreshBowlingWallnutRendering();
             refreshProjectileRendering();
             refreshSunRendering();
             refreshCollectibleDrops();
+            refreshIZombieBoardOverlay();
             refreshBoardHover();
             refreshCursorPlantPosition();
         }
@@ -3561,6 +4407,10 @@ public final class GameScreen extends AbstractScreen {
             deadlineLineActor.dispose();
             deadlineLineActor = null;
         }
+        if (wallnutBowlingLineActor != null) {
+            wallnutBowlingLineActor.dispose();
+            wallnutBowlingLineActor = null;
+        }
         if (plantingOverlayPixel != null) {
             plantingOverlayPixel.dispose();
             plantingOverlayPixel = null;
@@ -3579,10 +4429,16 @@ public final class GameScreen extends AbstractScreen {
         graveActors.clear();
         graveVisualKeys.clear();
         graveHitPoints.clear();
+        vaseActors.clear();
+        vaseSeedPacketActors.clear();
+        vaseSeedTray = null;
+        selectedVaseSeedPacket = null;
         structureLayer = null;
         zombieActors.clear();
         zombieDurability.clear();
         zombieLayer = null;
+        bowlingWallnutActors.clear();
+        bowlingWallnutLayer = null;
         projectileActors.clear();
         grapeActors.clear();
         projectileLayer = null;
@@ -3593,6 +4449,47 @@ public final class GameScreen extends AbstractScreen {
             shovelCursor = null;
         }
         super.dispose();
+    }
+
+    private final class BowlingWallnutActor extends Stack {
+        private final BowlingWallnut wallnut;
+        private final PamAnimationActor animation;
+        private int lastImpactCount;
+
+        private BowlingWallnutActor(BowlingWallnut wallnut) {
+            if (wallnut == null) {
+                throw new IllegalArgumentException(
+                        "bowling Wall-nut cannot be null");
+            }
+            this.wallnut = wallnut;
+            animation = new PamAnimationActor(
+                    navigator.getPamPlayer(),
+                    bowlingWallnutPamPath(wallnut.getType()), "idle");
+            animation.setTouchable(Touchable.disabled);
+            add(animation);
+            setTouchable(Touchable.disabled);
+            lastImpactCount = wallnut.getImpactCount();
+        }
+
+        @Override
+        public void layout() {
+            animation.setBounds(0f, 0f, getWidth(), getHeight());
+        }
+
+        private void refreshImpact() {
+            int impactCount = wallnut.getImpactCount();
+            if (impactCount <= lastImpactCount) {
+                return;
+            }
+            lastImpactCount = impactCount;
+            clearActions();
+            setScale(1f);
+            addAction(com.badlogic.gdx.scenes.scene2d.actions.Actions.sequence(
+                    com.badlogic.gdx.scenes.scene2d.actions.Actions.scaleTo(
+                            1.14f, 0.88f, 0.08f),
+                    com.badlogic.gdx.scenes.scene2d.actions.Actions.scaleTo(
+                            1f, 1f, 0.12f)));
+        }
     }
 
     private final class ProjectileActor extends Stack {
@@ -3707,6 +4604,226 @@ public final class GameScreen extends AbstractScreen {
         return GAME_SUN_ICON;
     }
 
+    private final class VaseSeedPacketActor extends Stack {
+        private final VaseSeedPacket packet;
+        private final Label timerLabel;
+        private SelectionOutlineActor selectionOutline;
+
+        private VaseSeedPacketActor(VaseSeedPacket packet) {
+            if (packet == null) {
+                throw new IllegalArgumentException(
+                        "vase seed packet cannot be null");
+            }
+            this.packet = packet;
+            setSize(VASE_SEED_CARD_WIDTH, VASE_SEED_CARD_HEIGHT);
+            setTouchable(Touchable.enabled);
+
+            Image background = createAssetImage(
+                    packetAssetForChapter(null));
+            background.setScaling(Scaling.stretch);
+            add(background);
+
+            Table artworkLayer = new Table();
+            Image artwork = createAssetImage(
+                    packetArtworkAssetFor(packet.getPlantType()));
+            artwork.setScaling(Scaling.fit);
+            artworkLayer.add(artwork).width(84f).height(52f);
+            add(artworkLayer);
+
+            Table timerLayer = new Table();
+            timerLayer.bottom().right();
+            timerLabel = new Label("", skin, "medium_outline");
+            timerLabel.setFontScale(0.46f);
+            timerLayer.add(timerLabel).padRight(4f).padBottom(2f);
+            add(timerLayer);
+
+            addListener(new InputListener() {
+                @Override
+                public boolean touchDown(InputEvent event, float x, float y,
+                        int pointer, int button) {
+                    if (button != Input.Buttons.LEFT) {
+                        return false;
+                    }
+                    selectVaseSeedPacket(VaseSeedPacketActor.this.packet);
+                    event.stop();
+                    return true;
+                }
+            });
+            addListener(new TextTooltip(
+                    packet.getPlantType()
+                            + "\nOne-use Vase Breaker plant",
+                    skin));
+            refreshTimer();
+        }
+
+        private void refreshTimer() {
+            int seconds = Math.max(0, (int) Math.ceil(
+                    packet.getRemainingSeconds()));
+            timerLabel.setText(seconds + "s");
+            timerLabel.setColor(seconds <= 3 ? Color.RED : Color.WHITE);
+        }
+
+        private void setSelected(boolean selected) {
+            if (selected && selectionOutline == null) {
+                selectionOutline = new SelectionOutlineActor();
+                selectionOutline.setTouchable(Touchable.disabled);
+                add(selectionOutline);
+            } else if (!selected && selectionOutline != null) {
+                selectionOutline.remove();
+                selectionOutline = null;
+            }
+        }
+    }
+
+    private final class IZombieCardActor extends Stack {
+        private final IZombieCard card;
+        private final Label cooldownLabel;
+        private final Label costLabel;
+        private final IZombieCooldownShadeActor cooldownShade;
+
+        private IZombieCardActor(IZombieCard card) {
+            if (card == null) {
+                throw new IllegalArgumentException(
+                        "I, Zombie card cannot be null");
+            }
+            this.card = card;
+            setSize(I_ZOMBIE_CARD_WIDTH, I_ZOMBIE_CARD_HEIGHT);
+            setTouchable(Touchable.enabled);
+
+            TextButton frame = new TextButton("", skin,
+                    card == selectedIZombieCard ? "purple" : "green");
+            frame.setTouchable(Touchable.disabled);
+            add(frame);
+
+            Table content = new Table();
+            content.top();
+
+            ZombieVisualCatalog.Visual visual =
+                    ZombieVisualCatalog.find(card.getType());
+            Image portrait = createAssetImage(visual == null
+                    ? "IMAGE_UI_ALMANAC_PACKETS_ZOMBIES_GUIDE"
+                    : visual.getPacketAsset());
+            portrait.setScaling(Scaling.fit);
+            content.add(portrait).width(92f).height(60f)
+                    .padTop(2f).row();
+
+            Label name = new Label(
+                    card.getType().name().replace('_', ' '),
+                    skin, "medium_outline");
+            name.setFontScale(0.38f);
+            name.setAlignment(Align.center);
+            content.add(name).width(102f).height(17f).row();
+
+            Table costRow = new Table();
+            Image sun = createAssetImage(GAME_SUN_ICON);
+            sun.setScaling(Scaling.fit);
+            costRow.add(sun).size(17f).padRight(1f);
+            costLabel = new Label(Integer.toString(card.getCost()),
+                    skin, "medium_outline");
+            costLabel.setFontScale(0.42f);
+            costRow.add(costLabel);
+            content.add(costRow).height(18f);
+            add(content);
+
+            cooldownShade = new IZombieCooldownShadeActor();
+            cooldownShade.setTouchable(Touchable.disabled);
+            add(cooldownShade);
+
+            Table cooldownLayer = new Table();
+            cooldownLabel = new Label("", skin, "medium_outline");
+            cooldownLabel.setFontScale(0.48f);
+            cooldownLabel.setAlignment(Align.center);
+            cooldownLayer.add(cooldownLabel).grow();
+            add(cooldownLayer);
+
+            if (card == selectedIZombieCard) {
+                SelectionOutlineActor outline = new SelectionOutlineActor();
+                outline.setTouchable(Touchable.disabled);
+                add(outline);
+            }
+
+            addListener(new InputListener() {
+                @Override
+                public boolean touchDown(InputEvent event, float x, float y,
+                        int pointer, int button) {
+                    if (button != Input.Buttons.LEFT) {
+                        return false;
+                    }
+                    selectIZombieCard(IZombieCardActor.this.card);
+                    event.stop();
+                    return true;
+                }
+            });
+            addListener(new TextTooltip(
+                    card.getType().getAlias() + "\nCost: "
+                            + card.getCost() + " sun\nRecharge: "
+                            + String.format(java.util.Locale.ROOT, "%.1fs",
+                                    card.getRechargeSeconds()),
+                    skin));
+            refreshState();
+        }
+
+        @Override
+        public void act(float delta) {
+            super.act(delta);
+            refreshState();
+        }
+
+        private void refreshState() {
+            if (!(activeGame() instanceof IZombie)) {
+                return;
+            }
+            IZombie game = (IZombie) activeGame();
+            double remaining = game.getCardCooldownRemainingSeconds(card);
+            float fraction = card.getRechargeSeconds() <= 0.0
+                    ? 0f
+                    : Math.max(0f, Math.min(1f,
+                            (float) (remaining / card.getRechargeSeconds())));
+            cooldownShade.setFraction(fraction);
+            if (remaining > 0.001) {
+                cooldownLabel.setText(String.format(
+                        java.util.Locale.ROOT, "%.1fs", remaining));
+                cooldownLabel.setVisible(true);
+            } else {
+                cooldownLabel.setText("");
+                cooldownLabel.setVisible(false);
+            }
+            costLabel.setColor(game.getSunCount() >= card.getCost()
+                    ? Color.WHITE : Color.RED);
+        }
+    }
+
+    private final class IZombieCooldownShadeActor extends Actor {
+        private float fraction;
+
+        private void setFraction(float fraction) {
+            this.fraction = Math.max(0f, Math.min(1f, fraction));
+            setVisible(this.fraction > 0.001f);
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            if (plantingOverlayPixel == null || fraction <= 0f) {
+                return;
+            }
+            Color previous = new Color(batch.getColor());
+            batch.setColor(0f, 0f, 0f, 0.62f * parentAlpha);
+            float shadeHeight = getHeight() * fraction;
+            batch.draw(plantingOverlayPixel,
+                    getX(), getY(), getWidth(), shadeHeight);
+            batch.setColor(previous);
+        }
+    }
+
+
+    private Actor createConveyorPacketArtwork(ConveyorPlantPacket packet) {
+        Image artwork = createAssetImage(
+                packetArtworkAssetFor(packet == null
+                        ? null : packet.getPlantType()));
+        artwork.setScaling(Scaling.fit);
+        return artwork;
+    }
+
     private final class ConveyorPacketActor extends Stack {
         private final ConveyorPlantPacket packet;
         private SelectionOutlineActor selectionOutline;
@@ -3727,9 +4844,8 @@ public final class GameScreen extends AbstractScreen {
             add(background);
 
             Table artworkLayer = new Table();
-            Image artwork = createAssetImage(
-                    packetArtworkAssetFor(packet.getPlantType()));
-            artwork.setScaling(Scaling.fit);
+            Actor artwork = createConveyorPacketArtwork(packet);
+            artwork.setTouchable(Touchable.disabled);
             artworkLayer.add(artwork).width(84f).height(54f);
             add(artworkLayer);
 

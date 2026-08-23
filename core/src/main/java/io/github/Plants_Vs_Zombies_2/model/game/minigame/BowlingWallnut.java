@@ -23,6 +23,7 @@ public final class BowlingWallnut {
     private double columnPosition;
     private int verticalDirection;
     private int turnCount;
+    private int impactCount;
     private boolean removed;
 
     public BowlingWallnut(long id, BowlingWallnutType type,
@@ -121,9 +122,14 @@ public final class BowlingWallnut {
     }
 
     public void recordHit(Zombie zombie) {
-        if (zombie != null) {
-            hitZombies.add(zombie);
+        if (zombie != null && hitZombies.add(zombie)) {
+            impactCount++;
         }
+    }
+
+    /** Number of distinct zombie impacts, used by the graphical hit pulse. */
+    public int getImpactCount() {
+        return impactCount;
     }
 
     public long getId() {

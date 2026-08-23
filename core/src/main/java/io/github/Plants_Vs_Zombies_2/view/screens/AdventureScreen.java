@@ -23,7 +23,11 @@ import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
 
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombieLevel;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.VaseBreakerLevel;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.WallnutBowlingLevel;
 import io.github.Plants_Vs_Zombies_2.model.quest.Quest;
 import io.github.Plants_Vs_Zombies_2.model.quest.QuestCondition;
 import io.github.Plants_Vs_Zombies_2.model.quest.QuestRewardType;
@@ -33,6 +37,7 @@ import io.github.Plants_Vs_Zombies_2.model.roadmap.AdventureSession;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 /**
@@ -91,6 +96,15 @@ public final class AdventureScreen extends AbstractScreen {
             "IMAGE_UI_QUESTS_QUESTICONS_LEVELUP";
     private static final String QUEST_ICON_DARK_AGES =
             "IMAGE_UI_QUESTS_QUESTICONS_DARKAGES";
+    private static final String VASE_BREAKER_ICON =
+            "IMAGE_VASEBREAKER_VASE_GREEN_VASE_GREEN_115X150";
+    private static final String WALLNUT_BOWLING_ICON =
+            "IMAGE_UI_PACKETS_WALLNUT";
+    private static final String I_ZOMBIE_ICON =
+            "IMAGE_UI_QUESTS_QUESTICONS_ZOMBIE";
+    private static final String VASE_BREAKER_ID = "vasebreaker";
+    private static final String WALLNUT_BOWLING_ID = "wallnutbowling";
+    private static final String I_ZOMBIE_ID = "izombie";
 
     private static final float LEVEL_MAP_WIDTH = 1080f;
     private static final float LEVEL_MAP_HEIGHT = 420f;
@@ -104,8 +118,15 @@ public final class AdventureScreen extends AbstractScreen {
     private Table questModal;
     private Table questPanel;
     private QuestType selectedQuestType = QuestType.DAILY;
+    private boolean minigameTabSelected;
+    private Label minigameFeedbackLabel;
 
     public AdventureScreen(ScreenNavigator navigator) {
+        this(navigator, false);
+    }
+
+    AdventureScreen(ScreenNavigator navigator,
+            boolean openMinigamesTravelLog) {
         super(navigator, "Adventure");
         chapters = ChapterCatalog.getChapters();
         selectedIndex = Math.max(0,
@@ -133,6 +154,10 @@ public final class AdventureScreen extends AbstractScreen {
         questsButton.setBounds(24f, 24f, 82f, 82f);
         root.addActor(questsButton);
         rebuildContent();
+        if (openMinigamesTravelLog) {
+            minigameTabSelected = true;
+            showQuestModal();
+        }
     }
 
 
@@ -329,7 +354,9 @@ public final class AdventureScreen extends AbstractScreen {
 
         Table headerText = new Table();
         Label title = new Label("Travel Log", skin, "big_outline");
-        Label subtitle = new Label("Quests", skin, "medium_outline");
+        Label subtitle = new Label(
+                minigameTabSelected ? "Minigames" : "Quests",
+                skin, "medium_outline");
         subtitle.setColor(Color.GOLD);
         headerText.add(title).left().row();
         headerText.add(subtitle).left().padTop(-4f);
@@ -347,7 +374,7 @@ public final class AdventureScreen extends AbstractScreen {
         questPanel.add(header).growX().height(94f).row();
 
         Table tabs = new Table();
-        tabs.defaults().width(160f).height(48f).pad(0f, 5f, 4f, 5f);
+        tabs.defaults().width(170f).height(48f).pad(0f, 5f, 4f, 5f);
         tabs.add(createQuestTab("Main", QuestType.MAIN,
                 "IMAGE_UI_QUESTS_ACHIEVEMENTS_INACTIVE",
                 "IMAGE_UI_QUESTS_ACHIEVEMENTS_ACTIVE"));
@@ -357,7 +384,13 @@ public final class AdventureScreen extends AbstractScreen {
         tabs.add(createQuestTab("Daily", QuestType.DAILY,
                 "IMAGE_UI_QUESTS_DAILY_INACTIVE",
                 "IMAGE_UI_QUESTS_DAILY_ACTIVE"));
+        tabs.add(createMinigameTab()).width(240f).height(54f);
         questPanel.add(tabs).center().padTop(-4f).row();
+
+        if (minigameTabSelected) {
+            addMinigameList(user);
+            return;
+        }
 
         List<Quest> quests = new ArrayList<>();
         for (Quest quest : user.getQuestProgress().getActiveQuests()) {
@@ -395,7 +428,8 @@ public final class AdventureScreen extends AbstractScreen {
 
     private Stack createQuestTab(String text, QuestType type,
             String inactiveAsset, String activeAsset) {
-        boolean selected = selectedQuestType == type;
+        boolean selected = !minigameTabSelected
+                && selectedQuestType == type;
         ImageButton.ImageButtonStyle style = new ImageButton.ImageButtonStyle();
         style.imageUp = new TextureRegionDrawable(requireAssetRegion(
                 selected ? activeAsset : inactiveAsset));
@@ -406,8 +440,10 @@ public final class AdventureScreen extends AbstractScreen {
         button.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                if (selectedQuestType != type) {
+                if (minigameTabSelected || selectedQuestType != type) {
+                    minigameTabSelected = false;
                     selectedQuestType = type;
+                    minigameFeedbackLabel = null;
                     rebuildQuestPanel();
                 }
             }
@@ -420,6 +456,150 @@ public final class AdventureScreen extends AbstractScreen {
         stack.add(button);
         stack.add(label);
         return stack;
+    }
+
+    private Stack createMinigameTab() {
+        // The original minigame HUD image is close to square. Stretching it
+        // into a wide Travel Log tab distorts the artwork, so use the same
+        // colored button treatment as the rest of the UI instead.
+        TextButton button = new TextButton("", skin,
+                minigameTabSelected ? "purple" : "brown");
+        button.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                if (!minigameTabSelected) {
+                    minigameTabSelected = true;
+                    minigameFeedbackLabel = null;
+                    rebuildQuestPanel();
+                }
+            }
+        });
+
+        Label label = new Label("Mini Games", skin, "medium_outline");
+        label.setAlignment(Align.center);
+        label.setTouchable(Touchable.disabled);
+        Stack stack = new Stack();
+        stack.add(button);
+        stack.add(label);
+        return stack;
+    }
+
+    private void addMinigameList(User user) {
+        GameProgerss progress = user.getGameProgerss();
+        Table list = new Table();
+        list.top();
+        list.defaults().growX().width(900f).height(112f)
+                .pad(5f, 0f, 5f, 0f);
+
+        list.add(createMinigameCard(
+                VASE_BREAKER_ID, "Vase Breaker", VASE_BREAKER_ICON,
+                "Break every vase, use the plants you reveal, and defeat "
+                        + "every released zombie.",
+                VaseBreakerLevel.LEVEL_COUNT, progress)).row();
+        list.add(createMinigameCard(
+                WALLNUT_BOWLING_ID, "Wall-nut Bowling", WALLNUT_BOWLING_ICON,
+                "Launch Wall-nuts from the conveyor and clear every zombie "
+                        + "wave before they reach the house.",
+                WallnutBowlingLevel.LEVEL_COUNT, progress)).row();
+        list.add(createMinigameCard(
+                I_ZOMBIE_ID, "I, Zombie", I_ZOMBIE_ICON,
+                "Spend sun to place zombies and eat all five brains on the "
+                        + "other side of the lawn.",
+                IZombieLevel.LEVEL_COUNT, progress)).row();
+
+        ScrollPane scroll = new ScrollPane(list, skin);
+        scroll.setFadeScrollBars(false);
+        scroll.setScrollingDisabled(true, false);
+        scroll.setOverscroll(false, false);
+        questPanel.add(scroll).width(930f).height(365f).center().row();
+
+        minigameFeedbackLabel = new Label(
+                "Choose an unlocked level and press Play.",
+                skin, "secondary");
+        minigameFeedbackLabel.setColor(
+                new Color(0.92f, 0.82f, 0.58f, 1f));
+        minigameFeedbackLabel.setAlignment(Align.center);
+        questPanel.add(minigameFeedbackLabel)
+                .center().width(900f).height(28f).padTop(4f);
+    }
+
+    private Table createMinigameCard(String minigameId,
+            String displayName, String iconAsset, String description,
+            int levelCount, GameProgerss progress) {
+        Table card = new Table();
+        card.setBackground(requireAssetDrawable(QUEST_PANEL_DEFAULT));
+        card.pad(8f, 14f, 8f, 14f);
+
+        Image icon = createAssetImage(iconAsset);
+        icon.setScaling(Scaling.fit);
+        card.add(icon).size(76f).padRight(12f);
+
+        Table details = new Table();
+        details.left();
+        Label name = new Label(displayName, skin, "medium_outline");
+        details.add(name).left().growX().row();
+        Label descriptionLabel = new Label(description, skin, "secondary");
+        descriptionLabel.setWrap(true);
+        details.add(descriptionLabel).width(430f).left().padTop(2f).row();
+
+        int completed = 0;
+        for (int level = 1; level <= levelCount; level++) {
+            if (progress.isMinigameLevelCompleted(minigameId, level)) {
+                completed++;
+            }
+        }
+        Label status = new Label(
+                completed + "/" + levelCount + " levels completed",
+                skin, "secondary");
+        status.setColor(completed == levelCount ? Color.GREEN : Color.GOLD);
+        details.add(status).left().padTop(2f);
+        card.add(details).growX().left().padRight(8f);
+
+        Table levelButtons = new Table();
+        levelButtons.defaults().padLeft(5f);
+        for (int level = 1; level <= levelCount; level++) {
+            boolean unlocked = progress.isMinigameLevelUnlocked(
+                    minigameId, level, levelCount);
+            boolean complete = progress.isMinigameLevelCompleted(
+                    minigameId, level);
+            levelButtons.add(createMinigameLevelButton(
+                    minigameId, level, unlocked, complete))
+                    .width(104f).height(72f);
+        }
+        card.add(levelButtons).right();
+        return card;
+    }
+
+    private Table createMinigameLevelButton(String minigameId,
+            int levelNumber, boolean unlocked, boolean completed) {
+        Table slot = new Table();
+        Label level = new Label("Level " + levelNumber,
+                skin, "secondary");
+        level.setAlignment(Align.center);
+        level.setColor(completed ? Color.GREEN
+                : unlocked ? Color.WHITE : Color.LIGHT_GRAY);
+        slot.add(level).growX().row();
+
+        TextButton play = new TextButton(
+                completed ? "Replay" : unlocked ? "Play" : "Locked",
+                skin, unlocked ? "green" : "brown");
+        setButtonEnabled(play, unlocked);
+        play.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                if (!unlocked) {
+                    return;
+                }
+                CommandResult result = navigator.startMinigameFromTravelLog(
+                        minigameId, levelNumber);
+                if (!result.isSuccsesful() && minigameFeedbackLabel != null) {
+                    minigameFeedbackLabel.setColor(Color.SCARLET);
+                    minigameFeedbackLabel.setText(result.getMessage());
+                }
+            }
+        });
+        slot.add(play).width(96f).height(38f).padTop(2f);
+        return slot;
     }
 
     private Table createQuestCard(Quest quest) {
@@ -561,6 +741,7 @@ public final class AdventureScreen extends AbstractScreen {
         questModal.remove();
         questModal = null;
         questPanel = null;
+        minigameFeedbackLabel = null;
         root.setTouchable(Touchable.enabled);
     }
 
