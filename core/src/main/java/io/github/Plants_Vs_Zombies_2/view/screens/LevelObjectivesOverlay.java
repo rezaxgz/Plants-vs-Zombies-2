@@ -53,9 +53,19 @@ final class LevelObjectivesOverlay extends Group {
     LevelObjectivesOverlay(Skin skin, Level level,
             float screenWidth, float screenHeight,
             Runnable onContinue) {
-        if (skin == null || level == null || onContinue == null) {
+        this(skin, "Level Objectives", buildObjectives(level),
+                screenWidth, screenHeight, onContinue);
+    }
+
+    LevelObjectivesOverlay(Skin skin, String title,
+            List<String> objectives,
+            float screenWidth, float screenHeight,
+            Runnable onContinue) {
+        if (skin == null || title == null || title.isBlank()
+                || objectives == null || objectives.isEmpty()
+                || onContinue == null) {
             throw new IllegalArgumentException(
-                    "skin, level, and continue action are required");
+                    "skin, title, objectives, and continue action are required");
         }
         this.onContinue = onContinue;
         setBounds(0f, 0f, screenWidth, screenHeight);
@@ -63,7 +73,7 @@ final class LevelObjectivesOverlay extends Group {
 
         createPixelTexture();
         installInputBlocker();
-        installCard(skin, level, screenWidth, screenHeight);
+        installCard(skin, title, objectives, screenWidth, screenHeight);
     }
 
     private void createPixelTexture() {
@@ -89,7 +99,8 @@ final class LevelObjectivesOverlay extends Group {
         addActor(shade);
     }
 
-    private void installCard(Skin skin, Level level,
+    private void installCard(Skin skin, String heading,
+            List<String> objectives,
             float screenWidth, float screenHeight) {
         float panelX = (screenWidth - PANEL_WIDTH) * 0.5f;
         float panelY = (screenHeight - PANEL_HEIGHT) * 0.5f + 16f;
@@ -102,7 +113,7 @@ final class LevelObjectivesOverlay extends Group {
 
         Table header = new Table();
         header.setBackground(solid(HEADER));
-        Label title = new Label("Level Objectives", skin, "big_outline");
+        Label title = new Label(heading, skin, "big_outline");
         title.setAlignment(Align.center);
         title.setFontScale(0.82f);
         header.add(title).grow();
@@ -111,7 +122,6 @@ final class LevelObjectivesOverlay extends Group {
         Table content = new Table();
         content.setBackground(solid(CONTENT));
         content.top().left().pad(24f, 30f, 38f, 30f);
-        List<String> objectives = buildObjectives(level);
         for (String objective : objectives) {
             addObjectiveRow(content, skin, objective);
         }
@@ -156,6 +166,9 @@ final class LevelObjectivesOverlay extends Group {
     }
 
     private static List<String> buildObjectives(Level level) {
+        if (level == null) {
+            throw new IllegalArgumentException("level is required");
+        }
         List<String> objectives = new ArrayList<>();
         SpecialLevelType type = level.getSpecialLevelType();
         SpecialLevelConfig config = level.getSpecialConfig();

@@ -132,6 +132,14 @@ public class GameMenu extends Menu {
         return minigameLevel;
     }
 
+    public String getMinigameDisplayName() {
+        return minigameDisplayName;
+    }
+
+    public int getMinigameMaximumLevel() {
+        return minigameMaximumLevel;
+    }
+
     public void synchronizeProgress() {
         if (game.getStatus() != GameStatus.ACTIVE && chapterId != null) {
             User activeUser = App.getInstance().getLoggedInUser();

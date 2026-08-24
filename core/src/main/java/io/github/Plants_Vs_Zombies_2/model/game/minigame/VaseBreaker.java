@@ -53,6 +53,15 @@ public final class VaseBreaker extends Game {
     @Override
     public void update(float deltaSeconds) {
         super.update(deltaSeconds);
+        if (getStatus() != GameStatus.ACTIVE) {
+            return;
+        }
+        if (hasEscapedHostileZombie()) {
+            completeGameAsLost(
+                    "A zombie released from a vase reached the house; "
+                            + "Vase Breaker lost!");
+            return;
+        }
         reportExpiredSeedPackets();
         checkForVaseBreakerWin();
     }
@@ -76,6 +85,27 @@ public final class VaseBreaker extends Game {
 
     @Override
     protected boolean shouldProcessZombieDeathDrops() {
+        return false;
+    }
+
+    @Override
+    protected boolean usesLawnMowers() {
+        // Vase Breaker has no lawn-mower safety net. A zombie that reaches
+        // the house is an immediate minigame loss rather than being silently
+        // removed by the normal adventure mower system.
+        return false;
+    }
+
+    private boolean hasEscapedHostileZombie() {
+        for (Zombie zombie : getBoard().getZombies()) {
+            if (zombie != null
+                    && !zombie.isDead()
+                    && !zombie.isRemoved()
+                    && !zombie.isHypnotized()
+                    && zombie.hasReachedHouse()) {
+                return true;
+            }
+        }
         return false;
     }
 

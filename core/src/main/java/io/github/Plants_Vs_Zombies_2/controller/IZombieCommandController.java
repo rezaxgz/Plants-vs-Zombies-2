@@ -83,6 +83,9 @@ public final class IZombieCommandController {
                     .append(" | alias: ")
                     .append(card.getType().getAlias())
                     .append(" | cost: ").append(card.getCost())
+                    .append(" | recharge: ")
+                    .append(String.format(Locale.ROOT, "%.1fs",
+                            game.getCardCooldownRemainingSeconds(card)))
                     .append(" | affordable: ")
                     .append(game.getSunCount() >= card.getCost()
                             ? "yes"
@@ -135,6 +138,9 @@ public final class IZombieCommandController {
                         "Zomboss enemies are not enabled in levels yet!");
             case NOT_ENOUGH_SUN:
                 return CommandResult.error("not enough zombie sun!");
+            case RECHARGING:
+                return CommandResult.error(
+                        "that zombie card is still recharging!");
             case INVALID_POSITION:
                 return CommandResult.error(
                         "zombie location is outside the board!");

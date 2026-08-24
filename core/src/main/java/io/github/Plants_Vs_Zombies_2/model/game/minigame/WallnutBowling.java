@@ -71,7 +71,26 @@ public final class WallnutBowling extends Game {
         }
         updateRollingWallnuts(deltaSeconds);
         super.update(deltaSeconds);
+        if (getStatus() == GameStatus.ACTIVE
+                && hasEscapedHostileZombie()) {
+            completeGameAsLost(
+                    "A zombie reached the house before all bowling waves "
+                            + "were cleared; Wall-nut Bowling lost!");
+        }
         rollingWallnuts.removeIf(BowlingWallnut::isRemoved);
+    }
+
+    private boolean hasEscapedHostileZombie() {
+        for (Zombie zombie : getBoard().getZombies()) {
+            if (zombie != null
+                    && !zombie.isDead()
+                    && !zombie.isRemoved()
+                    && !zombie.isHypnotized()
+                    && zombie.hasReachedHouse()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -203,6 +222,7 @@ public final class WallnutBowling extends Game {
 
     private void explodeWallnut(BowlingWallnut wallnut,
             Zombie firstTarget) {
+        wallnut.recordHit(firstTarget);
         int affected = 0;
         int centerLane = firstTarget.getLane();
         double centerColumn = firstTarget.getColumnPosition();
@@ -259,6 +279,15 @@ public final class WallnutBowling extends Game {
 
     @Override
     protected boolean shouldProcessZombieDeathDrops() {
+        return false;
+    }
+
+    @Override
+    protected boolean usesLawnMowers() {
+        // Wall-nut Bowling has no lawn-mower safety net. The normal mower
+        // system would silently kill a zombie at the house edge, which can
+        // make the final wave look like a win even though the player was
+        // actually breached.
         return false;
     }
 

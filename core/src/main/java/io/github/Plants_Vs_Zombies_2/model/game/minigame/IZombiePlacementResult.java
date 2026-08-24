@@ -9,6 +9,7 @@ public enum IZombiePlacementResult {
     UNKNOWN_ZOMBIE,
     BOSS_NOT_ALLOWED,
     NOT_ENOUGH_SUN,
+    RECHARGING,
     INVALID_POSITION,
     LEFT_OF_RED_LINE,
     POSITION_OCCUPIED

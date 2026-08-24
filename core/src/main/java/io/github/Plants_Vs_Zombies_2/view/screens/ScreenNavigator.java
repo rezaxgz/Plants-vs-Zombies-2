@@ -9,7 +9,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.Main;
 import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.CommandResult;
 import io.github.Plants_Vs_Zombies_2.controller.MainController;
+import io.github.Plants_Vs_Zombies_2.controller.TravelLogMenuController;
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.menu.CollectionMenu;
 import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
@@ -178,6 +180,35 @@ public final class ScreenNavigator {
 
     public void showAdventureScreen() {
         showTransient(new AdventureScreen(this));
+    }
+
+    /** Opens Adventure with the Travel Log already on its Minigames tab. */
+    public void showAdventureTravelLogMinigames() {
+        showTransient(new AdventureScreen(this, true));
+    }
+
+    /** Starts a Travel Log minigame and switches to its model-backed game. */
+    public CommandResult startMinigameFromTravelLog(
+            String minigameId, int levelNumber) {
+        CommandResult result = TravelLogMenuController.startMinigameFromGui(
+                minigameId, levelNumber);
+        if (result.isSuccsesful()) {
+            history.clear();
+            showCurrentMenu();
+        }
+        return result;
+    }
+
+    /** Finishes a minigame session and returns to the Minigames Travel Log. */
+    public void exitMinigameToTravelLog() {
+        Menu current = app.getCurrentMenu();
+        if (current instanceof GameMenu) {
+            ((GameMenu) current).synchronizeProgress();
+        }
+        history.clear();
+        app.changeMenu(new MainMenu());
+        displayedMenu = app.getCurrentMenu();
+        showAdventureTravelLogMinigames();
     }
 
     /** Leaves an active game behind and makes Adventure's Back return to Main. */

@@ -308,12 +308,43 @@ public final class TravelLogMenuController {
     }
 
     public static CommandResult handleStartVaseBreaker(Matcher matcher) {
+        return startVaseBreaker(parseLevelNumber(matcher));
+    }
+
+    public static CommandResult handleStartWallnutBowling(
+            Matcher matcher) {
+        return startWallnutBowling(parseLevelNumber(matcher));
+    }
+
+    public static CommandResult handleStartIZombie(
+            Matcher matcher) {
+        return startIZombie(parseLevelNumber(matcher));
+    }
+
+    /** Starts one of the Travel Log minigames from the graphical UI. */
+    public static CommandResult startMinigameFromGui(
+            String minigameId, int levelNumber) {
+        String normalized = minigameId == null ? ""
+                : minigameId.trim().toLowerCase(Locale.ROOT)
+                        .replaceAll("[^a-z0-9]", "");
+        if (VASE_BREAKER_ID.equals(normalized)) {
+            return startVaseBreaker(levelNumber);
+        }
+        if (WALLNUT_BOWLING_ID.equals(normalized)) {
+            return startWallnutBowling(levelNumber);
+        }
+        if (I_ZOMBIE_ID.equals(normalized)) {
+            return startIZombie(levelNumber);
+        }
+        return CommandResult.error("Unknown minigame.");
+    }
+
+    private static CommandResult startVaseBreaker(int levelNumber) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
         user.addMinigameUnlockNews(VASE_BREAKER_NAME + " level 1");
-        int levelNumber = parseLevelNumber(matcher);
         VaseBreakerLevel level = VaseBreakerLevel.find(levelNumber);
         if (level == null) {
             return CommandResult.error(
@@ -340,14 +371,12 @@ public final class TravelLogMenuController {
                 .addPostCommandResults(game.drainResults());
     }
 
-    public static CommandResult handleStartWallnutBowling(
-            Matcher matcher) {
+    private static CommandResult startWallnutBowling(int levelNumber) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
         user.addMinigameUnlockNews(WALLNUT_BOWLING_NAME + " level 1");
-        int levelNumber = parseLevelNumber(matcher);
         WallnutBowlingLevel level = WallnutBowlingLevel.find(levelNumber);
         if (level == null) {
             return CommandResult.error(WALLNUT_BOWLING_NAME
@@ -377,14 +406,12 @@ public final class TravelLogMenuController {
                 .addPostCommandResults(game.drainResults());
     }
 
-    public static CommandResult handleStartIZombie(
-            Matcher matcher) {
+    private static CommandResult startIZombie(int levelNumber) {
         User user = getLoggedInUser();
         if (user == null) {
             return loginRequired();
         }
         user.addMinigameUnlockNews(I_ZOMBIE_NAME + " level 1");
-        int levelNumber = parseLevelNumber(matcher);
         IZombieLevel level = IZombieLevel.find(levelNumber);
         if (level == null) {
             return CommandResult.error(
