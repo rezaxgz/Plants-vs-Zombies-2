@@ -65,6 +65,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
+import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
+import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombie;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombieCard;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombiePlacementResult;
@@ -146,6 +148,62 @@ public final class GameScreen extends AbstractScreen {
             "768/FULL/GRAVESTONES/DARK_SUN/DARK_SUN.PAM";
     private static final String DARK_GRAVE_PLANT_FOOD_PAM =
             "768/FULL/GRAVESTONES/DARK_PLANTFOOD/DARK_PLANTFOOD.PAM";
+    private static final String DARK_NECROMANCY_DISC_OUTER_ASSET =
+            "IMAGE_EFFECTS_TOMBSTONE_DARK_SPAWN_EFFECT_"
+                    + "ZOMBIE_EGYPT_TOMBRAISER_DISC_01";
+    private static final String DARK_NECROMANCY_DISC_INNER_ASSET =
+            "IMAGE_EFFECTS_TOMBSTONE_DARK_SPAWN_EFFECT_"
+                    + "ZOMBIE_EGYPT_TOMBRAISER_DISC_02";
+    private static final String EGYPT_SANDSTORM_REAR_PAM =
+            "768/INITIAL/EFFECTS/SANDSTORM_REAR/SANDSTORM_REAR.PAM";
+    private static final String EGYPT_SANDSTORM_TOP_PAM =
+            "768/INITIAL/EFFECTS/SANDSTORM_TOP/SANDSTORM_TOP.PAM";
+    private static final String FROSTBITE_WIND_PAM =
+            "768/FULL/EFFECTS/FROSTBITE_CHILL_WIND/"
+                    + "FROSTBITE_CHILL_WIND.PAM";
+    private static final String FROSTBITE_SLIPPERY_TILE_ASSET =
+            "IMAGE_EFFECTS_ZOMBONI_TILE_ICE_"
+                    + "ZOMBONI_TILE_ICE_133X157";
+    private static final String[] FROSTBITE_ZOMBIE_ICE_ASSETS = {
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
+                    + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
+                    + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_2",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
+                    + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_3",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
+                    + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_4",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
+                    + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_5",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
+                    + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_6" };
+    // The plant images are ordered exactly as supplied for the six visible
+    // ice-health states, from intact to most damaged.
+    private static final String[] FROSTBITE_PLANT_ICE_ASSETS = {
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
+                    + "FROSTBITE_ICE_BLOCK_PLANT_164X169",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
+                    + "FROSTBITE_ICE_BLOCK_PLANT_167X172_4",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
+                    + "FROSTBITE_ICE_BLOCK_PLANT_167X172_5",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
+                    + "FROSTBITE_ICE_BLOCK_PLANT_167X172_3",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
+                    + "FROSTBITE_ICE_BLOCK_PLANT_167X172_2",
+            "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
+                    + "FROSTBITE_ICE_BLOCK_PLANT_167X172" };
+    private static final float FROSTBITE_WIND_DURATION_SECONDS = 2.5667f;
+    private static final String[] BIG_WAVE_BEACH_WATER_TILE_ASSETS = {
+            "IMAGE_BACKGROUNDS_WATER_SQUARE_WATER_SQUARE_174X205",
+            "IMAGE_BACKGROUNDS_WATER_SQUARE_WATER_SQUARE_175X204",
+            "IMAGE_BACKGROUNDS_WATER_SQUARE_WATER_SQUARE_178X201",
+            "IMAGE_BACKGROUNDS_WATER_SQUARE_WATER_SQUARE_180X200",
+            "IMAGE_BACKGROUNDS_WATER_SQUARE_WATER_SQUARE_182X207" };
+    private static final String BIG_WAVE_BEACH_TIDE_LIMIT_ASSET =
+            "IMAGE_BACKGROUNDS_WATER_TIDE_LINE_"
+                    + "WATER_TIDE_LINE_161X397";
+    private static final String BIG_WAVE_BEACH_LOW_TILE_MARKER_ASSET =
+            "IMAGE_BACKGROUNDS_BEACH_WATERSIGN";
     private static final String VASE_BROWN_ASSET =
             "IMAGE_VASEBREAKER_VASE_BROWN_VASE_BROWN_115X150";
     private static final String VASE_GREEN_ASSET =
@@ -319,6 +377,11 @@ public final class GameScreen extends AbstractScreen {
     private Label rewardNoticeLabel;
     private float rewardNoticeRemainingSeconds;
 
+    private Group bigWaveBeachTerrainLayer;
+    private String bigWaveBeachTerrainSignature = "";
+    private Group darkAgesTerrainLayer;
+    private Group frostbiteTerrainLayer;
+    private String frostbiteTerrainSignature = "";
     private Group structureLayer;
     private final Map<Grave, PamAnimationActor> graveActors =
             new IdentityHashMap<>();
@@ -338,10 +401,27 @@ public final class GameScreen extends AbstractScreen {
     private Group iZombieBoardOverlay;
     private final List<Actor> iZombieBrainActors = new ArrayList<>();
 
+    private Group frostbitePlantIceLayer;
+    private final Map<BasePlant, Image> frostbitePlantIceActors =
+            new IdentityHashMap<>();
+    private final Map<BasePlant, String> frostbitePlantIceKeys =
+            new IdentityHashMap<>();
+
+    private Group egyptSandstormRearLayer;
     private Group zombieLayer;
+    private Group frostbiteZombieIceLayer;
+    private final Map<Zombie, Image> frostbiteZombieIceActors =
+            new IdentityHashMap<>();
+    private final Map<Zombie, String> frostbiteZombieIceKeys =
+            new IdentityHashMap<>();
+    private Group egyptSandstormTopLayer;
+    private Group frostbiteWindLayer;
+    private double renderedFrostbiteWindAtSeconds = Double.NEGATIVE_INFINITY;
     private final Map<Zombie, ZombiePamActor> zombieActors =
             new IdentityHashMap<>();
     private final Map<Zombie, Integer> zombieDurability =
+            new IdentityHashMap<>();
+    private final Map<Zombie, EgyptSandstormEffect> egyptSandstorms =
             new IdentityHashMap<>();
 
     private Group bowlingWallnutLayer;
@@ -372,6 +452,7 @@ public final class GameScreen extends AbstractScreen {
             installMinigameTitle(menu);
         }
         installChapterBoard(chapter);
+        installFrostbiteTerrainRendering();
         installGameHud();
         installWaveProgressHud();
         installPlantWhatYouGetWaveButton();
@@ -387,12 +468,15 @@ public final class GameScreen extends AbstractScreen {
         addBackgroundOverlay(new LawnMowerRenderer(
                 navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
+        installFrostbitePlantIceRendering();
         installIZombieBoardOverlay();
         installVaseBreakerSeedTray();
         installConveyorBelt();
         installIZombieTray();
         installShovelButton();
         installZombieRendering();
+        installFrostbiteZombieIceRendering();
+        installFrostbiteWindRendering();
         installBowlingWallnutRendering();
         installProjectileRendering();
         installSunRendering();
@@ -1077,12 +1161,21 @@ public final class GameScreen extends AbstractScreen {
         }
         setAssetBackground(layout.backgroundAsset);
 
+        Game game = activeGame();
+        if (game != null && chapter != null
+                && "big-wave-beach".equals(chapter.getId())) {
+            installBigWaveBeachTerrainRendering();
+        }
+        if (game != null && chapter != null
+                && "dark-ages".equals(chapter.getId())) {
+            installDarkAgesTerrainRendering();
+        }
+
         if (shouldDrawGrid()) {
             gridActor = new BoardGridActor(layout);
             addBackgroundOverlay(gridActor);
         }
 
-        Game game = activeGame();
         if (game != null && game.hasDeadLine()) {
             deadlineLineActor = new DeadlineLineActor(
                     layout, game.getDeadLineColumn());
@@ -1107,6 +1200,342 @@ public final class GameScreen extends AbstractScreen {
         return App.getInstance().getLoggedInUser() != null
                 && App.getInstance().getLoggedInUser()
                         .getSettings().isShowGameMapGrid();
+    }
+
+    private boolean isBigWaveBeachGame() {
+        Chapter chapter = seedTrayChapter();
+        return chapter != null && "big-wave-beach".equals(chapter.getId());
+    }
+
+    private void installBigWaveBeachTerrainRendering() {
+        if (!isModelBackedGame() || !isBigWaveBeachGame()
+                || bigWaveBeachTerrainLayer != null) {
+            return;
+        }
+        bigWaveBeachTerrainLayer = new Group();
+        bigWaveBeachTerrainLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(bigWaveBeachTerrainLayer);
+        rebuildBigWaveBeachTerrainRendering();
+    }
+
+    private void rebuildBigWaveBeachTerrainRendering() {
+        Game game = activeGame();
+        if (!isBigWaveBeachGame() || game == null
+                || bigWaveBeachTerrainLayer == null
+                || !game.getBoard().isBigWaveBeachRulesEnabled()) {
+            return;
+        }
+
+        bigWaveBeachTerrainLayer.clearChildren();
+
+        // The Phase-1 model exposes the current tide through WATER tiles.
+        // Draw one real PvZ2 water-square asset over every covered board cell
+        // so the visible water boundary changes at exactly the same discrete
+        // moments as the model's tide level.
+        for (Tile tile : game.getBoard().getTiles()) {
+            if (tile == null || tile.getPosition() == null
+                    || tile.getTileType() != TileType.WATER) {
+                continue;
+            }
+            EntityPosition position = tile.getPosition();
+            int variant = Math.floorMod(
+                    position.getRow() * BOARD_COLUMNS
+                            + position.getColumn(),
+                    BIG_WAVE_BEACH_WATER_TILE_ASSETS.length);
+            Image water = createAssetImage(
+                    BIG_WAVE_BEACH_WATER_TILE_ASSETS[variant]);
+            water.setScaling(Scaling.stretch);
+            water.setTouchable(Touchable.disabled);
+            positionBigWaveBeachWaterTile(water, position);
+            bigWaveBeachTerrainLayer.addActor(water);
+        }
+
+        // Low-beach cells are a Phase-1-specific concept, so mark them even
+        // while submerged. The small water sign remains readable above the
+        // water-square layer without covering plants or zombies.
+        for (Tile tile : game.getBoard().getTiles()) {
+            if (tile == null || tile.getPosition() == null
+                    || !game.getBoard().isLowBeachTile(tile.getPosition())) {
+                continue;
+            }
+            Image marker = createAssetImage(
+                    BIG_WAVE_BEACH_LOW_TILE_MARKER_ASSET);
+            marker.setScaling(Scaling.fit);
+            marker.setTouchable(Touchable.disabled);
+            marker.setColor(1f, 1f, 1f, 0.72f);
+            positionBigWaveBeachLowTileMarker(marker, tile.getPosition());
+            bigWaveBeachTerrainLayer.addActor(marker);
+        }
+
+        // This line is fixed at the furthest column the Phase-1 tide is
+        // allowed to reach. It is intentionally separate from the current
+        // water edge, which is communicated by the water-square cells.
+        Image tideLimit = createAssetImage(BIG_WAVE_BEACH_TIDE_LIMIT_ASSET);
+        tideLimit.setScaling(Scaling.stretch);
+        tideLimit.setTouchable(Touchable.disabled);
+        tideLimit.setColor(1f, 1f, 1f, 0.88f);
+        positionBigWaveBeachTideLimit(tideLimit,
+                game.getBoard().getWaterBoundaryColumn());
+        bigWaveBeachTerrainLayer.addActor(tideLimit);
+
+        bigWaveBeachTerrainSignature =
+                createBigWaveBeachTerrainSignature(game);
+    }
+
+    private void refreshBigWaveBeachTerrainRendering() {
+        Game game = activeGame();
+        if (!isBigWaveBeachGame() || game == null
+                || bigWaveBeachTerrainLayer == null
+                || !game.getBoard().isBigWaveBeachRulesEnabled()) {
+            return;
+        }
+        String signature = createBigWaveBeachTerrainSignature(game);
+        if (!signature.equals(bigWaveBeachTerrainSignature)) {
+            rebuildBigWaveBeachTerrainRendering();
+        }
+    }
+
+    private String createBigWaveBeachTerrainSignature(Game game) {
+        if (game == null || !game.getBoard().isBigWaveBeachRulesEnabled()) {
+            return "";
+        }
+        StringBuilder signature = new StringBuilder();
+        signature.append(game.getBoard().getWaterColumnCount())
+                .append('/')
+                .append(game.getBoard().getMaximumWaterColumnCount())
+                .append('|');
+        for (Tile tile : game.getBoard().getTiles()) {
+            if (tile == null || tile.getPosition() == null) {
+                continue;
+            }
+            EntityPosition position = tile.getPosition();
+            if (tile.getTileType() == TileType.WATER
+                    || game.getBoard().isLowBeachTile(position)) {
+                signature.append(position.getRow()).append(',')
+                        .append(position.getColumn()).append(':')
+                        .append(tile.getTileType()).append(';');
+            }
+        }
+        return signature.toString();
+    }
+
+    private void positionBigWaveBeachWaterTile(Actor actor,
+            EntityPosition position) {
+        CellBounds cell = screenBoundsForCell(position);
+        if (actor == null || cell == null) {
+            return;
+        }
+        // Tiny overlap hides seams between neighboring texture cells while
+        // keeping the water aligned with the underlying 5x9 board.
+        float overlapX = cell.width * 0.035f;
+        float overlapY = cell.height * 0.035f;
+        actor.setBounds(cell.x - overlapX,
+                cell.y - overlapY,
+                cell.width + overlapX * 2f,
+                cell.height + overlapY * 2f);
+        actor.setVisible(true);
+    }
+
+    private void positionBigWaveBeachLowTileMarker(Actor actor,
+            EntityPosition position) {
+        CellBounds cell = screenBoundsForCell(position);
+        if (actor == null || cell == null) {
+            return;
+        }
+        float width = cell.width * 0.26f;
+        float height = cell.height * 0.50f;
+        actor.setBounds(cell.x + cell.width * 0.06f,
+                cell.y + cell.height * 0.06f,
+                width, height);
+        actor.setVisible(true);
+    }
+
+    private void positionBigWaveBeachTideLimit(Actor actor,
+            int boundaryColumn) {
+        if (actor == null || boundaryColumn < 0
+                || boundaryColumn >= BOARD_COLUMNS) {
+            return;
+        }
+        CellBounds topCell = screenBoundsForCell(
+                new EntityPosition(0, boundaryColumn));
+        CellBounds bottomCell = screenBoundsForCell(
+                new EntityPosition(BOARD_ROWS - 1, boundaryColumn));
+        if (topCell == null || bottomCell == null) {
+            return;
+        }
+        float lineWidth = topCell.width * 0.56f;
+        float boardBottom = bottomCell.y;
+        float boardTop = topCell.y + topCell.height;
+        actor.setBounds(topCell.x - lineWidth * 0.5f,
+                boardBottom - bottomCell.height * 0.03f,
+                lineWidth,
+                boardTop - boardBottom + bottomCell.height * 0.06f);
+        actor.setVisible(true);
+    }
+
+    private boolean isDarkAgesGame() {
+        Chapter chapter = seedTrayChapter();
+        return chapter != null && "dark-ages".equals(chapter.getId());
+    }
+
+    private void installDarkAgesTerrainRendering() {
+        if (!isModelBackedGame() || !isDarkAgesGame()
+                || darkAgesTerrainLayer != null) {
+            return;
+        }
+        darkAgesTerrainLayer = new Group();
+        darkAgesTerrainLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(darkAgesTerrainLayer);
+        rebuildDarkAgesTerrainRendering();
+    }
+
+    private void rebuildDarkAgesTerrainRendering() {
+        Game game = activeGame();
+        if (!isDarkAgesGame() || game == null
+                || darkAgesTerrainLayer == null) {
+            return;
+        }
+        darkAgesTerrainLayer.clearChildren();
+
+        for (int row = 0; row < game.getBoard().getNumberOfRows(); row++) {
+            for (int column = 0;
+                    column < game.getBoard().getNumberOfColumns(); column++) {
+                EntityPosition position = new EntityPosition(row, column);
+                if (!isNecromancyGroundCell(game, position)) {
+                    continue;
+                }
+                Actor marker = createNecromancyGroundMarker();
+                positionNecromancyGroundMarker(marker, position);
+                darkAgesTerrainLayer.addActor(marker);
+            }
+        }
+    }
+
+    private boolean isNecromancyGroundCell(Game game,
+            EntityPosition position) {
+        if (game == null || position == null) {
+            return false;
+        }
+        Tile tile = game.getBoard().getTileAt(position);
+        if (tile != null && tile.getTileType() == TileType.NECROMANCY) {
+            return true;
+        }
+        BaseStructure structure = game.getBoard().getStructureAt(position);
+        return structure instanceof Grave
+                && ((Grave) structure).isNecromancyGrave();
+    }
+
+    private Actor createNecromancyGroundMarker() {
+        Stack marker = new Stack();
+        marker.setTouchable(Touchable.disabled);
+
+        Image outer = createAssetImage(DARK_NECROMANCY_DISC_OUTER_ASSET);
+        outer.setScaling(Scaling.fit);
+        outer.setTouchable(Touchable.disabled);
+        outer.setColor(1f, 1f, 1f, 0.78f);
+        marker.add(outer);
+
+        Image inner = createAssetImage(DARK_NECROMANCY_DISC_INNER_ASSET);
+        inner.setScaling(Scaling.fit);
+        inner.setTouchable(Touchable.disabled);
+        inner.setColor(1f, 1f, 1f, 0.92f);
+        marker.add(inner);
+        return marker;
+    }
+
+    private void positionNecromancyGroundMarker(Actor marker,
+            EntityPosition position) {
+        CellBounds cell = screenBoundsForCell(position);
+        if (marker == null || cell == null) {
+            return;
+        }
+        float width = cell.width * 0.88f;
+        float height = cell.height * 0.62f;
+        marker.setBounds(
+                cell.x + (cell.width - width) * 0.5f,
+                cell.y + cell.height * 0.02f,
+                width, height);
+        marker.setVisible(true);
+    }
+
+    private boolean isFrostbiteGame() {
+        Chapter chapter = seedTrayChapter();
+        return chapter != null && "frostbite-caves".equals(chapter.getId());
+    }
+
+    private void installFrostbiteTerrainRendering() {
+        if (!isModelBackedGame() || !isFrostbiteGame()
+                || frostbiteTerrainLayer != null) {
+            return;
+        }
+        frostbiteTerrainLayer = new Group();
+        frostbiteTerrainLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(frostbiteTerrainLayer);
+        rebuildFrostbiteTerrainRendering();
+    }
+
+    private void rebuildFrostbiteTerrainRendering() {
+        Game game = activeGame();
+        if (!isFrostbiteGame() || game == null
+                || frostbiteTerrainLayer == null) {
+            return;
+        }
+        frostbiteTerrainLayer.clearChildren();
+        for (Tile tile : game.getBoard().getTiles()) {
+            if (!isFrostbiteSlipperyTile(tile)) {
+                continue;
+            }
+            Image ice = createAssetImage(FROSTBITE_SLIPPERY_TILE_ASSET);
+            ice.setScaling(Scaling.fit);
+            ice.setTouchable(Touchable.disabled);
+            positionFrostbiteTerrainActor(ice, tile.getPosition());
+            frostbiteTerrainLayer.addActor(ice);
+        }
+        frostbiteTerrainSignature = createFrostbiteTerrainSignature(game);
+    }
+
+    private void refreshFrostbiteTerrainRendering() {
+        Game game = activeGame();
+        if (!isFrostbiteGame() || game == null
+                || frostbiteTerrainLayer == null) {
+            return;
+        }
+        String signature = createFrostbiteTerrainSignature(game);
+        if (!signature.equals(frostbiteTerrainSignature)) {
+            rebuildFrostbiteTerrainRendering();
+        }
+    }
+
+    private boolean isFrostbiteSlipperyTile(Tile tile) {
+        if (tile == null || tile.getPosition() == null) {
+            return false;
+        }
+        TileType type = tile.getTileType();
+        return type == TileType.SLIPPERY
+                || type == TileType.SLIDER_UP
+                || type == TileType.SLIDER_DOWN;
+    }
+
+    private String createFrostbiteTerrainSignature(Game game) {
+        StringBuilder signature = new StringBuilder();
+        for (Tile tile : game.getBoard().getTiles()) {
+            if (isFrostbiteSlipperyTile(tile)) {
+                signature.append(tile.getPosition()).append(':')
+                        .append(tile.getTileType()).append(';');
+            }
+        }
+        return signature.toString();
+    }
+
+    private void positionFrostbiteTerrainActor(Actor actor,
+            EntityPosition position) {
+        CellBounds bounds = screenBoundsForCell(position);
+        if (actor == null || bounds == null) {
+            return;
+        }
+        actor.setBounds(bounds.x - bounds.width * 0.02f,
+                bounds.y - bounds.height * 0.03f,
+                bounds.width * 1.04f, bounds.height * 1.06f);
     }
 
     private void installWaveProgressHud() {
@@ -2804,6 +3233,80 @@ public final class GameScreen extends AbstractScreen {
         }
     }
 
+    private void installFrostbitePlantIceRendering() {
+        if (!isModelBackedGame() || !isFrostbiteGame()
+                || frostbitePlantIceLayer != null) {
+            return;
+        }
+        frostbitePlantIceLayer = new Group();
+        frostbitePlantIceLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(frostbitePlantIceLayer);
+        refreshFrostbitePlantIceRendering();
+    }
+
+    private void refreshFrostbitePlantIceRendering() {
+        Game game = activeGame();
+        if (!isFrostbiteGame() || game == null
+                || frostbitePlantIceLayer == null) {
+            return;
+        }
+        IdentityHashMap<BasePlant, Boolean> present = new IdentityHashMap<>();
+        for (BasePlant plant : game.getBoard().getPlants()) {
+            if (plant == null || plant.isRemoved() || plant.isDestroyed()
+                    || !plant.isFrozen()) {
+                continue;
+            }
+            Actor plantActor = plantedPlantActors.get(plant);
+            if (plantActor == null) {
+                continue;
+            }
+            present.put(plant, Boolean.TRUE);
+            String asset = frostbitePlantIceAsset(plant);
+            Image ice = frostbitePlantIceActors.get(plant);
+            if (ice == null || !asset.equals(frostbitePlantIceKeys.get(plant))) {
+                if (ice != null) {
+                    ice.remove();
+                }
+                ice = createAssetImage(asset);
+                ice.setScaling(Scaling.fit);
+                ice.setTouchable(Touchable.disabled);
+                frostbitePlantIceActors.put(plant, ice);
+                frostbitePlantIceKeys.put(plant, asset);
+                frostbitePlantIceLayer.addActor(ice);
+            }
+            positionFrostbitePlantIceActor(ice, plantActor);
+        }
+
+        Iterator<Map.Entry<BasePlant, Image>> iterator =
+                frostbitePlantIceActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BasePlant, Image> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                frostbitePlantIceKeys.remove(entry.getKey());
+                iterator.remove();
+            }
+        }
+    }
+
+    private void positionFrostbitePlantIceActor(Actor ice, Actor plantActor) {
+        if (ice == null || plantActor == null) {
+            return;
+        }
+        float width = plantActor.getWidth() * 1.10f;
+        float height = plantActor.getHeight() * 1.08f;
+        ice.setBounds(plantActor.getX() - (width - plantActor.getWidth()) * 0.5f,
+                plantActor.getY() - plantActor.getHeight() * 0.01f,
+                width, height);
+        ice.setVisible(plantActor.isVisible());
+    }
+
+    private String frostbitePlantIceAsset(BasePlant plant) {
+        return chooseFrostbiteIceAsset(FROSTBITE_PLANT_ICE_ASSETS,
+                plant.getIceShellHitPoints(),
+                plant.getIceShellMaximumHitPoints());
+    }
+
     /**
      * Renders model structures that can intercept projectiles. Ancient Egypt
      * begins with several graves, so leaving structures invisible made peas
@@ -2988,9 +3491,21 @@ public final class GameScreen extends AbstractScreen {
         if (!isModelBackedGame() || zombieLayer != null) {
             return;
         }
+        if (isAncientEgyptGame()) {
+            egyptSandstormRearLayer = new Group();
+            egyptSandstormRearLayer.setTouchable(Touchable.disabled);
+            addBackgroundOverlay(egyptSandstormRearLayer);
+        }
+
         zombieLayer = new Group();
         zombieLayer.setTouchable(Touchable.disabled);
         addBackgroundOverlay(zombieLayer);
+
+        if (isAncientEgyptGame()) {
+            egyptSandstormTopLayer = new Group();
+            egyptSandstormTopLayer.setTouchable(Touchable.disabled);
+            addBackgroundOverlay(egyptSandstormTopLayer);
+        }
         refreshZombieRendering();
     }
 
@@ -3029,12 +3544,14 @@ public final class GameScreen extends AbstractScreen {
                 actor.setTouchable(Touchable.disabled);
                 zombieActors.put(zombie, actor);
                 zombieLayer.addActor(actor);
+                startEgyptSandstormIfNeeded(game, zombie);
             }
             if (wasDamaged) {
                 actor.flashHurt();
             }
             actor.setEating(isZombieEatingPlant(game, zombie));
             positionZombieActor(actor, zombie);
+            positionEgyptSandstormEffect(egyptSandstorms.get(zombie), zombie);
         }
 
         Iterator<Map.Entry<Zombie, ZombiePamActor>> iterator =
@@ -3044,9 +3561,110 @@ public final class GameScreen extends AbstractScreen {
             if (!present.containsKey(entry.getKey())) {
                 entry.getValue().remove();
                 zombieDurability.remove(entry.getKey());
+                removeEgyptSandstorm(entry.getKey());
                 iterator.remove();
             }
         }
+    }
+
+    private boolean isAncientEgyptGame() {
+        Chapter chapter = chapterForCurrentGame();
+        return chapter != null && "ancient-egypt".equals(chapter.getId());
+    }
+
+    private void startEgyptSandstormIfNeeded(Game game, Zombie zombie) {
+        if (!isAncientEgyptGame() || game == null || zombie == null
+                || zombie.getTornadoAdvanceColumns() <= 0
+                || egyptSandstormRearLayer == null
+                || egyptSandstormTopLayer == null
+                || egyptSandstorms.containsKey(zombie)) {
+            return;
+        }
+
+        // A saved game can contain an old tornado-spawned zombie that has
+        // already walked far away from its arrival point. Only replay the
+        // arrival effect while the zombie is still close to the exact
+        // advanced spawn column chosen by the Phase-1 tornado logic.
+        double expectedSpawnColumn = game.getBoard().getNumberOfColumns()
+                - 0.001 - zombie.getTornadoAdvanceColumns();
+        if (Math.abs(zombie.getColumnPosition() - expectedSpawnColumn) > 0.40) {
+            return;
+        }
+
+        try {
+            EgyptSandstormEffect effect = new EgyptSandstormEffect(zombie);
+            egyptSandstorms.put(zombie, effect);
+            egyptSandstormRearLayer.addActor(effect.rear);
+            egyptSandstormTopLayer.addActor(effect.top);
+            positionEgyptSandstormEffect(effect, zombie);
+        } catch (RuntimeException ignored) {
+            // The model already advanced the zombie. Missing optional vortex
+            // artwork must never stop the Ancient Egypt level from running.
+        }
+    }
+
+    private void refreshEgyptSandstorms(float deltaSeconds) {
+        if (egyptSandstorms.isEmpty()) {
+            return;
+        }
+        for (EgyptSandstormEffect effect :
+                new ArrayList<>(egyptSandstorms.values())) {
+            if (effect == null) {
+                continue;
+            }
+            positionEgyptSandstormEffect(effect, effect.zombie);
+            effect.update(Math.max(0f, deltaSeconds));
+        }
+    }
+
+    private void removeEgyptSandstorm(Zombie zombie) {
+        EgyptSandstormEffect effect = egyptSandstorms.remove(zombie);
+        if (effect != null) {
+            effect.remove();
+        }
+    }
+
+    private void finishEgyptSandstorm(Zombie zombie,
+            EgyptSandstormEffect expected) {
+        if (egyptSandstorms.get(zombie) != expected) {
+            return;
+        }
+        egyptSandstorms.remove(zombie);
+        expected.remove();
+    }
+
+    private void positionEgyptSandstormEffect(EgyptSandstormEffect effect,
+            Zombie zombie) {
+        BoardLayout layout = currentBoardLayout();
+        if (effect == null || zombie == null || layout == null
+                || Gdx.graphics.getWidth() <= 0
+                || Gdx.graphics.getHeight() <= 0) {
+            return;
+        }
+
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom)
+                / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+        float centerX = boardX
+                + (float) (zombie.getColumnPosition() + 0.5) * cellWidth;
+        float laneBottom = boardY
+                + (BOARD_ROWS - 1 - zombie.getLane()) * cellHeight;
+
+        float height = cellHeight * 2.25f;
+        float width = Math.max(cellWidth * 1.75f, height * 275f / 320f);
+        float x = centerX - width * 0.5f;
+        float y = laneBottom - cellHeight * 0.18f;
+        effect.rear.setBounds(x, y, width, height);
+        effect.top.setBounds(x, y, width, height);
     }
 
     private boolean isZombieEatingPlant(Game game, Zombie zombie) {
@@ -3133,6 +3751,144 @@ public final class GameScreen extends AbstractScreen {
         actor.setBounds(centerX - width * 0.5f,
                 footLine, width, height);
         actor.setVisible(true);
+    }
+
+    private void installFrostbiteZombieIceRendering() {
+        if (!isModelBackedGame() || !isFrostbiteGame()
+                || frostbiteZombieIceLayer != null) {
+            return;
+        }
+        frostbiteZombieIceLayer = new Group();
+        frostbiteZombieIceLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(frostbiteZombieIceLayer);
+        refreshFrostbiteZombieIceRendering();
+    }
+
+    private void refreshFrostbiteZombieIceRendering() {
+        Game game = activeGame();
+        if (!isFrostbiteGame() || game == null
+                || frostbiteZombieIceLayer == null) {
+            return;
+        }
+        IdentityHashMap<Zombie, Boolean> present = new IdentityHashMap<>();
+        for (Zombie zombie : game.getBoard().getZombies()) {
+            if (zombie == null || zombie.isDead() || zombie.isRemoved()
+                    || !zombie.isEncasedInIce()) {
+                continue;
+            }
+            Actor zombieActor = zombieActors.get(zombie);
+            if (zombieActor == null) {
+                continue;
+            }
+            present.put(zombie, Boolean.TRUE);
+            String asset = chooseFrostbiteIceAsset(
+                    FROSTBITE_ZOMBIE_ICE_ASSETS,
+                    zombie.getFrozenShellHitPoints(),
+                    zombie.getFrozenShellMaximumHitPoints());
+            Image ice = frostbiteZombieIceActors.get(zombie);
+            if (ice == null || !asset.equals(frostbiteZombieIceKeys.get(zombie))) {
+                if (ice != null) {
+                    ice.remove();
+                }
+                ice = createAssetImage(asset);
+                ice.setScaling(Scaling.fit);
+                ice.setTouchable(Touchable.disabled);
+                frostbiteZombieIceActors.put(zombie, ice);
+                frostbiteZombieIceKeys.put(zombie, asset);
+                frostbiteZombieIceLayer.addActor(ice);
+            }
+            positionFrostbiteZombieIceActor(ice, zombieActor);
+        }
+
+        Iterator<Map.Entry<Zombie, Image>> iterator =
+                frostbiteZombieIceActors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Zombie, Image> entry = iterator.next();
+            if (!present.containsKey(entry.getKey())) {
+                entry.getValue().remove();
+                frostbiteZombieIceKeys.remove(entry.getKey());
+                iterator.remove();
+            }
+        }
+    }
+
+    private void positionFrostbiteZombieIceActor(Actor ice,
+            Actor zombieActor) {
+        if (ice == null || zombieActor == null) {
+            return;
+        }
+        float width = zombieActor.getWidth() * 1.06f;
+        float height = zombieActor.getHeight() * 1.05f;
+        ice.setBounds(zombieActor.getX() - (width - zombieActor.getWidth()) * 0.5f,
+                zombieActor.getY() - zombieActor.getHeight() * 0.01f,
+                width, height);
+        ice.setVisible(zombieActor.isVisible());
+    }
+
+    private static String chooseFrostbiteIceAsset(String[] assets,
+            int currentHitPoints, int maximumHitPoints) {
+        if (maximumHitPoints <= 0) {
+            return assets[assets.length - 1];
+        }
+        float health = Math.max(0f, Math.min(1f,
+                currentHitPoints / (float) maximumHitPoints));
+        int index = Math.min(assets.length - 1,
+                (int) Math.floor((1f - health) * assets.length));
+        return assets[index];
+    }
+
+    private void installFrostbiteWindRendering() {
+        if (!isModelBackedGame() || !isFrostbiteGame()
+                || frostbiteWindLayer != null) {
+            return;
+        }
+        frostbiteWindLayer = new Group();
+        frostbiteWindLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(frostbiteWindLayer);
+        refreshFrostbiteWindRendering();
+    }
+
+    private void refreshFrostbiteWindRendering() {
+        Game game = activeGame();
+        if (!isFrostbiteGame() || game == null || frostbiteWindLayer == null) {
+            return;
+        }
+        double eventTime = game.getLastFrostbiteIcyWindAtSeconds();
+        if (eventTime < 0.0
+                || eventTime <= renderedFrostbiteWindAtSeconds + 0.000001) {
+            return;
+        }
+        renderedFrostbiteWindAtSeconds = eventTime;
+        if (game.getElapsedSeconds() - eventTime
+                > FROSTBITE_WIND_DURATION_SECONDS) {
+            return;
+        }
+        for (Integer lane : game.getLastFrostbiteIcyWindLanes()) {
+            if (lane == null || lane < 0 || lane >= BOARD_ROWS) {
+                continue;
+            }
+            try {
+                FrostbiteWindLaneActor effect =
+                        new FrostbiteWindLaneActor(lane);
+                positionFrostbiteWindLaneActor(effect, lane);
+                frostbiteWindLayer.addActor(effect);
+            } catch (RuntimeException ignored) {
+                // Missing optional wind artwork must not stop level logic.
+            }
+        }
+    }
+
+    private void positionFrostbiteWindLaneActor(Actor actor, int lane) {
+        CellBounds left = screenBoundsForCell(new EntityPosition(lane, 0));
+        CellBounds right = screenBoundsForCell(
+                new EntityPosition(lane, BOARD_COLUMNS - 1));
+        if (actor == null || left == null || right == null) {
+            return;
+        }
+        float width = right.x + right.width - left.x;
+        float height = left.height * 1.42f;
+        actor.setBounds(left.x, left.y - left.height * 0.16f,
+                width, height);
     }
 
     private void installBowlingWallnutRendering() {
@@ -4257,8 +5013,15 @@ public final class GameScreen extends AbstractScreen {
             maybeQueueReadyWaveAnnouncement();
         }
 
+        refreshBigWaveBeachTerrainRendering();
+        refreshFrostbiteTerrainRendering();
         refreshStructureRendering();
         refreshZombieRendering();
+        refreshFrostbiteZombieIceRendering();
+        refreshFrostbiteWindRendering();
+        float sceneDelta = gamePaused ? 0f
+                : Math.min(delta, 1f / 15f) * currentGameSpeed();
+        refreshEgyptSandstorms(sceneDelta);
         refreshBowlingWallnutRendering();
         refreshProjectileRendering();
         refreshSunRendering();
@@ -4275,6 +5038,7 @@ public final class GameScreen extends AbstractScreen {
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
         refreshPlantedPlantLayerIfNeeded();
+        refreshFrostbitePlantIceRendering();
         if (previewLevel == null) {
             currentGameMenu().synchronizeProgress();
             showFinishedGameMenuIfNeeded();
@@ -4373,8 +5137,15 @@ public final class GameScreen extends AbstractScreen {
         super.resize(width, height);
         if (isModelBackedGame()) {
             rebuildPlantedPlantLayer();
+            bigWaveBeachTerrainSignature = "";
+            rebuildBigWaveBeachTerrainRendering();
+            rebuildDarkAgesTerrainRendering();
+            rebuildFrostbiteTerrainRendering();
             refreshStructureRendering();
             refreshZombieRendering();
+            refreshFrostbiteZombieIceRendering();
+            refreshFrostbitePlantIceRendering();
+            refreshEgyptSandstorms(0f);
             refreshBowlingWallnutRendering();
             refreshProjectileRendering();
             refreshSunRendering();
@@ -4436,6 +5207,14 @@ public final class GameScreen extends AbstractScreen {
         structureLayer = null;
         zombieActors.clear();
         zombieDurability.clear();
+        for (EgyptSandstormEffect effect : egyptSandstorms.values()) {
+            if (effect != null) {
+                effect.remove();
+            }
+        }
+        egyptSandstorms.clear();
+        egyptSandstormRearLayer = null;
+        egyptSandstormTopLayer = null;
         zombieLayer = null;
         bowlingWallnutActors.clear();
         bowlingWallnutLayer = null;
@@ -4449,6 +5228,62 @@ public final class GameScreen extends AbstractScreen {
             shovelCursor = null;
         }
         super.dispose();
+    }
+
+    private final class EgyptSandstormEffect {
+        private final Zombie zombie;
+        private final PamAnimationActor rear;
+        private final PamAnimationActor top;
+        private final float outroStartSeconds;
+        private float elapsedSeconds;
+        private boolean outroStarted;
+
+        private EgyptSandstormEffect(Zombie zombie) {
+            this.zombie = zombie;
+            rear = new PamAnimationActor(navigator.getPamPlayer(),
+                    EGYPT_SANDSTORM_REAR_PAM, "loop");
+            top = new PamAnimationActor(navigator.getPamPlayer(),
+                    EGYPT_SANDSTORM_TOP_PAM, "loop");
+            rear.setTouchable(Touchable.disabled);
+            top.setTouchable(Touchable.disabled);
+            rear.playOnce("intro", "loop");
+            top.playOnce("intro", "loop");
+
+            float introSeconds = Math.max(
+                    navigator.getPamPlayer().clipDurationSeconds(
+                            EGYPT_SANDSTORM_REAR_PAM, "intro"),
+                    navigator.getPamPlayer().clipDurationSeconds(
+                            EGYPT_SANDSTORM_TOP_PAM, "intro"));
+            float loopSeconds = Math.max(
+                    navigator.getPamPlayer().clipDurationSeconds(
+                            EGYPT_SANDSTORM_REAR_PAM, "loop"),
+                    navigator.getPamPlayer().clipDurationSeconds(
+                            EGYPT_SANDSTORM_TOP_PAM, "loop"));
+            outroStartSeconds = Math.max(0.01f, introSeconds)
+                    + Math.max(0.01f, loopSeconds);
+        }
+
+        private void update(float deltaSeconds) {
+            if (outroStarted) {
+                return;
+            }
+            elapsedSeconds += deltaSeconds;
+            if (elapsedSeconds + 0.0001f < outroStartSeconds) {
+                return;
+            }
+            outroStarted = true;
+            rear.playOnce("outro", "outro");
+            boolean topStarted = top.playOnce("outro", "outro",
+                    () -> finishEgyptSandstorm(zombie, this));
+            if (!topStarted) {
+                finishEgyptSandstorm(zombie, this);
+            }
+        }
+
+        private void remove() {
+            rear.remove();
+            top.remove();
+        }
     }
 
     private final class BowlingWallnutActor extends Stack {
@@ -4965,6 +5800,55 @@ public final class GameScreen extends AbstractScreen {
                     getX() + getWidth() - THICKNESS, getY(),
                     THICKNESS, getHeight());
             batch.setColor(previous);
+        }
+    }
+
+    private final class FrostbiteWindLaneActor extends Group {
+        private final int lane;
+        private float remainingSeconds = FROSTBITE_WIND_DURATION_SECONDS;
+
+        private FrostbiteWindLaneActor(int lane) {
+            this.lane = lane;
+            float[] centers = { 0.17f, 0.50f, 0.83f };
+            for (float center : centers) {
+                PamAnimationActor wind = new PamAnimationActor(
+                        navigator.getPamPlayer(), FROSTBITE_WIND_PAM,
+                        "animation");
+                wind.setTouchable(Touchable.disabled);
+                wind.setColor(1f, 1f, 1f, 0.90f);
+                wind.setUserObject(Float.valueOf(center));
+                addActor(wind);
+            }
+            setTouchable(Touchable.disabled);
+        }
+
+        @Override
+        public void act(float delta) {
+            super.act(delta);
+            remainingSeconds -= Math.max(0f, delta);
+            if (remainingSeconds <= 0f) {
+                remove();
+                return;
+            }
+            positionFrostbiteWindLaneActor(this, lane);
+            layoutWindSegments();
+        }
+
+        @Override
+        protected void sizeChanged() {
+            super.sizeChanged();
+            layoutWindSegments();
+        }
+
+        private void layoutWindSegments() {
+            float segmentWidth = getWidth() * 0.38f;
+            for (Actor child : getChildren()) {
+                Object marker = child.getUserObject();
+                float center = marker instanceof Float
+                        ? ((Float) marker).floatValue() : 0.5f;
+                child.setBounds(getWidth() * center - segmentWidth * 0.5f,
+                        0f, segmentWidth, getHeight());
+            }
         }
     }
 

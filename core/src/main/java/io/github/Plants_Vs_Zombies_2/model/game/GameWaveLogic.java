@@ -169,6 +169,7 @@ abstract class GameWaveLogic extends GameAbilityLogic {
             double spawnColumn = normalSpawnColumn - tornadoAdvance;
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);
+            zombie.setTornadoAdvanceColumns(tornadoAdvance);
             applyDifficultyToZombie(zombie);
             spawnedZombies.add(zombie);
             board.addZombie(zombie);
@@ -307,11 +308,23 @@ abstract class GameWaveLogic extends GameAbilityLogic {
         int affectedPlants = board.applyIcyWind(windLanes);
         pendingResults.addAll(board.drainResults());
         if (affectedPlants > 0) {
+            lastFrostbiteIcyWindLanes.clear();
+            lastFrostbiteIcyWindLanes.addAll(windLanes);
+            lastFrostbiteIcyWindAtSeconds = elapsedSeconds;
             pendingResults.add("Icy wind struck lane(s) "
                     + windLanes + " at wave " + waveNumber
                     + " and chilled " + affectedPlants
                     + " plant(s).");
         }
+    }
+
+    public double getLastFrostbiteIcyWindAtSeconds() {
+        return lastFrostbiteIcyWindAtSeconds;
+    }
+
+    public List<Integer> getLastFrostbiteIcyWindLanes() {
+        return Collections.unmodifiableList(
+                new ArrayList<>(lastFrostbiteIcyWindLanes));
     }
 
     void applyBigWaveBeachWaterWave(int waveNumber,
