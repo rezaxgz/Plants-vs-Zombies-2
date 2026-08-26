@@ -81,7 +81,7 @@ abstract class BoardPlantAttackLogic extends BoardUpdateLogic {
         double nearestDistance = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
             if (zombie.isDead() || zombie.isHypnotized()
-                    || zombie.getLane() != position.getRow()) {
+                    || !zombieOccupiesLane(zombie, position.getRow())) {
                 continue;
             }
             double distance = zombie.getColumnPosition() - position.getColumn();
@@ -112,9 +112,14 @@ abstract class BoardPlantAttackLogic extends BoardUpdateLogic {
 
     boolean hasStrikeThroughTarget(StrikeThrough plant) {
         for (Zombie zombie : getZombies()) {
-            if (!zombie.isDead() && !zombie.isHypnotized()
-                    && !zombie.isSubmerged()
-                    && plant.canTarget(zombie.getColumnPosition(), zombie.getLane())) {
+            if (zombie.isDead() || zombie.isHypnotized()
+                    || zombie.isSubmerged()) {
+                continue;
+            }
+            if (plant.canTarget(zombie.getColumnPosition(), zombie.getLane())
+                    || zombie.getType().isBoss() && zombie.getLane() > 0
+                            && plant.canTarget(zombie.getColumnPosition(),
+                                    zombie.getLane() - 1)) {
                 return true;
             }
         }

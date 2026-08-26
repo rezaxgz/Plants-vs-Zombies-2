@@ -3,8 +3,10 @@ package io.github.Plants_Vs_Zombies_2.model.game;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import io.github.Plants_Vs_Zombies_2.model.Constants;
@@ -71,6 +73,8 @@ abstract class BoardState implements java.io.Serializable {
     final List<ActiveFamilyBoost> activeFamilyBoosts;
     final List<PlantFamily> pendingPlantCooldownResets;
     final Set<EntityPosition> lowBeachTiles;
+    final Map<EntityPosition, Double> burningTileSeconds;
+    final Map<EntityPosition, TileType> burningTilePreviousTypes;
     boolean frostbiteCavesRules;
     boolean bigWaveBeachRules;
     int waterColumnCount;
@@ -94,6 +98,8 @@ abstract class BoardState implements java.io.Serializable {
         this.activeFamilyBoosts = new ArrayList<>();
         this.pendingPlantCooldownResets = new ArrayList<>();
         this.lowBeachTiles = new LinkedHashSet<>();
+        this.burningTileSeconds = new LinkedHashMap<>();
+        this.burningTilePreviousTypes = new LinkedHashMap<>();
         initializeTiles();
     }
 
@@ -119,7 +125,85 @@ abstract class BoardState implements java.io.Serializable {
     }
 
     static boolean isZomboss(Zombie zombie) {
-        return zombie.getType().name().startsWith("ZOMBOSS_");
+        return zombie != null && zombie.getType().isBoss();
+    }
+
+    static boolean zombieOccupiesLane(Zombie zombie, int lane) {
+        if (zombie == null) {
+            return false;
+        }
+        if (!zombie.getType().isBoss()) {
+            return zombie.getLane() == lane;
+        }
+        return lane == zombie.getLane()
+                || lane == zombie.getLane() - 1;
+    }
+
+    static double zombieIntersectionParameter(Projectile projectile,
+            Zombie zombie, double radius) {
+        if (projectile == null || zombie == null) {
+            return Double.NaN;
+        }
+        double parameter = projectile.getIntersectionParameter(
+                zombie.getLane(), zombie.getColumnPosition(), radius);
+        if (!zombie.getType().isBoss() || zombie.getLane() <= 0) {
+            return parameter;
+        }
+        double second = projectile.getIntersectionParameter(
+                zombie.getLane() - 1, zombie.getColumnPosition(), radius);
+        if (Double.isNaN(parameter)) {
+            return second;
+        }
+        if (Double.isNaN(second)) {
+            return parameter;
+        }
+        return Math.min(parameter, second);
+    }
+
+    void updateBurningTiles(float deltaSeconds) {
+        if (deltaSeconds <= 0.0f || burningTileSeconds.isEmpty()) {
+            return;
+        }
+        List<EntityPosition> expired = new ArrayList<>();
+        for (Map.Entry<EntityPosition, Double> entry
+                : burningTileSeconds.entrySet()) {
+            double remaining = Math.max(0.0,
+                    entry.getValue() - deltaSeconds);
+            entry.setValue(remaining);
+            if (remaining <= POSITION_EPSILON) {
+                expired.add(entry.getKey());
+            }
+        }
+        for (EntityPosition position : expired) {
+            burningTileSeconds.remove(position);
+            TileType previous = burningTilePreviousTypes.remove(position);
+            Tile tile = getTileAt(position);
+            if (tile != null && tile.getTileType() == TileType.BURNING) {
+                tile.setTileType(previous == null ? TileType.NORMAL : previous);
+            }
+            pendingResults.add("The fire at " + position + " went out.");
+        }
+    }
+
+    static double zombieIntersectionParameter(BouncingGrape grape,
+            Zombie zombie, double radius) {
+        if (grape == null || zombie == null) {
+            return Double.NaN;
+        }
+        double parameter = grape.getIntersectionParameter(
+                zombie.getLane(), zombie.getColumnPosition(), radius);
+        if (!zombie.getType().isBoss() || zombie.getLane() <= 0) {
+            return parameter;
+        }
+        double second = grape.getIntersectionParameter(
+                zombie.getLane() - 1, zombie.getColumnPosition(), radius);
+        if (Double.isNaN(parameter)) {
+            return second;
+        }
+        if (Double.isNaN(second)) {
+            return parameter;
+        }
+        return Math.min(parameter, second);
     }
 
     static boolean isInsideHomingRange(Homing plant, Zombie zombie) {
@@ -163,9 +247,17 @@ abstract class BoardState implements java.io.Serializable {
             return false;
         }
         double rowDelta = zombie.getLane() - projectile.getLandingRow();
-        double columnDelta = zombie.getColumnPosition() - projectile.getLandingColumn();
-        return rowDelta * rowDelta + columnDelta * columnDelta <= PROJECTILE_COLLISION_RADIUS
-                * PROJECTILE_COLLISION_RADIUS;
+        if (zombie.getType().isBoss() && zombie.getLane() > 0) {
+            double secondRowDelta = zombie.getLane() - 1
+                    - projectile.getLandingRow();
+            if (Math.abs(secondRowDelta) < Math.abs(rowDelta)) {
+                rowDelta = secondRowDelta;
+            }
+        }
+        double columnDelta = zombie.getColumnPosition()
+                - projectile.getLandingColumn();
+        return rowDelta * rowDelta + columnDelta * columnDelta
+                <= PROJECTILE_COLLISION_RADIUS * PROJECTILE_COLLISION_RADIUS;
     }
 
     static boolean isInsideLobbedSplash(Zombie zombie,

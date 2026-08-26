@@ -376,8 +376,8 @@ abstract class BoardProjectileObstacleLogic extends BoardProjectileImpactLogic {
                     || !canProjectileHit(projectile, zombie)) {
                 continue;
             }
-            double parameter = projectile.getIntersectionParameter(
-                    zombie.getLane(), zombie.getColumnPosition(), PROJECTILE_COLLISION_RADIUS);
+            double parameter = zombieIntersectionParameter(
+                    projectile, zombie, PROJECTILE_COLLISION_RADIUS);
             if (!Double.isNaN(parameter) && parameter < firstParameter) {
                 firstParameter = parameter;
                 firstTarget = zombie;

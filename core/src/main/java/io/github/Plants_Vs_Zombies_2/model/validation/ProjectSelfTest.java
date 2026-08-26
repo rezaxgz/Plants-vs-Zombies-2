@@ -28,6 +28,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarSystem;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.LevelKind;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
 import io.github.Plants_Vs_Zombies_2.model.quest.Quest;
 import io.github.Plants_Vs_Zombies_2.model.quest.QuestCondition;
@@ -65,8 +66,8 @@ public final class ProjectSelfTest {
                 test::checkDifficultyMultipliers);
         test.run("wave progression and exact budgets",
                 test::checkWaveRules);
-        test.run("catalog contains no Zomboss",
-                test::checkNoBossLevels);
+        test.run("boss levels are internally consistent",
+                test::checkBossLevelConsistency);
         test.run("daily Scored Game is deterministic",
                 test::checkDailyScoredGame);
         test.run("Scored Game disables cheats",
@@ -129,8 +130,15 @@ public final class ProjectSelfTest {
         for (Chapter chapter : ChapterCatalog.getChapters()) {
             for (Level level : chapter.getLevels()) {
                 List<ZombieWave> waves = level.getZombieWaves();
+                if (level.getKind() == LevelKind.BOSS) {
+                    require(waves.size() == 1,
+                            "every boss level must have exactly one boss wave");
+                    require(waves.get(0).containsBoss(),
+                            "boss wave must contain Zomboss");
+                    continue;
+                }
                 require(waves.size() == 3,
-                        "every level must have three waves");
+                        "every non-boss level must have three waves");
                 checkWaveProgression(waves);
                 checkDefaultWaveBudgets(level, waves);
             }
@@ -169,17 +177,25 @@ public final class ProjectSelfTest {
         }
     }
 
-    private void checkNoBossLevels() {
+    private void checkBossLevelConsistency() {
         for (Chapter chapter : ChapterCatalog.getChapters()) {
+            int bossLevelCount = 0;
             for (Level level : chapter.getLevels()) {
+                boolean isBossLevel = level.getKind() == LevelKind.BOSS;
+                if (isBossLevel) {
+                    bossLevelCount++;
+                }
                 for (ZombieWave wave : level.getZombieWaves()) {
                     for (ZombieType type : wave.getZombieTypes()) {
-                        require(!type.isBoss(),
-                                "boss found in "
+                        require(type.isBoss() == isBossLevel,
+                                "boss zombies must only appear in boss levels: "
                                         + level.getName());
                     }
                 }
             }
+            require(bossLevelCount == 1,
+                    chapter.getDisplayName()
+                            + " must contain exactly one Zomboss finale");
         }
     }
 

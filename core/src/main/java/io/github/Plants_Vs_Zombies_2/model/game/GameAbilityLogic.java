@@ -72,6 +72,13 @@ abstract class GameAbilityLogic extends GameUpdateLogic {
         for (Zombie spawned : bossAbility.getLastSpawnedZombies()) {
             trackSpawnedZombie(spawned);
         }
+        if (zomboss.getType() == io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType.ZOMBOSS_ICEAGE
+                && "ICY_WIND".equals(bossAbility.getLastActionName())) {
+            lastFrostbiteIcyWindAtSeconds = elapsedSeconds;
+            lastFrostbiteIcyWindLanes.clear();
+            lastFrostbiteIcyWindLanes.addAll(
+                    bossAbility.getLastAffectedLanes());
+        }
         if (bossAbility.didPhaseChangeThisUse()) {
             pendingResults.add(zomboss.getName()
                     + " entered phase "

@@ -123,7 +123,7 @@ abstract class BoardMeleeLogic extends BoardExplosiveLogic {
         Zombie nearest = null;
         double nearestDistance = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (!isMeleeTargetable(zombie) || zombie.getLane() != position.getRow()) {
+            if (!isMeleeTargetable(zombie) || !zombieOccupiesLane(zombie, position.getRow())) {
                 continue;
             }
             double delta = zombie.getColumnPosition() - position.getColumn();
@@ -188,7 +188,7 @@ abstract class BoardMeleeLogic extends BoardExplosiveLogic {
         Zombie nearest = null;
         double nearestDistance = Double.POSITIVE_INFINITY;
         for (Zombie zombie : getZombies()) {
-            if (!isMeleeTargetable(zombie) || zombie.getLane() != position.getRow()) {
+            if (!isMeleeTargetable(zombie) || !zombieOccupiesLane(zombie, position.getRow())) {
                 continue;
             }
             double distance = zombie.getColumnPosition() - position.getColumn();
@@ -250,7 +250,7 @@ abstract class BoardMeleeLogic extends BoardExplosiveLogic {
             return candidates;
         }
         for (Zombie zombie : getZombies()) {
-            if (isMeleeTargetable(zombie) && zombie.getLane() == position.getRow()
+            if (isMeleeTargetable(zombie) && zombieOccupiesLane(zombie, position.getRow())
                     && zombie.getColumnPosition() > position.getColumn() + POSITION_EPSILON) {
                 candidates.add(zombie);
             }

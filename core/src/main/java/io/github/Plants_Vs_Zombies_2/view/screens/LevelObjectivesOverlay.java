@@ -26,6 +26,7 @@ import com.badlogic.gdx.utils.Scaling;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantSpec;
 import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarObjective;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.LevelKind;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelConfig;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
 
@@ -172,6 +173,21 @@ final class LevelObjectivesOverlay extends Group {
         List<String> objectives = new ArrayList<>();
         SpecialLevelType type = level.getSpecialLevelType();
         SpecialLevelConfig config = level.getSpecialConfig();
+
+        if (level.getKind() == LevelKind.BOSS) {
+            objectives.add("Defeat Zomboss. Its health bar is divided into three phases, and it is stunned briefly when each phase is cleared.");
+            objectives.add("Zomboss occupies two rows at once, so plants in either occupied row can damage it.");
+            String chapterId = level.getChapterRuleset().name();
+            if ("ANCIENT_EGYPT".equals(chapterId)) {
+                objectives.add("Watch for missiles that destroy a plant and raise graves, and for the two-row rush attack.");
+            } else if ("FROSTBITE_CAVES".equals(chapterId)) {
+                objectives.add("The Mammoth stays in one pair of rows and does not summon normal zombies; expect ice missiles, icy wind, and frozen-zombie columns.");
+            } else if ("BIG_WAVE_BEACH".equals(chapterId)) {
+                objectives.add("Baby sharks eat plants in water, while the turbine pulls plants and zombies in its two rows toward the Shark's mouth.");
+            } else if ("DARK_AGES".equals(chapterId)) {
+                objectives.add("Dragon fireballs and fire breath destroy plants and leave tiles burning and unplantable for 4 seconds.");
+            }
+        }
 
         if (type == SpecialLevelType.DEAD_LINE) {
             objectives.add("Do not let any zombie cross the Dead Line at column "

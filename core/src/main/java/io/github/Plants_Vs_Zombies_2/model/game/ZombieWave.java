@@ -55,6 +55,13 @@ public final class ZombieWave implements java.io.Serializable {
         return total;
     }
 
+    public static ZombieWave bossWave(ZombieType bossType) {
+        if (bossType == null || !bossType.isBoss()) {
+            throw new IllegalArgumentException("bossType must be a Zomboss type");
+        }
+        return new ZombieWave(List.of(bossType), List.of(), 0, true);
+    }
+
     public static ZombieWave basicWave(
             int difficulty, boolean finalWave) {
         return buildWave(
@@ -179,12 +186,24 @@ public final class ZombieWave implements java.io.Serializable {
     }
 
     public ZombieWave forDifficulty(int difficultyLevel) {
+        if (containsBoss()) {
+            return copy();
+        }
         DifficultyRules rules = DifficultyRules.forLevel(difficultyLevel);
         ZombieType flag = findFlagType();
         return buildWave(availableTypes, flag, difficulty,
                 finalWave,
                 rules.getZombieWaveCostMultiplier(),
                 new Random());
+    }
+
+    public boolean containsBoss() {
+        for (ZombieType type : zombieTypes) {
+            if (type != null && type.isBoss()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ZombieType findFlagType() {

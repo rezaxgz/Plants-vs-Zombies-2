@@ -14,6 +14,8 @@ import com.badlogic.gdx.scenes.scene2d.Actor;
 
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.ZombieAbility;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.ZombossAbility;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.armor.Armor;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.armor.ArmorType;
 import pvz.libpvz.pam.PamPlayer;
@@ -40,6 +42,8 @@ final class ZombiePamActor extends Actor {
     private float hurtFlashRemainingSeconds;
     private boolean eating;
     private boolean lastArmorVisible;
+    private int lastBossActionSequence;
+    private float bossActionRemainingSeconds;
 
     ZombiePamActor(PamPlayer player, Zombie zombie,
             ZombieVisualCatalog.Visual visual) {
@@ -55,6 +59,9 @@ final class ZombiePamActor extends Actor {
         this.armorHiddenParts = createArmorVisibility(false);
         this.armorVisibleParts = createArmorVisibility(true);
         this.lastArmorVisible = hasVisibleArmor();
+        ZombossAbility bossAbility = findZombossAbility();
+        this.lastBossActionSequence = bossAbility == null
+                ? 0 : bossAbility.getActionSequence();
         refreshSizingBounds();
         setClip(resolveWalkClip());
     }
@@ -64,6 +71,10 @@ final class ZombiePamActor extends Actor {
     }
 
     void setEating(boolean eating) {
+        if (zombie.getType().isBoss()) {
+            refreshBossPresentation(0f);
+            return;
+        }
         boolean armorVisible = hasVisibleArmor();
         if (this.eating == eating && armorVisible == lastArmorVisible) {
             return;
@@ -89,6 +100,9 @@ final class ZombiePamActor extends Actor {
         hurtFlashRemainingSeconds = HurtFlashEffect.advance(
                 hurtFlashRemainingSeconds,
                 HurtFlashEffect.realFrameDeltaSeconds());
+        if (zombie.getType().isBoss()) {
+            refreshBossPresentation(Math.max(0f, delta));
+        }
     }
 
     @Override
@@ -191,6 +205,9 @@ final class ZombiePamActor extends Actor {
     }
 
     private String resolveWalkClip() {
+        if (zombie.getType().isBoss()) {
+            return firstAvailable(idleClip, "idle", "almanac_idle");
+        }
         if (zombie.getType() == ZombieType.NEWSPAPER && hasVisibleArmor()) {
             return firstAvailable("walk_newspaper", "walk", idleClip);
         }
@@ -204,6 +221,9 @@ final class ZombiePamActor extends Actor {
     }
 
     private String resolveEatClip() {
+        if (zombie.getType().isBoss()) {
+            return resolveWalkClip();
+        }
         if (zombie.getType() == ZombieType.NEWSPAPER && hasVisibleArmor()) {
             return firstAvailable("eat_newspaper", "eat", idleClip);
         }
@@ -214,6 +234,115 @@ final class ZombiePamActor extends Actor {
             return firstAvailable("eat_loop", "eat", idleClip);
         }
         return firstAvailable("eat", "eat_loop", idleClip);
+    }
+
+    private void refreshBossPresentation(float delta) {
+        ZombossAbility ability = findZombossAbility();
+        if (ability == null) {
+            setClip(resolveWalkClip());
+            return;
+        }
+        if (zombie.isStunned()) {
+            bossActionRemainingSeconds = 0f;
+            setClip(resolveBossStunClip());
+            return;
+        }
+        int sequence = ability.getActionSequence();
+        if (sequence != lastBossActionSequence) {
+            lastBossActionSequence = sequence;
+            String actionClip = resolveBossActionClip(
+                    ability.getLastActionName());
+            setClip(actionClip);
+            bossActionRemainingSeconds = Math.max(0.05f,
+                    player.clipDurationSeconds(pamPath, actionClip));
+            return;
+        }
+        if (bossActionRemainingSeconds > 0f) {
+            bossActionRemainingSeconds = Math.max(0f,
+                    bossActionRemainingSeconds - delta);
+            if (bossActionRemainingSeconds > 0f) {
+                return;
+            }
+        }
+        setClip(resolveWalkClip());
+    }
+
+    private ZombossAbility findZombossAbility() {
+        if (!zombie.getType().isBoss()) {
+            return null;
+        }
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof ZombossAbility) {
+                return (ZombossAbility) ability;
+            }
+        }
+        return null;
+    }
+
+    private String resolveBossStunClip() {
+        if (zombie.getType() == ZombieType.ZOMBOSS_ICEAGE) {
+            return firstAvailable("stun", "idle", idleClip);
+        }
+        return firstAvailable("stun_loop", "vulnerable_loop",
+                "stun_start", "idle", idleClip);
+    }
+
+    private String resolveBossActionClip(String action) {
+        if (action == null) {
+            return resolveWalkClip();
+        }
+        switch (zombie.getType()) {
+            case ZOMBOSS_EGYPT:
+                if ("SPAWN".equals(action)) {
+                    return firstAvailable("zombie_portal_start", "idle");
+                }
+                if ("RUSH".equals(action)) {
+                    return firstAvailable("stomp", "idle");
+                }
+                if ("ROCKET".equals(action)) {
+                    return firstAvailable("rocket_launch", "missile_start", "idle");
+                }
+                if ("MOVE".equals(action)) {
+                    return firstAvailable("walk_up", "walk_down", "idle");
+                }
+                break;
+            case ZOMBOSS_ICEAGE:
+                if ("ROCKET".equals(action)) {
+                    return firstAvailable("slingshot", "idle", "almanac_idle");
+                }
+                if ("ICY_WIND".equals(action)) {
+                    return firstAvailable("wind_1", "wind_2", "idle");
+                }
+                if ("FREEZE_COLUMN".equals(action)) {
+                    return firstAvailable("glacier_column_1", "idle");
+                }
+                break;
+            case ZOMBOSS_BEACH:
+                if ("TURBINE".equals(action)) {
+                    return firstAvailable("suction_on", "suction_loop", "idle");
+                }
+                if ("BABY_SHARK".equals(action) || "SPAWN".equals(action)) {
+                    return firstAvailable("spawn", "idle");
+                }
+                if ("MOVE".equals(action)) {
+                    return firstAvailable("submerge", "emerge", "idle");
+                }
+                break;
+            case ZOMBOSS_DARK:
+                if ("SPAWN".equals(action)) {
+                    return firstAvailable("summoning", "idle");
+                }
+                if ("FIRE_BREATH".equals(action)) {
+                    return firstAvailable("fire_attack", "idle");
+                }
+                if ("FIREBALLS".equals(action)) {
+                    return firstAvailable("fire_bomb", "idle");
+                }
+                break;
+            default:
+                break;
+        }
+        return resolveWalkClip();
     }
 
     private String firstAvailable(String... candidates) {
