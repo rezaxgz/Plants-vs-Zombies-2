@@ -120,7 +120,7 @@ abstract class GameState implements java.io.Serializable {
         this.zombieWaves = zombieWaves == null
                 ? new ArrayList<>()
                 : new ArrayList<>(zombieWaves);
-        validateNoBossWaves(this.zombieWaves);
+        validateBossWaves(this.zombieWaves);
         this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
         this.random = random;
         for (Zombie zombie : board.getZombies()) {
@@ -130,15 +130,24 @@ abstract class GameState implements java.io.Serializable {
         this.nextSkySunDropAtSeconds = getAdjustedSkySunDropIntervalSeconds(0.0);
     }
 
-    static void validateNoBossWaves(
-            List<ZombieWave> waves) {
+    static void validateBossWaves(List<ZombieWave> waves) {
+        int bossCount = 0;
+        int nonBossCount = 0;
         for (ZombieWave wave : waves) {
             for (ZombieType type : wave.getZombieTypes()) {
                 if (type.isBoss()) {
-                    throw new IllegalArgumentException(
-                            "Zomboss enemies are not enabled in levels yet");
+                    bossCount++;
+                } else {
+                    nonBossCount++;
                 }
             }
+        }
+        if (bossCount == 0) {
+            return;
+        }
+        if (bossCount != 1 || nonBossCount != 0 || waves.size() != 1) {
+            throw new IllegalArgumentException(
+                    "a Zomboss level must contain exactly one boss-only wave");
         }
     }
 

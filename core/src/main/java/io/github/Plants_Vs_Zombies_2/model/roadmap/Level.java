@@ -10,7 +10,6 @@ import io.github.Plants_Vs_Zombies_2.model.game.ChapterRuleset;
 import io.github.Plants_Vs_Zombies_2.model.game.Game;
 import io.github.Plants_Vs_Zombies_2.model.game.ZombieWave;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
-import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.model.game.special.TimedWarObjective;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 
@@ -232,17 +231,6 @@ public final class Level {
             board.setSliderTile(
                     new EntityPosition(3, 5), 1);
         }
-        // Keep pre-encased zombies for the final Frostbite challenge only.
-        // Timed War level 3 must start with an empty lawn and let wave
-        // zombies enter normally after the first-wave announcement.
-        if (number >= 4) {
-            board.addFrozenZombie(
-                    ZombieType.ICEAGE,
-                    new EntityPosition(0, 6));
-            board.addFrozenZombie(
-                    ZombieType.ICEAGE_CONEHEAD,
-                    new EntityPosition(4, 7));
-        }
     }
 
     private void configureDarkAgesBoard(Board board) {
@@ -297,8 +285,13 @@ public final class Level {
     private void configureSpecialRules(Game game) {
         switch (specialLevelType) {
             case CONVEYOR_BELT:
-                game.enableConveyorBelt(
-                        specialConfig.getPlantPool());
+                if (kind == LevelKind.BOSS) {
+                    game.enableBossConveyorBelt(
+                            specialConfig.getPlantPool());
+                } else {
+                    game.enableConveyorBelt(
+                            specialConfig.getPlantPool());
+                }
                 break;
             case LOCKED_PLANTS:
                 game.enableLockedPlantsForcedLoadout(

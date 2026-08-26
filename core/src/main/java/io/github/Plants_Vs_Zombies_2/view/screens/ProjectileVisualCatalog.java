@@ -81,6 +81,12 @@ final class ProjectileVisualCatalog {
             return preview("768/INITIAL/EFFECTS/CAULIPOWER_PROJECTILE/"
                     + "CAULIPOWER_PROJECTILE.PAM", "animation", 0.52f);
         }
+        if (source.contains("electricblueberry")) {
+            return preview("768/INITIAL/EFFECTS/"
+                    + "ELECTRICBLUEBERRY_CLOUD_PROJECTILE/"
+                    + "ELECTRICBLUEBERRY_CLOUD_PROJECTILE.PAM",
+                    "idle", 0.70f);
+        }
         if (source.contains("bowlingbulb")) {
             return preview("768/FULL/EFFECTS/BOWLINGBULB_PROJECTILE1/"
                     + "BOWLINGBULB_PROJECTILE1.PAM", "animation", 0.56f);

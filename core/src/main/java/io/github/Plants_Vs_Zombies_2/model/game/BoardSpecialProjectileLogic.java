@@ -102,7 +102,15 @@ abstract class BoardSpecialProjectileLogic extends BoardProjectileObstacleLogic 
                 continue;
             }
             double rowDelta = zombie.getLane() - projectile.getLandingRow();
-            double columnDelta = zombie.getColumnPosition() - projectile.getLandingColumn();
+            if (zombie.getType().isBoss() && zombie.getLane() > 0) {
+                double secondRowDelta = zombie.getLane() - 1
+                        - projectile.getLandingRow();
+                if (Math.abs(secondRowDelta) < Math.abs(rowDelta)) {
+                    rowDelta = secondRowDelta;
+                }
+            }
+            double columnDelta = zombie.getColumnPosition()
+                    - projectile.getLandingColumn();
             double distanceSquared = rowDelta * rowDelta + columnDelta * columnDelta;
             if (distanceSquared <= PROJECTILE_COLLISION_RADIUS * PROJECTILE_COLLISION_RADIUS
                     && distanceSquared < nearestDistanceSquared) {
@@ -196,8 +204,8 @@ abstract class BoardSpecialProjectileLogic extends BoardProjectileObstacleLogic 
                     || zombie.isSubmerged()) {
                 continue;
             }
-            double parameter = grape.getIntersectionParameter(
-                    zombie.getLane(), zombie.getColumnPosition(), GRAPE_COLLISION_RADIUS);
+            double parameter = zombieIntersectionParameter(
+                    grape, zombie, GRAPE_COLLISION_RADIUS);
             if (!Double.isNaN(parameter) && parameter < firstParameter) {
                 firstParameter = parameter;
                 firstTarget = zombie;

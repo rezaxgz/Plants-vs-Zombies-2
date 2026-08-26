@@ -62,8 +62,12 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjec
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.melee.Melee;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.melee.MeleePlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.Wallnut;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.WallnutPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
@@ -89,6 +93,7 @@ import io.github.Plants_Vs_Zombies_2.model.menu.GameMenu;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
+import io.github.Plants_Vs_Zombies_2.model.roadmap.LevelKind;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
 /** Graphical shell for the active game and chapter board preview. */
@@ -154,6 +159,8 @@ public final class GameScreen extends AbstractScreen {
     private static final String DARK_NECROMANCY_DISC_INNER_ASSET =
             "IMAGE_EFFECTS_TOMBSTONE_DARK_SPAWN_EFFECT_"
                     + "ZOMBIE_EGYPT_TOMBRAISER_DISC_02";
+    private static final String DARK_BURNING_TILE_ASSET =
+            "IMAGE_BACKGROUNDS_FIRETILE_FIRETILE_117X117";
     private static final String EGYPT_SANDSTORM_REAR_PAM =
             "768/INITIAL/EFFECTS/SANDSTORM_REAR/SANDSTORM_REAR.PAM";
     private static final String EGYPT_SANDSTORM_TOP_PAM =
@@ -329,6 +336,7 @@ public final class GameScreen extends AbstractScreen {
     private boolean shovelMode;
     private boolean usingFallbackShovelCursor;
     private WaveProgressActor waveProgressActor;
+    private BossHealthActor bossHealthActor;
     private TextButton plantWhatYouGetWaveButton;
     private Table sunHud;
     private Label sunAmountLabel;
@@ -380,6 +388,7 @@ public final class GameScreen extends AbstractScreen {
     private Group bigWaveBeachTerrainLayer;
     private String bigWaveBeachTerrainSignature = "";
     private Group darkAgesTerrainLayer;
+    private String darkAgesTerrainSignature = "";
     private Group frostbiteTerrainLayer;
     private String frostbiteTerrainSignature = "";
     private Group structureLayer;
@@ -1401,6 +1410,13 @@ public final class GameScreen extends AbstractScreen {
             for (int column = 0;
                     column < game.getBoard().getNumberOfColumns(); column++) {
                 EntityPosition position = new EntityPosition(row, column);
+                Tile tile = game.getBoard().getTileAt(position);
+                if (tile != null && tile.getTileType() == TileType.BURNING) {
+                    Actor fire = createBurningGroundMarker();
+                    positionBurningGroundMarker(fire, position);
+                    darkAgesTerrainLayer.addActor(fire);
+                    continue;
+                }
                 if (!isNecromancyGroundCell(game, position)) {
                     continue;
                 }
@@ -1409,6 +1425,38 @@ public final class GameScreen extends AbstractScreen {
                 darkAgesTerrainLayer.addActor(marker);
             }
         }
+        darkAgesTerrainSignature = createDarkAgesTerrainSignature(game);
+    }
+
+    private void refreshDarkAgesTerrainRendering() {
+        Game game = activeGame();
+        if (!isDarkAgesGame() || game == null
+                || darkAgesTerrainLayer == null) {
+            return;
+        }
+        String signature = createDarkAgesTerrainSignature(game);
+        if (!signature.equals(darkAgesTerrainSignature)) {
+            rebuildDarkAgesTerrainRendering();
+        }
+    }
+
+    private String createDarkAgesTerrainSignature(Game game) {
+        StringBuilder signature = new StringBuilder();
+        for (int row = 0; row < game.getBoard().getNumberOfRows(); row++) {
+            for (int column = 0;
+                    column < game.getBoard().getNumberOfColumns(); column++) {
+                EntityPosition position = new EntityPosition(row, column);
+                Tile tile = game.getBoard().getTileAt(position);
+                if (tile != null && tile.getTileType() == TileType.BURNING) {
+                    signature.append('F').append(row).append(',')
+                            .append(column).append(';');
+                } else if (isNecromancyGroundCell(game, position)) {
+                    signature.append('N').append(row).append(',')
+                            .append(column).append(';');
+                }
+            }
+        }
+        return signature.toString();
     }
 
     private boolean isNecromancyGroundCell(Game game,
@@ -1441,6 +1489,26 @@ public final class GameScreen extends AbstractScreen {
         inner.setColor(1f, 1f, 1f, 0.92f);
         marker.add(inner);
         return marker;
+    }
+
+    private Actor createBurningGroundMarker() {
+        Image fire = createAssetImage(DARK_BURNING_TILE_ASSET);
+        fire.setScaling(Scaling.stretch);
+        fire.setTouchable(Touchable.disabled);
+        fire.setColor(1f, 1f, 1f, 0.92f);
+        return fire;
+    }
+
+    private void positionBurningGroundMarker(Actor marker,
+            EntityPosition position) {
+        CellBounds cell = screenBoundsForCell(position);
+        if (marker == null || cell == null) {
+            return;
+        }
+        marker.setBounds(cell.x - cell.width * 0.03f,
+                cell.y - cell.height * 0.02f,
+                cell.width * 1.06f, cell.height * 1.06f);
+        marker.setVisible(true);
     }
 
     private void positionNecromancyGroundMarker(Actor marker,
@@ -1540,8 +1608,14 @@ public final class GameScreen extends AbstractScreen {
 
     private void installWaveProgressHud() {
         Game game = activeGame();
-        if (game == null || game.getZombieWaves().isEmpty()
-                || waveProgressActor != null) {
+        if (game == null || game.getZombieWaves().isEmpty()) {
+            return;
+        }
+        if (isBossLevel()) {
+            installBossHealthHud(game);
+            return;
+        }
+        if (waveProgressActor != null) {
             return;
         }
         waveProgressActor = new WaveProgressActor(game);
@@ -1549,6 +1623,23 @@ public final class GameScreen extends AbstractScreen {
                 WAVE_PROGRESS_WIDTH, WAVE_PROGRESS_HEIGHT);
         waveProgressActor.setTouchable(Touchable.disabled);
         stage.addActor(waveProgressActor);
+    }
+
+    private boolean isBossLevel() {
+        GameMenu menu = isModelBackedGame() ? currentGameMenu() : null;
+        Level level = menu == null ? previewLevel : menu.getLevel();
+        return level != null && level.getKind() == LevelKind.BOSS;
+    }
+
+    private void installBossHealthHud(Game game) {
+        if (game == null || bossHealthActor != null) {
+            return;
+        }
+        bossHealthActor = new BossHealthActor(game);
+        bossHealthActor.setBounds(WAVE_PROGRESS_X, WAVE_PROGRESS_Y,
+                WAVE_PROGRESS_WIDTH, WAVE_PROGRESS_HEIGHT);
+        bossHealthActor.setTouchable(Touchable.disabled);
+        stage.addActor(bossHealthActor);
     }
 
     private void installPlantWhatYouGetWaveButton() {
@@ -2982,6 +3073,37 @@ public final class GameScreen extends AbstractScreen {
         return fallback;
     }
 
+    private Actor createPlantIdleActor(BasePlant plant) {
+        if (plant == null) {
+            return createPlantIdleActor((String) null);
+        }
+        if (activeGame() instanceof WallnutBowling) {
+            BowlingWallnutType bowlingType = BowlingWallnutType.find(
+                    plant.getName());
+            if (bowlingType != null) {
+                try {
+                    return new PamAnimationActor(
+                            navigator.getPamPlayer(),
+                            bowlingWallnutPamPath(bowlingType), "idle");
+                } catch (RuntimeException ignored) {
+                    // Fall through to the normal plant/packet lookup.
+                }
+            }
+        }
+        PlantAnimationCatalog.Preview preview =
+                PlantAnimationCatalog.find(plant);
+        if (preview != null) {
+            try {
+                return new PamAnimationActor(
+                        navigator.getPamPlayer(),
+                        preview.getPath(), preview.getClip());
+            } catch (RuntimeException ignored) {
+                // Fall through to packet artwork when an optional PAM is absent.
+            }
+        }
+        return createPlantIdleActor(plant.getName());
+    }
+
     private static String bowlingWallnutPamPath(BowlingWallnutType type) {
         if (type == BowlingWallnutType.EXPLOSIVE) {
             return "768/INITIAL/PLANT/EXPLODEONUT/EXPLODEONUT.PAM";
@@ -3012,7 +3134,7 @@ public final class GameScreen extends AbstractScreen {
         plantedShooterAttackSequences.clear();
         plantedLobberAttackSequences.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
-            Actor actor = createPlantIdleActor(plant.getName());
+            Actor actor = createPlantIdleActor(plant);
             actor.setTouchable(Touchable.disabled);
             positionPlantActor(actor, plant.getEntityPosition());
             plantedPlantLayer.addActor(actor);
@@ -3082,9 +3204,46 @@ public final class GameScreen extends AbstractScreen {
                     .append(position == null ? "?" : position.getRow())
                     .append(',')
                     .append(position == null ? "?" : position.getColumn())
+                    .append('#').append(plantVisualStateSignature(plant))
                     .append(';');
         }
         return signature.toString();
+    }
+
+    private String plantVisualStateSignature(BasePlant plant) {
+        if (plant instanceof Melee) {
+            Melee melee = (Melee) plant;
+            if (melee.getType() == MeleePlantType.KIWIBEAST) {
+                return "kiwi" + Math.max(1, Math.min(3, melee.getGrowthStage()));
+            }
+            if (melee.getType() == MeleePlantType.CHOMPER) {
+                return melee.isDigesting() ? "digest" : "ready";
+            }
+        }
+        if (plant instanceof Wallnut) {
+            Wallnut wallnut = (Wallnut) plant;
+            if (wallnut.getType() == WallnutPlantType.SWEET_POTATO) {
+                return "sweet" + sweetPotatoDamageBucket(wallnut);
+            }
+        }
+        return "default";
+    }
+
+    private int sweetPotatoDamageBucket(Wallnut wallnut) {
+        if (wallnut == null || wallnut.getBaseHP() <= 0) {
+            return 0;
+        }
+        float ratio = wallnut.getCurrentHP() / (float) wallnut.getBaseHP();
+        if (ratio > 0.66f) {
+            return 0;
+        }
+        if (ratio > 0.33f) {
+            return 1;
+        }
+        if (ratio > 0.15f) {
+            return 2;
+        }
+        return 3;
     }
 
     private void refreshPlantedPlantLayerIfNeeded() {
@@ -3726,6 +3885,11 @@ public final class GameScreen extends AbstractScreen {
 
         float widthScale = zombie.getType().isLarge() ? 1.55f : 1.08f;
         float heightScale = zombie.getType().isLarge() ? 2.25f : 1.62f;
+        if (zombie.getType().isBoss()) {
+            widthScale = zombie.getType() == io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType.ZOMBOSS_BEACH
+                    ? 2.65f : 2.35f;
+            heightScale = 2.75f;
+        }
         switch (zombie.getType()) {
         case IMP:
         case EGYPT_IMP:
@@ -5015,6 +5179,7 @@ public final class GameScreen extends AbstractScreen {
 
         refreshBigWaveBeachTerrainRendering();
         refreshFrostbiteTerrainRendering();
+        refreshDarkAgesTerrainRendering();
         refreshStructureRendering();
         refreshZombieRendering();
         refreshFrostbiteZombieIceRendering();
@@ -5053,6 +5218,13 @@ public final class GameScreen extends AbstractScreen {
         GameMenu menu = currentGameMenu();
         if (menu != null && menu.isMinigame()) {
             return buildMinigameResultDescription(game);
+        }
+        if (isBossLevel()) {
+            if (game.getStatus()
+                    == io.github.Plants_Vs_Zombies_2.model.game.GameStatus.WON) {
+                return "Zomboss was defeated and all remaining reinforcements were cleared.";
+            }
+            return "The Zomboss battle was lost before the boss could be defeated.";
         }
         if (game.getStatus()
                 != io.github.Plants_Vs_Zombies_2.model.game.GameStatus.LOST) {
@@ -5193,6 +5365,10 @@ public final class GameScreen extends AbstractScreen {
         if (waveProgressActor != null) {
             waveProgressActor.dispose();
             waveProgressActor = null;
+        }
+        if (bossHealthActor != null) {
+            bossHealthActor.dispose();
+            bossHealthActor = null;
         }
         sunLayer = null;
         plantedPlantActors.clear();
@@ -5873,6 +6049,74 @@ public final class GameScreen extends AbstractScreen {
      * zombies enter the board. Flag positions are weighted by the number of
      * zombies in each wave instead of being spaced arbitrarily.
      */
+    private final class BossHealthActor extends Actor {
+        private static final float BAR_LEFT = 22f;
+        private static final float BAR_RIGHT_MARGIN = 22f;
+        private static final float BAR_Y = 19f;
+        private static final float BAR_HEIGHT = 22f;
+        private static final float FRAME = 5f;
+        private static final float DIVIDER = 5f;
+        private final Game game;
+        private final Texture pixel;
+
+        private BossHealthActor(Game game) {
+            this.game = game;
+            Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+            pixmap.setColor(Color.WHITE);
+            pixmap.fill();
+            pixel = new Texture(pixmap);
+            pixmap.dispose();
+        }
+
+        @Override
+        public void draw(Batch batch, float parentAlpha) {
+            Zombie boss = findBoss();
+            float ratio = boss == null ? 1f : Math.max(0f,
+                    Math.min(1f, boss.getHitPoints()
+                            / (float) Math.max(1, boss.getMaximumHitPoints())));
+            float x = getX() + BAR_LEFT;
+            float y = getY() + BAR_Y;
+            float width = getWidth() - BAR_LEFT - BAR_RIGHT_MARGIN;
+            Color previous = new Color(batch.getColor());
+
+            batch.setColor(0.10f, 0.06f, 0.04f, parentAlpha);
+            batch.draw(pixel, x - FRAME, y - FRAME,
+                    width + FRAME * 2f, BAR_HEIGHT + FRAME * 2f);
+            batch.setColor(0.20f, 0.08f, 0.06f, parentAlpha);
+            batch.draw(pixel, x, y, width, BAR_HEIGHT);
+            if (ratio > 0f) {
+                batch.setColor(0.86f, 0.12f, 0.08f, parentAlpha);
+                batch.draw(pixel, x, y, width * ratio, BAR_HEIGHT);
+                batch.setColor(1f, 0.34f, 0.22f, 0.78f * parentAlpha);
+                batch.draw(pixel, x, y + BAR_HEIGHT * 0.58f,
+                        width * ratio, BAR_HEIGHT * 0.22f);
+            }
+            batch.setColor(0.08f, 0.05f, 0.03f, parentAlpha);
+            for (int section = 1; section <= 2; section++) {
+                float dividerX = x + width * section / 3f - DIVIDER * 0.5f;
+                batch.draw(pixel, dividerX, y - 1f,
+                        DIVIDER, BAR_HEIGHT + 2f);
+            }
+            batch.setColor(previous);
+        }
+
+        private Zombie findBoss() {
+            if (game == null) {
+                return null;
+            }
+            for (Zombie zombie : game.getBoard().getZombies()) {
+                if (zombie.getType().isBoss() && !zombie.isRemoved()) {
+                    return zombie;
+                }
+            }
+            return null;
+        }
+
+        private void dispose() {
+            pixel.dispose();
+        }
+    }
+
     private final class WaveProgressActor extends Actor {
         private static final float BAR_LEFT = 30f;
         private static final float BAR_RIGHT_MARGIN = 30f;

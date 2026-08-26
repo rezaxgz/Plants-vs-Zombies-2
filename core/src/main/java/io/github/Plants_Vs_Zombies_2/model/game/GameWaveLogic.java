@@ -158,14 +158,21 @@ abstract class GameWaveLogic extends GameAbilityLogic {
             pendingResults.add("Wave " + waveNumber + " started.");
         }
         List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
-        applyDarkAgesWave(waveNumber, spawnedZombies);
-        applyFrostbiteIcyWind(waveNumber);
-        applyBigWaveBeachWaterWave(waveNumber, spawnedZombies);
+        boolean bossWave = isBossWave(wave);
+        if (!bossWave) {
+            applyDarkAgesWave(waveNumber, spawnedZombies);
+            applyFrostbiteIcyWind(waveNumber);
+            applyBigWaveBeachWaterWave(waveNumber, spawnedZombies);
+        }
         double normalSpawnColumn = board.getNumberOfColumns() - 0.001;
         for (ZombieType zombieType : wave.getZombieTypes()) {
-            int lane = random.nextInt(board.getNumberOfRows());
-            boolean glowing = random.nextDouble() < Constants.GLOWING_ZOMBIE_CHANCE;
-            int tornadoAdvance = chooseTornadoAdvance(wave);
+            int lane = zombieType.isBoss()
+                    ? initialBossLane(zombieType)
+                    : random.nextInt(board.getNumberOfRows());
+            boolean glowing = !zombieType.isBoss()
+                    && random.nextDouble() < Constants.GLOWING_ZOMBIE_CHANCE;
+            int tornadoAdvance = zombieType.isBoss()
+                    ? 0 : chooseTornadoAdvance(wave);
             double spawnColumn = normalSpawnColumn - tornadoAdvance;
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);
@@ -178,6 +185,21 @@ abstract class GameWaveLogic extends GameAbilityLogic {
                     zombie, tornadoAdvance));
         }
         zombieWaveNumber = waveNumber;
+    }
+
+    boolean isBossWave(ZombieWave wave) {
+        return wave != null && wave.getZombieTypes().size() == 1
+                && wave.getZombieTypes().get(0).isBoss();
+    }
+
+    int initialBossLane(ZombieType type) {
+        if (board.getNumberOfRows() <= 1) {
+            return 0;
+        }
+        if (type == ZombieType.ZOMBOSS_ICEAGE) {
+            return Math.min(2, board.getNumberOfRows() - 1);
+        }
+        return 1 + random.nextInt(board.getNumberOfRows() - 1);
     }
 
     void applyDarkAgesWave(int waveNumber,

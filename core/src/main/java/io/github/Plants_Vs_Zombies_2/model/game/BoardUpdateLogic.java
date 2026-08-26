@@ -29,6 +29,7 @@ abstract class BoardUpdateLogic extends BoardState {
     public void update(float deltaSeconds) {
         validateDeltaSeconds(deltaSeconds);
         updateActiveFamilyBoosts(deltaSeconds);
+        updateBurningTiles(deltaSeconds);
 
         List<Entity> entitiesToAdd = new ArrayList<>();
         List<Entity> updateSnapshot = new ArrayList<>(allEntities);

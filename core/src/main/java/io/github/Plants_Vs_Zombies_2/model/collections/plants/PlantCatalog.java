@@ -25,6 +25,19 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.WallnutP
  */
 final class PlantCatalog {
     private static final int EXPECTED_PLANT_COUNT = 69;
+    private static final String[] BONUS_PLANT_NAMES = {
+            "Pea Pod",
+            "Caulipower",
+            "Electric Blueberry",
+            "Starfruit",
+            "Goo Peashooter",
+            "Grapeshot",
+            "Chomper",
+            "Wasabi Whip",
+            "Kiwibeast",
+            "Sweet Potato",
+            "Hypno-shroom"
+    };
 
     private PlantCatalog() {
     }
@@ -66,6 +79,13 @@ final class PlantCatalog {
             String normalizedName = PlantCollection.normalizeName(item.getName());
             if (!names.add(normalizedName)) {
                 throw new IllegalStateException("duplicate plant name: " + item.getName());
+            }
+        }
+        for (String bonusPlantName : BONUS_PLANT_NAMES) {
+            String normalized = PlantCollection.normalizeName(bonusPlantName);
+            if (!names.contains(normalized)) {
+                throw new IllegalStateException(
+                        "bonus plant missing from collection: " + bonusPlantName);
             }
         }
     }

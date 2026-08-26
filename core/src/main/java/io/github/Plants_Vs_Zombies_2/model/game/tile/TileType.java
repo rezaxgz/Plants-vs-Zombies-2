@@ -10,5 +10,6 @@ public enum TileType {
     WATER,
     LOW_BEACH,
     NECROMANCY,
+    BURNING,
     CRATER
 }

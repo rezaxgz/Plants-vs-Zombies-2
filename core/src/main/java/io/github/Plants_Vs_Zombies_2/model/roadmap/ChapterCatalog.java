@@ -8,6 +8,7 @@ import io.github.Plants_Vs_Zombies_2.model.Constants;
 import io.github.Plants_Vs_Zombies_2.model.game.ChapterRuleset;
 import io.github.Plants_Vs_Zombies_2.model.game.ZombieWave;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.model.game.special.ProtectedPlantSpec;
 
 /**
@@ -188,8 +189,68 @@ public final class ChapterCatalog {
                         new EntityPosition(3, 4)));
     }
 
+    private static Level createBossLevel(String name, String theme,
+            ZombieType bossType, List<String> plantPool) {
+        List<ZombieWave> waves = List.of(ZombieWave.bossWave(bossType));
+        return new Level(
+                4, name, LevelKind.BOSS,
+                SpecialLevelType.CONVEYOR_BELT,
+                SpecialLevelConfig.plantPool(plantPool),
+                ChapterRuleset.fromTheme(theme),
+                Constants.DEFAULT_BOARD_ROWS,
+                Constants.DEFAULT_BOARD_COLUMNS,
+                0, waves);
+    }
+
+    private static List<String> bossPlantPool(String theme) {
+        switch (theme) {
+            case "egypt":
+                return List.of(
+                        "Peashooter", "Repeater", "Cabbage-pult",
+                        "Kernel-pult", "Wall-nut", "Potato Mine");
+            case "iceage":
+                return List.of(
+                        "Fire Peashooter", "Pepper-pult", "Repeater",
+                        "Cabbage-pult", "Wall-nut", "Hot Potato");
+            case "beach":
+                return List.of(
+                        "Lily Pad", "Peashooter", "Repeater",
+                        "Bowling Bulb", "Wall-nut", "Tangle Kelp");
+            case "dark":
+                return List.of(
+                        "Peashooter", "Fume-shroom", "Puff-shroom",
+                        "Repeater", "Wall-nut", "Iceberg Lettuce");
+            default:
+                return conveyorPlantPool();
+        }
+    }
+
     private static Level createDeferredFinalLevel(
             String name, String theme) {
+        if ("egypt".equals(theme)) {
+            return createBossLevel(
+                    name.replace("Final Challenge", "Zomboss"),
+                    theme, ZombieType.ZOMBOSS_EGYPT,
+                    bossPlantPool(theme));
+        }
+        if ("iceage".equals(theme)) {
+            return createBossLevel(
+                    name.replace("Final Challenge", "Zomboss"),
+                    theme, ZombieType.ZOMBOSS_ICEAGE,
+                    bossPlantPool(theme));
+        }
+        if ("beach".equals(theme)) {
+            return createBossLevel(
+                    name.replace("Final Challenge", "Zomboss"),
+                    theme, ZombieType.ZOMBOSS_BEACH,
+                    bossPlantPool(theme));
+        }
+        if ("dark".equals(theme)) {
+            return createBossLevel(
+                    name.replace("Final Challenge", "Zomboss"),
+                    theme, ZombieType.ZOMBOSS_DARK,
+                    bossPlantPool(theme));
+        }
         List<ZombieWave> waves = List.of(
                 ZombieWave.themedWave(
                         theme, 1600, false),

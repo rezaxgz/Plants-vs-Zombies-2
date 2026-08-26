@@ -174,6 +174,58 @@ abstract class BoardEntityLogic extends BoardZombieCombatLogic {
         return tile.isPlantableTerrain();
     }
 
+    /**
+     * Moves every plant layer at one tile together. This is used by the
+     * Big Wave Beach Zomboss turbine so Lily Pad stacks are pulled as one
+     * unit instead of being deleted instantly.
+     */
+    public boolean movePlantStack(EntityPosition source,
+            EntityPosition destination) {
+        if (!isPositionInsideBoard(source)
+                || !isPositionInsideBoard(destination)
+                || source.equals(destination)
+                || !getPlantsAt(destination).isEmpty()
+                || getStructureAt(destination) != null) {
+            return false;
+        }
+        List<BasePlant> stack = new ArrayList<>(getPlantsAt(source));
+        if (stack.isEmpty()) {
+            return false;
+        }
+        Tile destinationTile = getTileAt(destination);
+        if (!canMovePlantStackOntoTile(stack, destinationTile)) {
+            return false;
+        }
+        for (BasePlant plant : stack) {
+            plant.setEntityPosition(destination);
+        }
+        refreshTilePlant(source);
+        refreshTilePlant(destination);
+        return true;
+    }
+
+    boolean canMovePlantStackOntoTile(List<BasePlant> stack, Tile tile) {
+        if (tile == null || stack == null || stack.isEmpty()) {
+            return false;
+        }
+        if (tile.getTileType() == TileType.WATER) {
+            boolean hasLilyPad = stack.stream().anyMatch(Board::isLilyPad);
+            if (hasLilyPad) {
+                return true;
+            }
+            return stack.stream().allMatch(
+                    plant -> plant.getTags().contains(PlantTag.WATER));
+        }
+        if (!tile.isPlantableTerrain()) {
+            return false;
+        }
+        return stack.stream().noneMatch(Board::isLilyPad)
+                && stack.stream().noneMatch(plant ->
+                        plant instanceof Explosive
+                                && ((Explosive) plant).getType()
+                                        == ExplosivePlantType.TANGLE_KELP);
+    }
+
     public boolean addPlant(BasePlant requestedPlant) {
         return addPlantInternal(requestedPlant, true);
     }

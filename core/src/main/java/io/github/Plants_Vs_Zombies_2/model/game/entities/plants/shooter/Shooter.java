@@ -160,9 +160,21 @@ public class Shooter extends BasePlant {
         return false;
     }
 
-    private static boolean isOnRay(Zombie zombie, double startRow, double startColumn,
+    private static boolean isOnRay(Zombie zombie, double startRow,
+            double startColumn, ProjectileDirection direction, double range) {
+        if (isOnRayAtLane(zombie, zombie.getLane(), startRow,
+                startColumn, direction, range)) {
+            return true;
+        }
+        return zombie.getType().isBoss() && zombie.getLane() > 0
+                && isOnRayAtLane(zombie, zombie.getLane() - 1, startRow,
+                        startColumn, direction, range);
+    }
+
+    private static boolean isOnRayAtLane(Zombie zombie, double targetRow,
+            double startRow, double startColumn,
             ProjectileDirection direction, double range) {
-        double rowDelta = zombie.getLane() - startRow;
+        double rowDelta = targetRow - startRow;
         double columnDelta = zombie.getColumnPosition() - startColumn;
         double projection = rowDelta * direction.getRowComponent()
                 + columnDelta * direction.getColumnComponent();

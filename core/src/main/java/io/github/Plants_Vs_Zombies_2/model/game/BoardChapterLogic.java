@@ -228,6 +228,37 @@ abstract class BoardChapterLogic extends BoardEntityLogic {
         return affectedPlants;
     }
 
+    public void igniteTile(EntityPosition position, double durationSeconds) {
+        if (!isPositionInsideBoard(position)
+                || !Double.isFinite(durationSeconds)
+                || durationSeconds <= 0.0) {
+            throw new IllegalArgumentException(
+                    "burning tile position and duration are invalid");
+        }
+        Tile tile = getTileAt(position);
+        if (tile.getTileType() != TileType.BURNING) {
+            burningTilePreviousTypes.put(position, tile.getTileType());
+        }
+        burningTileSeconds.put(position,
+                Math.max(durationSeconds,
+                        burningTileSeconds.getOrDefault(position, 0.0)));
+        tile.setTileType(TileType.BURNING);
+        pendingResults.add("Tile " + position
+                + " is burning for " + formatDuration(durationSeconds)
+                + " seconds.");
+    }
+
+    public boolean isBurningTile(EntityPosition position) {
+        return position != null
+                && burningTileSeconds.getOrDefault(position, 0.0) > 0.0;
+    }
+
+    public double getBurningTileSeconds(EntityPosition position) {
+        return position == null ? 0.0
+                : Math.max(0.0,
+                        burningTileSeconds.getOrDefault(position, 0.0));
+    }
+
     public void setSliderTile(EntityPosition position, int laneDelta) {
         if (!isPositionInsideBoard(position)) {
             throw new IllegalArgumentException(

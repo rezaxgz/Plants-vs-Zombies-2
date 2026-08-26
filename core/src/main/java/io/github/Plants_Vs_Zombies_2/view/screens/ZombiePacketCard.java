@@ -100,6 +100,12 @@ final class ZombiePacketCard extends Table {
         if ("GARGANTUAR".equals(type)) {
             return "Gargantuar";
         }
+        if ("JUGGLER".equals(type)) {
+            return "Jester Zombie";
+        }
+        if ("DARK_KING".equals(type)) {
+            return "King Zombie";
+        }
 
         String[] words = type.toLowerCase(java.util.Locale.ROOT)
                 .split("_");

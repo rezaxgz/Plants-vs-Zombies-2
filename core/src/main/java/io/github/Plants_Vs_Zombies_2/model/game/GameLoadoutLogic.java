@@ -18,6 +18,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.special.LockedPlantsMode;
 import io.github.Plants_Vs_Zombies_2.model.game.special.LockedPlantsSystem;
 
 abstract class GameLoadoutLogic extends GameRewardLogic {
+    private static final double BOSS_CONVEYOR_PACKET_INTERVAL_SECONDS = 8.0;
+    private static final int BOSS_CONVEYOR_INITIAL_PACKET_COUNT = 2;
     protected GameLoadoutLogic(Board board, GameType gameType,
             int initialSunCount, List<ZombieWave> zombieWaves,
             Random random, boolean startWavesImmediately,
@@ -39,13 +41,31 @@ abstract class GameLoadoutLogic extends GameRewardLogic {
                 conveyorBeltSystem.drainMessages());
     }
 
+    public void enableBossConveyorBelt(
+            List<String> availablePlantTypes) {
+        if (conveyorBeltSystem != null
+                || lockedPlantsSystem != null) {
+            throw new IllegalStateException(
+                    "another plant-selection rule is already enabled");
+        }
+        conveyorBeltSystem = new ConveyorBeltSystem(
+                availablePlantTypes,
+                BOSS_CONVEYOR_PACKET_INTERVAL_SECONDS,
+                BOSS_CONVEYOR_INITIAL_PACKET_COUNT);
+        pendingResults.addAll(
+                conveyorBeltSystem.drainMessages());
+    }
+
     public void replaceConveyorPlantPool(
             List<String> availablePlantTypes) {
         if (conveyorBeltSystem == null) {
             throw new IllegalStateException(
                     "this game has no Conveyor Belt");
         }
-        conveyorBeltSystem = new ConveyorBeltSystem(availablePlantTypes);
+        double interval = conveyorBeltSystem.getPacketIntervalSeconds();
+        int initialPackets = conveyorBeltSystem.getInitialPacketCount();
+        conveyorBeltSystem = new ConveyorBeltSystem(availablePlantTypes,
+                interval, initialPackets);
         pendingResults.add("Conveyor Belt pool updated from the "
                 + "player's unlocked plants.");
         pendingResults.addAll(
