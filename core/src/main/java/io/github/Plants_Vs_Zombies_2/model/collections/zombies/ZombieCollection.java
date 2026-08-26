@@ -10,6 +10,15 @@ import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 
 public class ZombieCollection {
+    private static final ZombieType[] BONUS_ZOMBIE_TYPES = {
+            ZombieType.ARCADE,
+            ZombieType.TROGLOBITE,
+            ZombieType.FISHERMAN,
+            ZombieType.JUGGLER,
+            ZombieType.WIZARD,
+            ZombieType.DARK_KING
+    };
+
     private final List<ZombieCollectionItem> allZombies;
 
     public ZombieCollection() {
@@ -18,6 +27,7 @@ public class ZombieCollection {
             allZombies.add(new ZombieCollectionItem(type));
         }
         allZombies.sort(Comparator.comparing(ZombieCollectionItem::getName));
+        validateBonusZombieEntries();
     }
 
     public List<ZombieCollectionItem> getAllZombies() {
@@ -29,9 +39,13 @@ public class ZombieCollection {
         if (normalized.isEmpty()) {
             return null;
         }
+        String aliasedTypeName = bonusZombieTypeAlias(normalized);
         for (ZombieCollectionItem item : allZombies) {
             if (normalizeName(item.getName()).equals(normalized)
-                    || normalizeName(item.getTypeName()).equals(normalized)) {
+                    || normalizeName(item.getTypeName()).equals(normalized)
+                    || aliasedTypeName != null
+                            && normalizeName(item.getTypeName())
+                                    .equals(aliasedTypeName)) {
                 return item;
             }
         }
@@ -80,6 +94,35 @@ public class ZombieCollection {
         }
         item.setUnlocked(unlocked);
         return true;
+    }
+
+    private void validateBonusZombieEntries() {
+        for (ZombieType bonusType : BONUS_ZOMBIE_TYPES) {
+            boolean present = false;
+            for (ZombieCollectionItem item : allZombies) {
+                if (item.getTypeName().equals(bonusType.name())) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) {
+                throw new IllegalStateException(
+                        "bonus zombie missing from collection: "
+                                + bonusType.name());
+            }
+        }
+    }
+
+    private static String bonusZombieTypeAlias(String normalizedName) {
+        if ("jester".equals(normalizedName)
+                || "jesterzombie".equals(normalizedName)) {
+            return normalizeName(ZombieType.JUGGLER.name());
+        }
+        if ("king".equals(normalizedName)
+                || "kingzombie".equals(normalizedName)) {
+            return normalizeName(ZombieType.DARK_KING.name());
+        }
+        return null;
     }
 
     private static String normalizeName(String name) {

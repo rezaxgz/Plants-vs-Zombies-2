@@ -62,8 +62,12 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.LobbedProjec
 import io.github.Plants_Vs_Zombies_2.model.game.entities.projectile.Projectile;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.melee.Melee;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.melee.MeleePlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.Wallnut;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.WallnutPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
@@ -2982,6 +2986,37 @@ public final class GameScreen extends AbstractScreen {
         return fallback;
     }
 
+    private Actor createPlantIdleActor(BasePlant plant) {
+        if (plant == null) {
+            return createPlantIdleActor((String) null);
+        }
+        if (activeGame() instanceof WallnutBowling) {
+            BowlingWallnutType bowlingType = BowlingWallnutType.find(
+                    plant.getName());
+            if (bowlingType != null) {
+                try {
+                    return new PamAnimationActor(
+                            navigator.getPamPlayer(),
+                            bowlingWallnutPamPath(bowlingType), "idle");
+                } catch (RuntimeException ignored) {
+                    // Fall through to the normal plant/packet lookup.
+                }
+            }
+        }
+        PlantAnimationCatalog.Preview preview =
+                PlantAnimationCatalog.find(plant);
+        if (preview != null) {
+            try {
+                return new PamAnimationActor(
+                        navigator.getPamPlayer(),
+                        preview.getPath(), preview.getClip());
+            } catch (RuntimeException ignored) {
+                // Fall through to packet artwork when an optional PAM is absent.
+            }
+        }
+        return createPlantIdleActor(plant.getName());
+    }
+
     private static String bowlingWallnutPamPath(BowlingWallnutType type) {
         if (type == BowlingWallnutType.EXPLOSIVE) {
             return "768/INITIAL/PLANT/EXPLODEONUT/EXPLODEONUT.PAM";
@@ -3012,7 +3047,7 @@ public final class GameScreen extends AbstractScreen {
         plantedShooterAttackSequences.clear();
         plantedLobberAttackSequences.clear();
         for (BasePlant plant : game.getBoard().getPlants()) {
-            Actor actor = createPlantIdleActor(plant.getName());
+            Actor actor = createPlantIdleActor(plant);
             actor.setTouchable(Touchable.disabled);
             positionPlantActor(actor, plant.getEntityPosition());
             plantedPlantLayer.addActor(actor);
@@ -3082,9 +3117,46 @@ public final class GameScreen extends AbstractScreen {
                     .append(position == null ? "?" : position.getRow())
                     .append(',')
                     .append(position == null ? "?" : position.getColumn())
+                    .append('#').append(plantVisualStateSignature(plant))
                     .append(';');
         }
         return signature.toString();
+    }
+
+    private String plantVisualStateSignature(BasePlant plant) {
+        if (plant instanceof Melee) {
+            Melee melee = (Melee) plant;
+            if (melee.getType() == MeleePlantType.KIWIBEAST) {
+                return "kiwi" + Math.max(1, Math.min(3, melee.getGrowthStage()));
+            }
+            if (melee.getType() == MeleePlantType.CHOMPER) {
+                return melee.isDigesting() ? "digest" : "ready";
+            }
+        }
+        if (plant instanceof Wallnut) {
+            Wallnut wallnut = (Wallnut) plant;
+            if (wallnut.getType() == WallnutPlantType.SWEET_POTATO) {
+                return "sweet" + sweetPotatoDamageBucket(wallnut);
+            }
+        }
+        return "default";
+    }
+
+    private int sweetPotatoDamageBucket(Wallnut wallnut) {
+        if (wallnut == null || wallnut.getBaseHP() <= 0) {
+            return 0;
+        }
+        float ratio = wallnut.getCurrentHP() / (float) wallnut.getBaseHP();
+        if (ratio > 0.66f) {
+            return 0;
+        }
+        if (ratio > 0.33f) {
+            return 1;
+        }
+        if (ratio > 0.15f) {
+            return 2;
+        }
+        return 3;
     }
 
     private void refreshPlantedPlantLayerIfNeeded() {

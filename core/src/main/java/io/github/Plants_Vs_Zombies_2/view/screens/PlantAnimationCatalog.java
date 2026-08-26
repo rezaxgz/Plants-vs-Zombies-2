@@ -5,11 +5,16 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.LobberPlantType;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.melee.Melee;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.melee.MeleePlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.ShooterPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducer;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.Wallnut;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.WallnutPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunProducerPlantType;
 
 /** Maps the project's 69 plant names to their PvZ2 preview PAM clips. */
@@ -87,6 +92,47 @@ final class PlantAnimationCatalog {
 
     static Preview find(String plantName) {
         return PREVIEWS.get(normalize(plantName));
+    }
+
+    static Preview find(BasePlant plant) {
+        if (plant instanceof Melee) {
+            Melee melee = (Melee) plant;
+            if (melee.getType() == MeleePlantType.KIWIBEAST) {
+                int stage = Math.max(1, Math.min(3, melee.getGrowthStage()));
+                return new Preview(
+                        "768/INITIAL/PLANT/KIWIBEAST/KIWIBEAST.PAM",
+                        "idle_stage" + stage + "_");
+            }
+            if (melee.getType() == MeleePlantType.CHOMPER
+                    && melee.isDigesting()) {
+                return new Preview(
+                        "768/INITIAL/PLANT/CHOMPER/CHOMPER.PAM",
+                        "special_idle");
+            }
+        }
+        if (plant instanceof Wallnut) {
+            Wallnut wallnut = (Wallnut) plant;
+            if (wallnut.getType() == WallnutPlantType.SWEET_POTATO) {
+                float ratio = wallnut.getBaseHP() <= 0
+                        ? 1f
+                        : wallnut.getCurrentHP()
+                                / (float) wallnut.getBaseHP();
+                String clip;
+                if (ratio > 0.66f) {
+                    clip = "idle";
+                } else if (ratio > 0.33f) {
+                    clip = "idle_damage";
+                } else if (ratio > 0.15f) {
+                    clip = "idle_damage2";
+                } else {
+                    clip = "idle_damage3";
+                }
+                return new Preview(
+                        "768/INITIAL/PLANT/SWEETPOTATO/SWEETPOTATO.PAM",
+                        clip);
+            }
+        }
+        return find(plant == null ? null : plant.getName());
     }
 
 
