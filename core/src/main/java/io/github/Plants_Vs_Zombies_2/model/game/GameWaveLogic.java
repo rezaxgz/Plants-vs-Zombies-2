@@ -174,6 +174,14 @@ abstract class GameWaveLogic extends GameAbilityLogic {
             int tornadoAdvance = zombieType.isBoss()
                     ? 0 : chooseTornadoAdvance(wave);
             double spawnColumn = normalSpawnColumn - tornadoAdvance;
+            if (zombieType == ZombieType.ZOMBOSS_EGYPT) {
+                // Egypt Zomboss is wider than a normal zombie. Starting it at
+                // the ordinary right-edge spawn column leaves most of the
+                // machine clipped off-screen; use the same home column its
+                // movement ability returns to after repositioning.
+                spawnColumn = Math.max(1.0,
+                        board.getNumberOfColumns() - 2.0);
+            }
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);
             zombie.setTornadoAdvanceColumns(tornadoAdvance);

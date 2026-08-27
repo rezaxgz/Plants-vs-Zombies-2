@@ -293,6 +293,7 @@ final class ZombiePamActor extends Actor {
         }
         switch (zombie.getType()) {
             case ZOMBOSS_EGYPT:
+            case ZOMBOSS_COWBOY:
                 if ("SPAWN".equals(action)) {
                     return firstAvailable("zombie_portal_start", "idle");
                 }

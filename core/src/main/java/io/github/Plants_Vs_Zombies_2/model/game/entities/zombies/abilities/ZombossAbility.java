@@ -21,6 +21,13 @@ import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 public class ZombossAbility extends ZombieAbility {
     private static final double PHASE_STUN_SECONDS = 4.0;
     private static final double BURNING_TILE_SECONDS = 4.0;
+    // These durations match the official PAM clips listed in animations.json.
+    // Keeping the model action window aligned with the animation lets the view
+    // telegraph dangerous attacks before their gameplay effect is applied.
+    private static final double EGYPT_RUSH_SECONDS = 2.5333;
+    private static final double EGYPT_RUSH_CRUSH_FRACTION = 0.55;
+    private static final double STANDARD_ROCKET_WINDUP_SECONDS = 1.8333;
+    private static final double ICEAGE_ROCKET_WINDUP_SECONDS = 3.5;
 
     private final ZombossProfile profile;
     private final Random random;
@@ -30,6 +37,16 @@ public class ZombossAbility extends ZombieAbility {
     private final List<Integer> lastAffectedLanes;
 
     private Action lastAction;
+    private Action pendingAction;
+    private double pendingActionElapsedSeconds;
+    private boolean pendingActionResolved;
+    private int pendingRushBottomLane = -1;
+    private double pendingRushStartColumn;
+    private double pendingRushTargetColumn;
+    private EntityPosition pendingRocketTarget;
+    private EntityPosition lastRocketImpactTarget;
+    private int rocketTargetSequence;
+    private int rocketImpactSequence;
     private int currentPhase = 1;
     private boolean phaseChangedThisUse;
     private boolean performedActionThisUse;
@@ -59,6 +76,14 @@ public class ZombossAbility extends ZombieAbility {
     }
 
     @Override
+    public void update(double deltaSeconds) {
+        super.update(deltaSeconds);
+        if (pendingAction != null) {
+            pendingActionElapsedSeconds += Math.max(0.0, deltaSeconds);
+        }
+    }
+
+    @Override
     public boolean tryUse(Zombie zomboss, Board board) {
         resetUseState();
         if (zomboss == null || board == null
@@ -73,6 +98,7 @@ public class ZombossAbility extends ZombieAbility {
             // its own stun instead of silently skipping a phase.
             currentPhase++;
             phaseChangedThisUse = true;
+            cancelPendingAction();
             zomboss.applyStun(PHASE_STUN_SECONDS);
         } else if (observedPhase < currentPhase) {
             // Defensive support for a restored/loaded boss state. Normal
@@ -81,16 +107,25 @@ public class ZombossAbility extends ZombieAbility {
         }
         cooldown = profile.cooldownFor(currentPhase);
 
-        if (phaseChangedThisUse || !canUse() || zomboss.isHypnotized()
+        if (phaseChangedThisUse) {
+            return true;
+        }
+        if (pendingAction != null) {
+            return advancePendingAction(zomboss, board);
+        }
+        if (!canUse() || zomboss.isHypnotized()
                 || zomboss.isFrozen() || zomboss.isStunned()) {
-            return phaseChangedThisUse;
+            return false;
         }
 
         Action action = chooseAction();
         executeAction(action, zomboss, board);
         lastAction = action;
-        performedActionThisUse = true;
+        // The action sequence changes at the START of the move so the GUI can
+        // begin the corresponding PAM animation immediately. Delayed attacks
+        // (Egypt rush and missiles) report their gameplay result later.
         actionSequence++;
+        performedActionThisUse = pendingAction == null;
         resetCooldown();
         return true;
     }
@@ -177,11 +212,17 @@ public class ZombossAbility extends ZombieAbility {
             return;
         }
         int spawnCount = currentPhase >= 3 ? 2 : 1;
+        int bottomLane = ensureBossLane(zomboss, board);
+        double spawnColumn = profile == ZombossProfile.EGYPT
+                ? mouthSpawnColumn(zomboss, board)
+                : board.getNumberOfColumns() - 0.001;
         for (int index = 0; index < spawnCount; index++) {
             ZombieType type = pool.get(random.nextInt(pool.size()));
+            int spawnLane = profile == ZombossProfile.EGYPT
+                    ? bottomLane
+                    : random.nextInt(board.getNumberOfRows());
             Zombie spawned = spawnZombie(type, zomboss.getWaveNumber(),
-                    random.nextInt(board.getNumberOfRows()),
-                    board.getNumberOfColumns() - 0.001, board);
+                    spawnLane, spawnColumn, board);
             lastSpawnedZombies.add(spawned);
         }
         lastActionDescription = "summoned " + lastSpawnedZombies.size()
@@ -189,7 +230,23 @@ public class ZombossAbility extends ZombieAbility {
     }
 
     private void rushRows(Zombie zomboss, Board board) {
-        int bottomLane = ensureBossLane(zomboss, board);
+        if (profile != ZombossProfile.EGYPT) {
+            crushRushRows(zomboss, board);
+            return;
+        }
+
+        pendingAction = Action.RUSH;
+        pendingActionElapsedSeconds = 0.0;
+        pendingActionResolved = false;
+        pendingRushBottomLane = ensureBossLane(zomboss, board);
+        pendingRushStartColumn = zomboss.getColumnPosition();
+        pendingRushTargetColumn = profile.rushMinimumColumn(board);
+        lastActionDescription = "";
+    }
+
+    private void crushRushRows(Zombie zomboss, Board board) {
+        int bottomLane = pendingRushBottomLane >= 0
+                ? pendingRushBottomLane : ensureBossLane(zomboss, board);
         List<Integer> lanes = occupiedBossLanes(bottomLane);
         lastAffectedLanes.addAll(lanes);
         for (BasePlant plant : new ArrayList<>(board.getPlants())) {
@@ -198,14 +255,34 @@ public class ZombossAbility extends ZombieAbility {
                 destroyPlant(plant);
             }
         }
-        zomboss.moveTo(profile.rushMinimumColumn(board));
-        zomboss.moveTo(ZombossProfile.homeColumn(board));
         lastActionDescription = "rushed across two rows, crushed "
                 + lastDestroyedPlants.size() + " plant(s), and retreated.";
     }
 
     private void fireRocket(Zombie zomboss, Board board) {
-        EntityPosition target = randomBoardPosition(board);
+        pendingAction = Action.ROCKET;
+        pendingActionElapsedSeconds = 0.0;
+        pendingActionResolved = false;
+        pendingRocketTarget = chooseRocketTarget(board);
+        lastRocketImpactTarget = null;
+        rocketTargetSequence++;
+        lastActionDescription = "";
+    }
+
+    private EntityPosition chooseRocketTarget(Board board) {
+        BasePlant targetPlant = chooseRandomPlant(board);
+        if (targetPlant != null && targetPlant.getEntityPosition() != null) {
+            return targetPlant.getEntityPosition();
+        }
+        return randomBoardPosition(board);
+    }
+
+    private void resolveRocketImpact(Board board) {
+        EntityPosition target = pendingRocketTarget;
+        if (target == null) {
+            return;
+        }
+
         BasePlant targetPlant = board.getPlantAt(target);
         if (targetPlant != null) {
             destroyPlant(targetPlant);
@@ -215,19 +292,73 @@ public class ZombossAbility extends ZombieAbility {
             lastActionDescription = "launched a missile at " + target
                     + ", destroyed " + lastDestroyedPlants.size()
                     + " plant(s), and raised " + graves + " grave(s).";
-            return;
-        }
-        if (profile == ZombossProfile.ICEAGE) {
+        } else if (profile == ZombossProfile.ICEAGE) {
             lastActionDescription = "launched an ice missile at " + target
                     + " and destroyed " + lastDestroyedPlants.size()
                     + " plant(s).";
-            return;
+        } else {
+            // Legacy Cowboy behavior also damages the surrounding tiles. The
+            // centre plant is already removed above; destroyPlant() ignores it
+            // if the area pass encounters it again.
+            destroyPlantsInArea(target, 1, board);
+            lastActionDescription = "launched a missile at " + target
+                    + " and destroyed " + lastDestroyedPlants.size()
+                    + " plant(s).";
         }
-        // Legacy Cowboy behavior.
-        destroyPlantsInArea(target, 1, board);
-        lastActionDescription = "launched a missile at " + target
-                + " and destroyed " + lastDestroyedPlants.size()
-                + " plant(s).";
+        lastRocketImpactTarget = target;
+        rocketImpactSequence++;
+    }
+
+    private boolean advancePendingAction(Zombie zomboss, Board board) {
+        if (pendingAction == Action.RUSH) {
+            boolean changed = false;
+            double crushAt = EGYPT_RUSH_SECONDS * EGYPT_RUSH_CRUSH_FRACTION;
+            if (!pendingActionResolved
+                    && pendingActionElapsedSeconds >= crushAt) {
+                pendingActionResolved = true;
+                crushRushRows(zomboss, board);
+                performedActionThisUse = true;
+                changed = true;
+            }
+            if (pendingActionElapsedSeconds >= EGYPT_RUSH_SECONDS) {
+                clearPendingAction();
+            }
+            return changed;
+        }
+        if (pendingAction == Action.ROCKET) {
+            if (!pendingActionResolved
+                    && pendingActionElapsedSeconds >= rocketWindupSeconds()) {
+                pendingActionResolved = true;
+                resolveRocketImpact(board);
+                performedActionThisUse = true;
+                clearPendingAction();
+                return true;
+            }
+            return false;
+        }
+        clearPendingAction();
+        return false;
+    }
+
+    private double rocketWindupSeconds() {
+        return profile == ZombossProfile.ICEAGE
+                ? ICEAGE_ROCKET_WINDUP_SECONDS
+                : STANDARD_ROCKET_WINDUP_SECONDS;
+    }
+
+    private void cancelPendingAction() {
+        clearPendingAction();
+        pendingRocketTarget = null;
+    }
+
+    private void clearPendingAction() {
+        pendingAction = null;
+        pendingActionElapsedSeconds = 0.0;
+        pendingActionResolved = false;
+        pendingRushBottomLane = -1;
+        pendingRushStartColumn = 0.0;
+        pendingRushTargetColumn = 0.0;
+        pendingRocketTarget = null;
     }
 
     private int addRandomGraves(Board board, int count) {
@@ -479,6 +610,13 @@ public class ZombossAbility extends ZombieAbility {
                 random.nextInt(board.getNumberOfColumns()));
     }
 
+    private double mouthSpawnColumn(Zombie zomboss, Board board) {
+        double mouthColumn = Math.min(zomboss.getColumnPosition(),
+                ZombossProfile.homeColumn(board)) - 1.0;
+        return Math.max(0.35,
+                Math.min(board.getNumberOfColumns() - 0.001, mouthColumn));
+    }
+
     private static Zombie spawnZombie(ZombieType type, int waveNumber,
             int lane, double column, Board board) {
         Zombie zombie = new Zombie(type, waveNumber, lane, column);
@@ -509,6 +647,68 @@ public class ZombossAbility extends ZombieAbility {
             return List.of(0);
         }
         return List.of(bottomLane - 1, bottomLane);
+    }
+
+    /**
+     * Column used only for rendering the Egypt rush. Gameplay position stays at
+     * the boss's home column while the stomp clip carries it forward and back.
+     */
+    public double getPresentationColumn(double fallbackColumn) {
+        if (profile != ZombossProfile.EGYPT || pendingAction != Action.RUSH) {
+            return fallbackColumn;
+        }
+        double progress = Math.max(0.0, Math.min(1.0,
+                pendingActionElapsedSeconds / EGYPT_RUSH_SECONDS));
+        // Keep advancing until the crush moment so the boss visibly crosses
+        // the entire board, then hold briefly at the front before retreating.
+        double forwardEnd = EGYPT_RUSH_CRUSH_FRACTION;
+        double retreatStart = 0.72;
+        if (progress < forwardEnd) {
+            return lerp(pendingRushStartColumn, pendingRushTargetColumn,
+                    progress / forwardEnd);
+        }
+        if (progress <= retreatStart) {
+            return pendingRushTargetColumn;
+        }
+        return lerp(pendingRushTargetColumn, pendingRushStartColumn,
+                (progress - retreatStart) / (1.0 - retreatStart));
+    }
+
+    private static double lerp(double start, double end, double amount) {
+        return start + (end - start) * Math.max(0.0, Math.min(1.0, amount));
+    }
+
+    public boolean isRocketTargeting() {
+        return pendingAction == Action.ROCKET && pendingRocketTarget != null;
+    }
+
+    public EntityPosition getRocketTarget() {
+        return pendingRocketTarget;
+    }
+
+    public EntityPosition getLastRocketImpactTarget() {
+        return lastRocketImpactTarget;
+    }
+
+    public int getRocketTargetSequence() {
+        return rocketTargetSequence;
+    }
+
+    public int getRocketImpactSequence() {
+        return rocketImpactSequence;
+    }
+
+
+    /**
+     * Presentation progress for the currently telegraphed missile attack.
+     * Zero is the start of the firing animation and one is the impact frame.
+     */
+    public double getRocketTargetingProgress() {
+        if (pendingAction != Action.ROCKET || pendingRocketTarget == null) {
+            return 1.0;
+        }
+        return Math.max(0.0, Math.min(1.0,
+                pendingActionElapsedSeconds / rocketWindupSeconds()));
     }
 
     public int getCurrentPhase() {

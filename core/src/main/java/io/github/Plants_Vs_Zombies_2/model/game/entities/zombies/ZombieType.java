@@ -138,18 +138,18 @@ public enum ZombieType {
             ArmorType.NONE, null, false),
 
     // === ZOMBOSS ===
-    ZOMBOSS_EGYPT("ZombieZombossMechEgypt", 15000, 0.1, 0, 0, 0,
+    ZOMBOSS_EGYPT("ZombieZombossMechEgypt", 9000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:egypt" }, true),
-    ZOMBOSS_ICEAGE("ZombieZombossMechIceAge", 19000, 0.1, 0, 0, 0,
+    ZOMBOSS_ICEAGE("ZombieZombossMechIceAge", 12000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:iceage" }, true),
-    ZOMBOSS_BEACH("ZombieZombossMechBeach", 19000, 0.1, 0, 0, 0,
+    ZOMBOSS_BEACH("ZombieZombossMechBeach", 12000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:beach" }, true),
     // Legacy profiles kept for backwards-compatible saves/console commands.
-    ZOMBOSS_PIRATE("ZombieZombossMechPirate", 26500, 0.1, 0, 0, 0,
+    ZOMBOSS_PIRATE("ZombieZombossMechPirate", 15000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:pirate" }, true),
-    ZOMBOSS_COWBOY("ZombieZombossMechCowboy", 25500, 0.1, 0, 0, 0,
+    ZOMBOSS_COWBOY("ZombieZombossMechCowboy", 15000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:cowboy" }, true),
-    ZOMBOSS_DARK("ZombieZombossMechDark", 21000, 0.1, 0, 0, 0,
+    ZOMBOSS_DARK("ZombieZombossMechDark", 12000, 0.1, 0, 0, 0,
             ArmorType.NONE, new String[] { "ZombossAbility:dark" }, true);
 
     private final String alias;

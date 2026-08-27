@@ -248,7 +248,9 @@ enum ZombossProfile {
     }
 
     double rushMinimumColumn(Board board) {
-        return Math.max(1.0, board.getNumberOfColumns() - 6.0);
+        // Drive the Egypt rush all the way to the front of the lawn so the
+        // stomp visibly reaches the first columns before the boss retreats.
+        return 0.0;
     }
 
     static double homeColumn(Board board) {

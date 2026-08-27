@@ -69,6 +69,8 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunP
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.Wallnut;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.WallnutPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.ZombieAbility;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.ZombossAbility;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombie;
@@ -168,6 +170,14 @@ public final class GameScreen extends AbstractScreen {
     private static final String FROSTBITE_WIND_PAM =
             "768/FULL/EFFECTS/FROSTBITE_CHILL_WIND/"
                     + "FROSTBITE_CHILL_WIND.PAM";
+    private static final String ZOMBOSS_MISSILE_EFFECT_PAM =
+            "768/FULL/EFFECTS/ZOMBOSS_MISSILE_EXPLOSION_COWBOY/"
+                    + "ZOMBOSS_MISSILE_EXPLOSION_COWBOY.PAM";
+    private static final String ZOMBOSS_MISSILE_RETICLE_CLIP =
+            "missile_lock_reticle";
+    private static final String ZOMBOSS_MISSILE_EXPLOSION_CLIP =
+            "missile_explosion";
+    private static final String ZOMBOSS_MISSILE_CLIP = "missile";
     private static final String FROSTBITE_SLIPPERY_TILE_ASSET =
             "IMAGE_EFFECTS_ZOMBONI_TILE_ICE_"
                     + "ZOMBONI_TILE_ICE_133X157";
@@ -416,6 +426,15 @@ public final class GameScreen extends AbstractScreen {
     private final Map<BasePlant, String> frostbitePlantIceKeys =
             new IdentityHashMap<>();
 
+    private Group zombossMissileEffectLayer;
+    private PamAnimationActor zombossMissileReticleActor;
+    private PamAnimationActor zombossMissileActor;
+    private PamAnimationActor zombossMissileExplosionActor;
+    private EntityPosition zombossMissileEffectPosition;
+    private ZombossAbility renderedZombossMissileAbility;
+    private int renderedZombossRocketTargetSequence;
+    private int renderedZombossRocketImpactSequence;
+
     private Group egyptSandstormRearLayer;
     private Group zombieLayer;
     private Group frostbiteZombieIceLayer;
@@ -477,6 +496,7 @@ public final class GameScreen extends AbstractScreen {
         addBackgroundOverlay(new LawnMowerRenderer(
                 navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
+        installZombossMissileEffects();
         installFrostbitePlantIceRendering();
         installIZombieBoardOverlay();
         installVaseBreakerSeedTray();
@@ -3646,6 +3666,270 @@ public final class GameScreen extends AbstractScreen {
         actor.setVisible(true);
     }
 
+    /**
+     * Shows the official Zomboss missile lock reticle under the selected plant
+     * during the wind-up, then replaces it with the explosion PAM when the
+     * missile lands. The model delays the actual plant destruction until the
+     * boss's firing animation has finished.
+     */
+    private void installZombossMissileEffects() {
+        if (!isModelBackedGame() || !isBossLevel()
+                || zombossMissileEffectLayer != null) {
+            return;
+        }
+        zombossMissileEffectLayer = new Group();
+        zombossMissileEffectLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(zombossMissileEffectLayer);
+        // The target indicator belongs underneath the plant being targeted.
+        // This layer is created after the plant layer, so move it immediately
+        // before that layer in the background-stage draw order.
+        if (plantedPlantLayer != null) {
+            zombossMissileEffectLayer.setZIndex(
+                    plantedPlantLayer.getZIndex());
+        }
+        refreshZombossMissileEffects();
+    }
+
+    private void refreshZombossMissileEffects() {
+        if (zombossMissileEffectLayer == null) {
+            return;
+        }
+        ZombossAbility ability = findActiveZombossAbility();
+        if (ability == null) {
+            clearZombossMissileEffects();
+            renderedZombossMissileAbility = null;
+            return;
+        }
+
+        if (ability != renderedZombossMissileAbility) {
+            clearZombossMissileEffects();
+            renderedZombossMissileAbility = ability;
+            // Do not replay a completed impact when loading a saved battle. If
+            // a rocket is currently targeting, leave its target sequence one
+            // behind so the reticle is reconstructed on this frame.
+            renderedZombossRocketImpactSequence =
+                    ability.getRocketImpactSequence();
+            renderedZombossRocketTargetSequence =
+                    ability.isRocketTargeting()
+                            ? ability.getRocketTargetSequence() - 1
+                            : ability.getRocketTargetSequence();
+        }
+
+        int targetSequence = ability.getRocketTargetSequence();
+        if (targetSequence != renderedZombossRocketTargetSequence) {
+            renderedZombossRocketTargetSequence = targetSequence;
+            removeZombossMissileExplosion();
+            removeZombossMissile();
+            removeZombossMissileReticle();
+            zombossMissileEffectPosition = ability.getRocketTarget();
+            if (zombossMissileEffectPosition != null) {
+                zombossMissileReticleActor = createZombossMissileActor(
+                        ZOMBOSS_MISSILE_RETICLE_CLIP);
+                if (zombossMissileReticleActor != null) {
+                    zombossMissileEffectLayer.addActor(
+                            zombossMissileReticleActor);
+                }
+                zombossMissileActor = createZombossMissileActor(
+                        ZOMBOSS_MISSILE_CLIP);
+                if (zombossMissileActor != null) {
+                    zombossMissileEffectLayer.addActor(zombossMissileActor);
+                }
+            }
+        }
+
+        int impactSequence = ability.getRocketImpactSequence();
+        if (impactSequence != renderedZombossRocketImpactSequence) {
+            renderedZombossRocketImpactSequence = impactSequence;
+            EntityPosition impactPosition =
+                    ability.getLastRocketImpactTarget();
+            if (impactPosition != null) {
+                zombossMissileEffectPosition = impactPosition;
+            }
+            removeZombossMissile();
+            playZombossMissileExplosion();
+        }
+
+        if (!ability.isRocketTargeting()
+                && zombossMissileExplosionActor == null) {
+            removeZombossMissile();
+            removeZombossMissileReticle();
+            zombossMissileEffectPosition = null;
+        }
+        positionZombossMissileEffects(ability);
+    }
+
+    private ZombossAbility findActiveZombossAbility() {
+        Zombie zomboss = findActiveZomboss();
+        return zomboss == null ? null : findZombossAbility(zomboss);
+    }
+
+    private Zombie findActiveZomboss() {
+        Game game = activeGame();
+        if (game == null) {
+            return null;
+        }
+        for (Zombie zombie : game.getBoard().getZombies()) {
+            if (zombie != null && !zombie.isDead() && !zombie.isRemoved()
+                    && zombie.getType().isBoss()) {
+                return zombie;
+            }
+        }
+        return null;
+    }
+
+    private static ZombossAbility findZombossAbility(Zombie zombie) {
+        if (zombie == null || !zombie.getType().isBoss()) {
+            return null;
+        }
+        for (ZombieAbility ability : zombie.getAbilities()) {
+            if (ability instanceof ZombossAbility) {
+                return (ZombossAbility) ability;
+            }
+        }
+        return null;
+    }
+
+    private PamAnimationActor createZombossMissileActor(String clip) {
+        try {
+            PamAnimationActor actor = new PamAnimationActor(
+                    navigator.getPamPlayer(), ZOMBOSS_MISSILE_EFFECT_PAM, clip);
+            actor.setTouchable(Touchable.disabled);
+            return actor;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private void playZombossMissileExplosion() {
+        removeZombossMissileExplosion();
+        if (zombossMissileEffectPosition == null) {
+            removeZombossMissileReticle();
+            return;
+        }
+        // Once the missile lands, replace the lock reticle instead of keeping
+        // both effects stacked on the same tile.
+        removeZombossMissileReticle();
+        PamAnimationActor explosion = createZombossMissileActor(
+                ZOMBOSS_MISSILE_EXPLOSION_CLIP);
+        if (explosion == null) {
+            zombossMissileEffectPosition = null;
+            return;
+        }
+        zombossMissileExplosionActor = explosion;
+        zombossMissileEffectLayer.addActor(explosion);
+        boolean started = explosion.playOnce(
+                ZOMBOSS_MISSILE_EXPLOSION_CLIP,
+                ZOMBOSS_MISSILE_EXPLOSION_CLIP,
+                () -> {
+                    if (zombossMissileExplosionActor == explosion) {
+                        removeZombossMissileExplosion();
+                        zombossMissileEffectPosition = null;
+                    }
+                });
+        if (!started) {
+            removeZombossMissileExplosion();
+            zombossMissileEffectPosition = null;
+        }
+    }
+
+    private void positionZombossMissileEffects(ZombossAbility ability) {
+        if (zombossMissileEffectPosition == null) {
+            return;
+        }
+        CellBounds cell = screenBoundsForCell(zombossMissileEffectPosition);
+        if (cell == null) {
+            return;
+        }
+        float targetCenterX = cell.x + cell.width * 0.5f;
+        float targetCenterY = cell.y + cell.height * 0.5f;
+        if (zombossMissileReticleActor != null) {
+            float width = cell.width * 1.20f;
+            float height = cell.height * 1.20f;
+            zombossMissileReticleActor.setBounds(
+                    targetCenterX - width * 0.5f,
+                    targetCenterY - height * 0.5f,
+                    width, height);
+        }
+        if (zombossMissileActor != null && ability != null
+                && ability.isRocketTargeting()) {
+            Zombie zomboss = findActiveZomboss();
+            ZombiePamActor bossActor = zomboss == null
+                    ? null : zombieActors.get(zomboss);
+            float startCenterX = targetCenterX + cell.width * 2.0f;
+            float startCenterY = targetCenterY + cell.height * 1.5f;
+            if (bossActor != null) {
+                // Egypt Zomboss faces left. These fractions line up with the
+                // yellow missile mouth on the official PAM rather than the
+                // machine's Scene2D bounding-box centre.
+                startCenterX = bossActor.getX() + bossActor.getWidth() * 0.27f;
+                startCenterY = bossActor.getY() + bossActor.getHeight() * 0.66f;
+            }
+
+            float attackProgress = (float) ability.getRocketTargetingProgress();
+            // Let the boss begin its firing animation before the projectile
+            // leaves the mouth, then make the missile arrive exactly at the
+            // targeted cell on the impact frame.
+            float launchFraction = 0.34f;
+            float travelProgress = attackProgress <= launchFraction
+                    ? 0f
+                    : Math.min(1f, (attackProgress - launchFraction)
+                            / (1f - launchFraction));
+            float centerX = startCenterX
+                    + (targetCenterX - startCenterX) * travelProgress;
+            float centerY = startCenterY
+                    + (targetCenterY - startCenterY) * travelProgress;
+            float missileWidth = cell.width * 0.72f;
+            float missileHeight = cell.height * 1.15f;
+            zombossMissileActor.setBounds(
+                    centerX - missileWidth * 0.5f,
+                    centerY - missileHeight * 0.5f,
+                    missileWidth, missileHeight);
+
+            // The PAM's missile is authored pointing straight down. Rotate
+            // that native down-vector so its nose follows the flight vector.
+            float pathAngle = (float) Math.toDegrees(Math.atan2(
+                    targetCenterY - startCenterY,
+                    targetCenterX - startCenterX));
+            zombossMissileActor.setRotation(pathAngle + 90f);
+        }
+        if (zombossMissileExplosionActor != null) {
+            float width = cell.width * 1.85f;
+            float height = cell.height * 1.85f;
+            zombossMissileExplosionActor.setBounds(
+                    targetCenterX - width * 0.5f,
+                    targetCenterY - height * 0.5f,
+                    width, height);
+        }
+    }
+
+    private void clearZombossMissileEffects() {
+        removeZombossMissileExplosion();
+        removeZombossMissile();
+        removeZombossMissileReticle();
+        zombossMissileEffectPosition = null;
+    }
+
+    private void removeZombossMissile() {
+        if (zombossMissileActor != null) {
+            zombossMissileActor.remove();
+            zombossMissileActor = null;
+        }
+    }
+
+    private void removeZombossMissileReticle() {
+        if (zombossMissileReticleActor != null) {
+            zombossMissileReticleActor.remove();
+            zombossMissileReticleActor = null;
+        }
+    }
+
+    private void removeZombossMissileExplosion() {
+        if (zombossMissileExplosionActor != null) {
+            zombossMissileExplosionActor.remove();
+            zombossMissileExplosionActor = null;
+        }
+    }
+
     private void installZombieRendering() {
         if (!isModelBackedGame() || zombieLayer != null) {
             return;
@@ -3878,8 +4162,13 @@ public final class GameScreen extends AbstractScreen {
         float cellWidth = boardWidth / BOARD_COLUMNS;
         float cellHeight = boardHeight / BOARD_ROWS;
 
+        double renderColumn = zombie.getColumnPosition();
+        ZombossAbility bossAbility = findZombossAbility(zombie);
+        if (bossAbility != null) {
+            renderColumn = bossAbility.getPresentationColumn(renderColumn);
+        }
         float centerX = boardX
-                + (float) (zombie.getColumnPosition() + 0.5) * cellWidth;
+                + (float) (renderColumn + 0.5) * cellWidth;
         float laneBottom = boardY
                 + (BOARD_ROWS - 1 - zombie.getLane()) * cellHeight;
 
@@ -5182,6 +5471,7 @@ public final class GameScreen extends AbstractScreen {
         refreshDarkAgesTerrainRendering();
         refreshStructureRendering();
         refreshZombieRendering();
+        refreshZombossMissileEffects();
         refreshFrostbiteZombieIceRendering();
         refreshFrostbiteWindRendering();
         float sceneDelta = gamePaused ? 0f
