@@ -63,7 +63,17 @@ final class ZombiePamActor extends Actor {
         this.lastBossActionSequence = bossAbility == null
                 ? 0 : bossAbility.getActionSequence();
         refreshSizingBounds();
-        setClip(resolveWalkClip());
+        if (zombie.getType() == ZombieType.ZOMBOSS_ICEAGE) {
+            // The mammoth machine has a dedicated 4.7 second entrance in the
+            // uploaded/official PAM. Play it once when the boss actor first
+            // appears, then fall back to idle until its first attack begins.
+            String introClip = firstAvailable("intro", resolveWalkClip());
+            setClip(introClip);
+            bossActionRemainingSeconds = Math.max(0.05f,
+                    player.clipDurationSeconds(pamPath, introClip));
+        } else {
+            setClip(resolveWalkClip());
+        }
     }
 
     Zombie getZombie() {
@@ -250,8 +260,7 @@ final class ZombiePamActor extends Actor {
         int sequence = ability.getActionSequence();
         if (sequence != lastBossActionSequence) {
             lastBossActionSequence = sequence;
-            String actionClip = resolveBossActionClip(
-                    ability.getLastActionName());
+            String actionClip = resolveBossActionClip(ability);
             setClip(actionClip);
             bossActionRemainingSeconds = Math.max(0.05f,
                     player.clipDurationSeconds(pamPath, actionClip));
@@ -287,7 +296,8 @@ final class ZombiePamActor extends Actor {
                 "stun_start", "idle", idleClip);
     }
 
-    private String resolveBossActionClip(String action) {
+    private String resolveBossActionClip(ZombossAbility ability) {
+        String action = ability == null ? null : ability.getLastActionName();
         if (action == null) {
             return resolveWalkClip();
         }
@@ -312,10 +322,13 @@ final class ZombiePamActor extends Actor {
                     return firstAvailable("slingshot", "idle", "almanac_idle");
                 }
                 if ("ICY_WIND".equals(action)) {
-                    return firstAvailable("wind_1", "wind_2", "idle");
+                    return firstAvailable(ability.getIceageWindClipName(),
+                            "wind_1", "idle");
                 }
                 if ("FREEZE_COLUMN".equals(action)) {
-                    return firstAvailable("glacier_column_1", "idle");
+                    return firstAvailable(
+                            ability.getIceageGlacierColumnClipName(),
+                            "glacier_column_4", "glacier_column_1", "idle");
                 }
                 break;
             case ZOMBOSS_BEACH:

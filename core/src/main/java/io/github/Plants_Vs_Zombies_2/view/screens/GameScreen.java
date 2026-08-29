@@ -69,6 +69,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.sunProducer.SunP
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.Wallnut;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.wallnut.WallnutPlantType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.ZombieAbility;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities.ZombossAbility;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
@@ -170,11 +171,19 @@ public final class GameScreen extends AbstractScreen {
     private static final String FROSTBITE_WIND_PAM =
             "768/FULL/EFFECTS/FROSTBITE_CHILL_WIND/"
                     + "FROSTBITE_CHILL_WIND.PAM";
-    private static final String ZOMBOSS_MISSILE_EFFECT_PAM =
+    private static final String ZOMBOSS_COWBOY_MISSILE_EFFECT_PAM =
             "768/FULL/EFFECTS/ZOMBOSS_MISSILE_EXPLOSION_COWBOY/"
                     + "ZOMBOSS_MISSILE_EXPLOSION_COWBOY.PAM";
-    private static final String ZOMBOSS_MISSILE_RETICLE_CLIP =
+    private static final String ZOMBOSS_ICEAGE_MISSILE_EFFECT_PAM =
+            "768/FULL/EFFECTS/ZOMBOSS_MISSILE_EXPLOSION_ICEAGE/"
+                    + "ZOMBOSS_MISSILE_EXPLOSION_ICEAGE.PAM";
+    private static final String ZOMBOSS_ICEAGE_MISSILE_RETICLE_PAM =
+            "768/INITIAL/EFFECTS/MISSILE_TOE_RETICLE/"
+                    + "MISSILE_TOE_RETICLE.PAM";
+    private static final String ZOMBOSS_DEFAULT_MISSILE_RETICLE_CLIP =
             "missile_lock_reticle";
+    private static final String ZOMBOSS_ICEAGE_MISSILE_RETICLE_CLIP =
+            "banana_lock_recticle";
     private static final String ZOMBOSS_MISSILE_EXPLOSION_CLIP =
             "missile_explosion";
     private static final String ZOMBOSS_MISSILE_CLIP = "missile";
@@ -194,8 +203,20 @@ public final class GameScreen extends AbstractScreen {
                     + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_5",
             "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_ZOMBIE_"
                     + "FROSTBITE_ICE_BLOCK_ZOMBIE_153X243_6" };
+    private static final String FROSTBITE_CHILL_PLANT_PAM =
+            "768/FULL/EFFECTS/FROSTBITE_CHILL_PLANT/"
+                    + "FROSTBITE_CHILL_PLANT.PAM";
+    private static final String FROSTBITE_CHILL_STAGE1_CLIP = "chill_stage1";
+    private static final String FROSTBITE_CHILL_STAGE2_CLIP = "chill_stage2";
+    private static final String FROSTBITE_PLANT_ICE_BLOCK_PAM =
+            "768/FULL/EFFECTS/FROSTBITE_ICE_BLOCK_PLANT/"
+                    + "FROSTBITE_ICE_BLOCK_PLANT.PAM";
+    private static final String FROSTBITE_PLANT_FREEZE_START_CLIP =
+            "freeze_start";
+    private static final String FROSTBITE_PLANT_FREEZE_IDLE_CLIP =
+            "freeze_idle";
     // The plant images are ordered exactly as supplied for the six visible
-    // ice-health states, from intact to most damaged.
+    // level-3 ice-shell health states, from intact to most damaged.
     private static final String[] FROSTBITE_PLANT_ICE_ASSETS = {
             "IMAGE_EFFECTS_FROSTBITE_ICE_BLOCK_PLANT_"
                     + "FROSTBITE_ICE_BLOCK_PLANT_164X169",
@@ -421,7 +442,7 @@ public final class GameScreen extends AbstractScreen {
     private final List<Actor> iZombieBrainActors = new ArrayList<>();
 
     private Group frostbitePlantIceLayer;
-    private final Map<BasePlant, Image> frostbitePlantIceActors =
+    private final Map<BasePlant, Actor> frostbitePlantIceActors =
             new IdentityHashMap<>();
     private final Map<BasePlant, String> frostbitePlantIceKeys =
             new IdentityHashMap<>();
@@ -3432,7 +3453,7 @@ public final class GameScreen extends AbstractScreen {
         IdentityHashMap<BasePlant, Boolean> present = new IdentityHashMap<>();
         for (BasePlant plant : game.getBoard().getPlants()) {
             if (plant == null || plant.isRemoved() || plant.isDestroyed()
-                    || !plant.isFrozen()) {
+                    || plant.getFreezeLevel() <= 0) {
                 continue;
             }
             Actor plantActor = plantedPlantActors.get(plant);
@@ -3440,26 +3461,32 @@ public final class GameScreen extends AbstractScreen {
                 continue;
             }
             present.put(plant, Boolean.TRUE);
-            String asset = frostbitePlantIceAsset(plant);
-            Image ice = frostbitePlantIceActors.get(plant);
-            if (ice == null || !asset.equals(frostbitePlantIceKeys.get(plant))) {
+            String visualKey = frostbitePlantIceVisualKey(plant);
+            Actor ice = frostbitePlantIceActors.get(plant);
+            if (ice == null
+                    || !visualKey.equals(frostbitePlantIceKeys.get(plant))) {
                 if (ice != null) {
                     ice.remove();
                 }
-                ice = createAssetImage(asset);
-                ice.setScaling(Scaling.fit);
+                ice = createFrostbitePlantIceActor(plant);
+                if (ice == null) {
+                    frostbitePlantIceActors.remove(plant);
+                    frostbitePlantIceKeys.remove(plant);
+                    continue;
+                }
                 ice.setTouchable(Touchable.disabled);
                 frostbitePlantIceActors.put(plant, ice);
-                frostbitePlantIceKeys.put(plant, asset);
+                frostbitePlantIceKeys.put(plant, visualKey);
                 frostbitePlantIceLayer.addActor(ice);
             }
-            positionFrostbitePlantIceActor(ice, plantActor);
+            positionFrostbitePlantIceActor(ice, plantActor,
+                    plant.getFreezeLevel());
         }
 
-        Iterator<Map.Entry<BasePlant, Image>> iterator =
+        Iterator<Map.Entry<BasePlant, Actor>> iterator =
                 frostbitePlantIceActors.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<BasePlant, Image> entry = iterator.next();
+            Map.Entry<BasePlant, Actor> entry = iterator.next();
             if (!present.containsKey(entry.getKey())) {
                 entry.getValue().remove();
                 frostbitePlantIceKeys.remove(entry.getKey());
@@ -3468,14 +3495,84 @@ public final class GameScreen extends AbstractScreen {
         }
     }
 
-    private void positionFrostbitePlantIceActor(Actor ice, Actor plantActor) {
+    private Actor createFrostbitePlantIceActor(BasePlant plant) {
+        int freezeLevel = plant == null ? 0 : plant.getFreezeLevel();
+        if (freezeLevel == 1 || freezeLevel == 2) {
+            String clip = freezeLevel == 1
+                    ? FROSTBITE_CHILL_STAGE1_CLIP
+                    : FROSTBITE_CHILL_STAGE2_CLIP;
+            try {
+                return new PamAnimationActor(navigator.getPamPlayer(),
+                        FROSTBITE_CHILL_PLANT_PAM, clip);
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+        if (freezeLevel < BasePlant.MAX_FREEZE_LEVEL) {
+            return null;
+        }
+
+        // At the instant level 3 is reached, use the authored freeze-start PAM
+        // and then idle as a complete block. Once the shell is damaged, retain
+        // the existing official damage-state images so cracking remains visible.
+        if (plant.getIceShellHitPoints()
+                >= plant.getIceShellMaximumHitPoints()) {
+            try {
+                PamAnimationActor block = new PamAnimationActor(
+                        navigator.getPamPlayer(), FROSTBITE_PLANT_ICE_BLOCK_PAM,
+                        FROSTBITE_PLANT_FREEZE_IDLE_CLIP);
+                block.playOnce(FROSTBITE_PLANT_FREEZE_START_CLIP,
+                        FROSTBITE_PLANT_FREEZE_IDLE_CLIP);
+                return block;
+            } catch (RuntimeException ignored) {
+                // Fall back to the static intact shell below.
+            }
+        }
+        Image shell = createAssetImage(frostbitePlantIceAsset(plant));
+        shell.setScaling(Scaling.fit);
+        return shell;
+    }
+
+    private String frostbitePlantIceVisualKey(BasePlant plant) {
+        int freezeLevel = plant.getFreezeLevel();
+        if (freezeLevel == 1) {
+            return "chill:1";
+        }
+        if (freezeLevel == 2) {
+            return "chill:2";
+        }
+        if (freezeLevel >= BasePlant.MAX_FREEZE_LEVEL
+                && plant.getIceShellHitPoints()
+                        >= plant.getIceShellMaximumHitPoints()) {
+            return "ice-block:full";
+        }
+        return "ice-block:" + frostbitePlantIceAsset(plant);
+    }
+
+    private void positionFrostbitePlantIceActor(Actor ice, Actor plantActor,
+            int freezeLevel) {
         if (ice == null || plantActor == null) {
             return;
         }
-        float width = plantActor.getWidth() * 1.10f;
-        float height = plantActor.getHeight() * 1.08f;
-        ice.setBounds(plantActor.getX() - (width - plantActor.getWidth()) * 0.5f,
-                plantActor.getY() - plantActor.getHeight() * 0.01f,
+        // The first two official chill clips are progressively larger blue ice
+        // effects. Level 3 grows into the complete plant-sized ice block.
+        float widthScale;
+        float heightScale;
+        if (freezeLevel <= 1) {
+            widthScale = 0.90f;
+            heightScale = 0.88f;
+        } else if (freezeLevel == 2) {
+            widthScale = 1.00f;
+            heightScale = 0.98f;
+        } else {
+            widthScale = 1.12f;
+            heightScale = 1.10f;
+        }
+        float width = plantActor.getWidth() * widthScale;
+        float height = plantActor.getHeight() * heightScale;
+        ice.setBounds(
+                plantActor.getX() + (plantActor.getWidth() - width) * 0.5f,
+                plantActor.getY() + (plantActor.getHeight() - height) * 0.5f,
                 width, height);
         ice.setVisible(plantActor.isVisible());
     }
@@ -3723,13 +3820,16 @@ public final class GameScreen extends AbstractScreen {
             removeZombossMissileReticle();
             zombossMissileEffectPosition = ability.getRocketTarget();
             if (zombossMissileEffectPosition != null) {
+                Zombie activeZomboss = findActiveZomboss();
                 zombossMissileReticleActor = createZombossMissileActor(
-                        ZOMBOSS_MISSILE_RETICLE_CLIP);
+                        missileReticlePamFor(activeZomboss),
+                        missileReticleClipFor(activeZomboss));
                 if (zombossMissileReticleActor != null) {
                     zombossMissileEffectLayer.addActor(
                             zombossMissileReticleActor);
                 }
                 zombossMissileActor = createZombossMissileActor(
+                        missileEffectPamFor(activeZomboss),
                         ZOMBOSS_MISSILE_CLIP);
                 if (zombossMissileActor != null) {
                     zombossMissileEffectLayer.addActor(zombossMissileActor);
@@ -3789,15 +3889,34 @@ public final class GameScreen extends AbstractScreen {
         return null;
     }
 
-    private PamAnimationActor createZombossMissileActor(String clip) {
+    private PamAnimationActor createZombossMissileActor(String pamPath,
+            String clip) {
         try {
             PamAnimationActor actor = new PamAnimationActor(
-                    navigator.getPamPlayer(), ZOMBOSS_MISSILE_EFFECT_PAM, clip);
+                    navigator.getPamPlayer(), pamPath, clip);
             actor.setTouchable(Touchable.disabled);
             return actor;
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    private static String missileEffectPamFor(Zombie zomboss) {
+        return zomboss != null && zomboss.getType() == ZombieType.ZOMBOSS_ICEAGE
+                ? ZOMBOSS_ICEAGE_MISSILE_EFFECT_PAM
+                : ZOMBOSS_COWBOY_MISSILE_EFFECT_PAM;
+    }
+
+    private static String missileReticlePamFor(Zombie zomboss) {
+        return zomboss != null && zomboss.getType() == ZombieType.ZOMBOSS_ICEAGE
+                ? ZOMBOSS_ICEAGE_MISSILE_RETICLE_PAM
+                : ZOMBOSS_COWBOY_MISSILE_EFFECT_PAM;
+    }
+
+    private static String missileReticleClipFor(Zombie zomboss) {
+        return zomboss != null && zomboss.getType() == ZombieType.ZOMBOSS_ICEAGE
+                ? ZOMBOSS_ICEAGE_MISSILE_RETICLE_CLIP
+                : ZOMBOSS_DEFAULT_MISSILE_RETICLE_CLIP;
     }
 
     private void playZombossMissileExplosion() {
@@ -3810,6 +3929,7 @@ public final class GameScreen extends AbstractScreen {
         // both effects stacked on the same tile.
         removeZombossMissileReticle();
         PamAnimationActor explosion = createZombossMissileActor(
+                missileEffectPamFor(findActiveZomboss()),
                 ZOMBOSS_MISSILE_EXPLOSION_CLIP);
         if (explosion == null) {
             zombossMissileEffectPosition = null;
@@ -3855,29 +3975,68 @@ public final class GameScreen extends AbstractScreen {
             Zombie zomboss = findActiveZomboss();
             ZombiePamActor bossActor = zomboss == null
                     ? null : zombieActors.get(zomboss);
+            boolean iceAge = zomboss != null
+                    && zomboss.getType() == ZombieType.ZOMBOSS_ICEAGE;
             float startCenterX = targetCenterX + cell.width * 2.0f;
             float startCenterY = targetCenterY + cell.height * 1.5f;
             if (bossActor != null) {
-                // Egypt Zomboss faces left. These fractions line up with the
-                // yellow missile mouth on the official PAM rather than the
-                // machine's Scene2D bounding-box centre.
-                startCenterX = bossActor.getX() + bossActor.getWidth() * 0.27f;
-                startCenterY = bossActor.getY() + bossActor.getHeight() * 0.66f;
+                if (iceAge) {
+                    // The Ice Age slingshot forms above and in front of the
+                    // mammoth's head. Keep the projectile hidden until the PAM
+                    // reaches its launch portion, then start it here.
+                    startCenterX = bossActor.getX()
+                            + bossActor.getWidth() * 0.30f;
+                    startCenterY = bossActor.getY()
+                            + bossActor.getHeight() * 0.77f;
+                } else {
+                    // Egypt Zomboss faces left. These fractions line up with
+                    // the yellow missile mouth on the official PAM.
+                    startCenterX = bossActor.getX()
+                            + bossActor.getWidth() * 0.27f;
+                    startCenterY = bossActor.getY()
+                            + bossActor.getHeight() * 0.66f;
+                }
             }
 
             float attackProgress = (float) ability.getRocketTargetingProgress();
-            // Let the boss begin its firing animation before the projectile
-            // leaves the mouth, then make the missile arrive exactly at the
-            // targeted cell on the impact frame.
-            float launchFraction = 0.34f;
-            float travelProgress = attackProgress <= launchFraction
-                    ? 0f
-                    : Math.min(1f, (attackProgress - launchFraction)
-                            / (1f - launchFraction));
-            float centerX = startCenterX
-                    + (targetCenterX - startCenterX) * travelProgress;
-            float centerY = startCenterY
-                    + (targetCenterY - startCenterY) * travelProgress;
+            float travelProgress;
+            float deltaX;
+            float deltaY;
+            float centerX;
+            float centerY;
+            if (iceAge) {
+                // Do not duplicate the projectile that is already drawn inside
+                // the Zomboss slingshot PAM. Once that 3.5-second clip is over
+                // and its missile has disappeared into the sky, bring the
+                // separate missile back down from above the screen and land it
+                // on the exact target cell.
+                double descent = ability.getIceageRocketDescentProgress();
+                zombossMissileActor.setVisible(descent >= 0.0);
+                travelProgress = descent < 0.0
+                        ? 0f : (float) Math.min(1.0, descent);
+                startCenterX = targetCenterX;
+                startCenterY = Gdx.graphics.getHeight()
+                        + cell.height * 0.85f;
+                deltaX = targetCenterX - startCenterX;
+                deltaY = targetCenterY - startCenterY;
+                // A small ease-in makes the return feel like a falling missile
+                // instead of a constant-speed UI translation.
+                float fallProgress = travelProgress * travelProgress;
+                centerX = startCenterX + deltaX * fallProgress;
+                centerY = startCenterY + deltaY * fallProgress;
+            } else {
+                float launchFraction = 0.34f;
+                travelProgress = attackProgress <= launchFraction
+                        ? 0f
+                        : Math.min(1f, (attackProgress - launchFraction)
+                                / (1f - launchFraction));
+                zombossMissileActor.setVisible(attackProgress >= launchFraction);
+                deltaX = targetCenterX - startCenterX;
+                deltaY = targetCenterY - startCenterY;
+                centerX = startCenterX + deltaX * travelProgress;
+                centerY = startCenterY + deltaY * travelProgress;
+            }
+
             float missileWidth = cell.width * 0.72f;
             float missileHeight = cell.height * 1.15f;
             zombossMissileActor.setBounds(
@@ -3885,11 +4044,11 @@ public final class GameScreen extends AbstractScreen {
                     centerY - missileHeight * 0.5f,
                     missileWidth, missileHeight);
 
-            // The PAM's missile is authored pointing straight down. Rotate
-            // that native down-vector so its nose follows the flight vector.
+            // Both missile PAMs are authored pointing straight down. Rotate
+            // that native down-vector to the flight direction. Ice Age's
+            // return leg is vertical, so this naturally leaves it unrotated.
             float pathAngle = (float) Math.toDegrees(Math.atan2(
-                    targetCenterY - startCenterY,
-                    targetCenterX - startCenterX));
+                    deltaY, deltaX));
             zombossMissileActor.setRotation(pathAngle + 90f);
         }
         if (zombossMissileExplosionActor != null) {
@@ -4167,6 +4326,13 @@ public final class GameScreen extends AbstractScreen {
         if (bossAbility != null) {
             renderColumn = bossAbility.getPresentationColumn(renderColumn);
         }
+        // Frostbite Zomboss's PAM is visually anchored farther to the right
+        // than its gameplay column. Shift only its rendered position by half
+        // a tile so the machine and its column animations line up with the
+        // board grid without changing any animation timing or model position.
+        if (zombie.getType() == ZombieType.ZOMBOSS_ICEAGE) {
+            renderColumn -= 0.5;
+        }
         float centerX = boardX
                 + (float) (renderColumn + 0.5) * cellWidth;
         float laneBottom = boardY
@@ -4201,6 +4367,42 @@ public final class GameScreen extends AbstractScreen {
         // bug; now that the PAM foot anchor is correct, that extra lane shift
         // would place every zombie one row too low.
         float footLine = laneBottom + cellHeight * 0.18f;
+
+        // Frozen zombies created by the Ice Age Zomboss glacier attack appear
+        // one-by-one from the mammoth's trunk. Their model position is already
+        // the destination tile, but briefly interpolate the actor (and its ice
+        // overlay, which follows this actor) from the boss nose to that tile.
+        if (!zombie.getType().isBoss() && isFrostbiteGame()) {
+            ZombossAbility activeBossAbility = findActiveZombossAbility();
+            double spawnProgress = activeBossAbility == null
+                    ? -1.0
+                    : activeBossAbility.getIceageColumnSpawnFlightProgress(
+                            zombie);
+            if (spawnProgress >= 0.0 && spawnProgress < 1.0) {
+                Zombie activeBoss = findActiveZomboss();
+                if (activeBoss != null
+                        && activeBoss.getType() == ZombieType.ZOMBOSS_ICEAGE) {
+                    float t = (float) spawnProgress;
+                    float eased = t * t * (3f - 2f * t);
+                    // glacier_column_2..4 are the right-to-left clips that
+                    // extend Zomboss's trunk above visual columns 6..4. Drop
+                    // each frozen zombie from that extended nose/spray point
+                    // straight down the column.
+                    float startX = centerX;
+                    float startY = boardY + boardHeight + cellHeight * 0.30f;
+                    float targetY = footLine + height * 0.5f;
+                    float flightCenterY = startY
+                            + (targetY - startY) * eased;
+                    actor.setBounds(
+                            startX - width * 0.5f,
+                            flightCenterY - height * 0.5f,
+                            width, height);
+                    actor.setVisible(true);
+                    return;
+                }
+            }
+        }
+
         actor.setBounds(centerX - width * 0.5f,
                 footLine, width, height);
         actor.setVisible(true);

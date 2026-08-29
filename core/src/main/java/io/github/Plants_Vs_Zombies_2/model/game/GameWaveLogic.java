@@ -7,8 +7,6 @@ import java.util.Random;
 
 import io.github.Plants_Vs_Zombies_2.model.Constants;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
-import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
-import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantTag;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.model.game.gameTypes.GameType;
@@ -181,6 +179,11 @@ abstract class GameWaveLogic extends GameAbilityLogic {
                 // movement ability returns to after repositioning.
                 spawnColumn = Math.max(1.0,
                         board.getNumberOfColumns() - 2.0);
+            } else if (zombieType == ZombieType.ZOMBOSS_ICEAGE) {
+                // The Ice Age machine is also wider than a normal zombie, but
+                // only needs a small visual step onto the lawn to fit fully.
+                spawnColumn = Math.max(1.0,
+                        board.getNumberOfColumns() - 1.75);
             }
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);
@@ -308,25 +311,15 @@ abstract class GameWaveLogic extends GameAbilityLogic {
     }
 
     void applyFrostbiteIcyWind(int waveNumber) {
-        if (chapterRuleset != ChapterRuleset.FROSTBITE_CAVES
-                || board.getPlants().isEmpty()) {
+        if (chapterRuleset != ChapterRuleset.FROSTBITE_CAVES) {
             return;
         }
-        List<Integer> candidateLanes = new ArrayList<>();
-        for (BasePlant plant : board.getPlants()) {
-            EntityPosition position = plant.getEntityPosition();
-            if (position != null && !plant.isDestroyed()
-                    && !plant.isFrozen()
-                    && !plant.hasTag(PlantTag.FIRE)
-                    && !candidateLanes.contains(position.getRow())) {
-                candidateLanes.add(position.getRow());
-            }
-        }
-        if (candidateLanes.isEmpty()) {
-            return;
-        }
+        // Phase-1 defines the wind in terms of rows first: on each wave, any
+        // number of rows may be struck, then every non-fire plant in those
+        // rows gains one freeze level. Choose rows independently of what is
+        // planted in them so the wind itself is not biased by board contents.
         List<Integer> windLanes = new ArrayList<>();
-        for (int lane : candidateLanes) {
+        for (int lane = 0; lane < board.getNumberOfRows(); lane++) {
             if (random.nextDouble() < ICY_WIND_LANE_CHANCE) {
                 windLanes.add(lane);
             }
@@ -334,18 +327,15 @@ abstract class GameWaveLogic extends GameAbilityLogic {
         if (windLanes.isEmpty()) {
             return;
         }
-        Collections.sort(windLanes);
         int affectedPlants = board.applyIcyWind(windLanes);
         pendingResults.addAll(board.drainResults());
-        if (affectedPlants > 0) {
-            lastFrostbiteIcyWindLanes.clear();
-            lastFrostbiteIcyWindLanes.addAll(windLanes);
-            lastFrostbiteIcyWindAtSeconds = elapsedSeconds;
-            pendingResults.add("Icy wind struck lane(s) "
-                    + windLanes + " at wave " + waveNumber
-                    + " and chilled " + affectedPlants
-                    + " plant(s).");
-        }
+        lastFrostbiteIcyWindLanes.clear();
+        lastFrostbiteIcyWindLanes.addAll(windLanes);
+        lastFrostbiteIcyWindAtSeconds = elapsedSeconds;
+        pendingResults.add("Icy wind struck lane(s) "
+                + windLanes + " at wave " + waveNumber
+                + " and chilled " + affectedPlants
+                + " plant(s).");
     }
 
     public double getLastFrostbiteIcyWindAtSeconds() {

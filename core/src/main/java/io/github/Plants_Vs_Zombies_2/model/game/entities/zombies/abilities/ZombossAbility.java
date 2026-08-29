@@ -2,9 +2,11 @@ package io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -27,7 +29,17 @@ public class ZombossAbility extends ZombieAbility {
     private static final double EGYPT_RUSH_SECONDS = 2.5333;
     private static final double EGYPT_RUSH_CRUSH_FRACTION = 0.55;
     private static final double STANDARD_ROCKET_WINDUP_SECONDS = 1.8333;
-    private static final double ICEAGE_ROCKET_WINDUP_SECONDS = 3.5;
+    private static final double ICEAGE_SLINGSHOT_SECONDS = 3.5;
+    private static final double ICEAGE_ROCKET_DESCENT_SECONDS = 0.95;
+    private static final double ICEAGE_ROCKET_WINDUP_SECONDS =
+            ICEAGE_SLINGSHOT_SECONDS + ICEAGE_ROCKET_DESCENT_SECONDS;
+    private static final double ICEAGE_GLACIER_ACTION_SECONDS = 6.3;
+    // The uploaded ZOMBIE_ICEAGE_ZOMBOSS.PAM emits five "submerged"
+    // commands during every glacier_column clip at these exact timestamps.
+    // They run bottom-to-top and are the natural spawn frames for the column.
+    private static final double[] ICEAGE_GLACIER_SPAWN_SECONDS = {
+            2.3667, 2.8333, 3.2333, 3.5667, 3.9000 };
+    private static final double ICEAGE_GLACIER_SPAWN_FLIGHT_SECONDS = 0.40;
 
     private final ZombossProfile profile;
     private final Random random;
@@ -35,6 +47,8 @@ public class ZombossAbility extends ZombieAbility {
     private final List<Zombie> lastDestroyedZombies;
     private final List<BasePlant> lastDestroyedPlants;
     private final List<Integer> lastAffectedLanes;
+    private final List<Zombie> activeIceageColumnZombies;
+    private final Map<Zombie, Double> iceageSpawnPresentationStartedAt;
 
     private Action lastAction;
     private Action pendingAction;
@@ -45,8 +59,14 @@ public class ZombossAbility extends ZombieAbility {
     private double pendingRushTargetColumn;
     private EntityPosition pendingRocketTarget;
     private EntityPosition lastRocketImpactTarget;
+    private int pendingIceageColumn = -1;
+    private int pendingIceageNextRow = -1;
+    private int pendingIceageSpawnCount;
+    private int lastIceageGlacierColumn = -1;
+    private int lastIceageWindStartLane = -1;
     private int rocketTargetSequence;
     private int rocketImpactSequence;
+    private double lifetimeSeconds;
     private int currentPhase = 1;
     private boolean phaseChangedThisUse;
     private boolean performedActionThisUse;
@@ -69,6 +89,8 @@ public class ZombossAbility extends ZombieAbility {
         this.lastDestroyedZombies = new ArrayList<>();
         this.lastDestroyedPlants = new ArrayList<>();
         this.lastAffectedLanes = new ArrayList<>();
+        this.activeIceageColumnZombies = new ArrayList<>();
+        this.iceageSpawnPresentationStartedAt = new IdentityHashMap<>();
         // ZombieAbility starts ready by default. Zomboss should wait a few
         // seconds before its first random move, matching the phase-two
         // requirement and giving the conveyor fight a fair opening.
@@ -78,9 +100,14 @@ public class ZombossAbility extends ZombieAbility {
     @Override
     public void update(double deltaSeconds) {
         super.update(deltaSeconds);
+        double safeDelta = Math.max(0.0, deltaSeconds);
+        lifetimeSeconds += safeDelta;
         if (pendingAction != null) {
-            pendingActionElapsedSeconds += Math.max(0.0, deltaSeconds);
+            pendingActionElapsedSeconds += safeDelta;
         }
+        iceageSpawnPresentationStartedAt.entrySet().removeIf(entry ->
+                lifetimeSeconds - entry.getValue()
+                        >= ICEAGE_GLACIER_SPAWN_FLIGHT_SECONDS);
     }
 
     @Override
@@ -142,10 +169,26 @@ public class ZombossAbility extends ZombieAbility {
 
     private Action chooseAction() {
         List<Action> choices = new ArrayList<>(profile.actionsFor(currentPhase));
+        if (profile == ZombossProfile.ICEAGE
+                && hasLivingIceageColumnZombies()) {
+            // Never create a second glacier column while any zombie from the
+            // previous column is still alive. Zomboss can keep using wind or
+            // the slingshot while the player clears the current column.
+            choices.remove(Action.FREEZE_COLUMN);
+        }
         if (choices.size() > 1 && lastAction != null) {
             choices.remove(lastAction);
         }
+        if (choices.isEmpty()) {
+            choices.add(Action.ICY_WIND);
+        }
         return choices.get(random.nextInt(choices.size()));
+    }
+
+    private boolean hasLivingIceageColumnZombies() {
+        activeIceageColumnZombies.removeIf(zombie -> zombie == null
+                || zombie.isDead() || zombie.isRemoved());
+        return !activeIceageColumnZombies.isEmpty();
     }
 
     private void executeAction(Action action, Zombie zomboss, Board board) {
@@ -325,6 +368,28 @@ public class ZombossAbility extends ZombieAbility {
             }
             return changed;
         }
+        if (pendingAction == Action.FREEZE_COLUMN) {
+            boolean spawnedThisUse = false;
+            int rowCount = board.getNumberOfRows();
+            while (pendingIceageNextRow >= 0
+                    && pendingActionElapsedSeconds >= iceageGlacierSpawnTimeForRow(
+                            pendingIceageNextRow, rowCount)) {
+                Zombie spawned = spawnIceageGlacierZombie(zomboss, board,
+                        pendingIceageNextRow, pendingIceageColumn);
+                pendingIceageNextRow--;
+                spawnedThisUse |= spawned != null;
+            }
+            if (pendingActionElapsedSeconds >= ICEAGE_GLACIER_ACTION_SECONDS) {
+                lastActionDescription = "froze middle column "
+                        + (pendingIceageColumn + 1) + " and released "
+                        + pendingIceageSpawnCount
+                        + " encased zombie(s) from bottom to top.";
+                performedActionThisUse = true;
+                clearPendingAction();
+                return true;
+            }
+            return spawnedThisUse;
+        }
         if (pendingAction == Action.ROCKET) {
             if (!pendingActionResolved
                     && pendingActionElapsedSeconds >= rocketWindupSeconds()) {
@@ -359,6 +424,9 @@ public class ZombossAbility extends ZombieAbility {
         pendingRushStartColumn = 0.0;
         pendingRushTargetColumn = 0.0;
         pendingRocketTarget = null;
+        pendingIceageColumn = -1;
+        pendingIceageNextRow = -1;
+        pendingIceageSpawnCount = 0;
     }
 
     private int addRandomGraves(Board board, int count) {
@@ -454,41 +522,110 @@ public class ZombossAbility extends ZombieAbility {
     }
 
     private void blowIcyWind(Board board) {
-        List<Integer> lanes = new ArrayList<>();
-        for (int lane = 0; lane < board.getNumberOfRows(); lane++) {
-            lanes.add(lane);
+        int rowCount = board.getNumberOfRows();
+        int startLane = rowCount <= 1 ? 0 : random.nextInt(rowCount - 1);
+        List<Integer> selected = new ArrayList<>();
+        selected.add(startLane);
+        if (startLane + 1 < rowCount) {
+            selected.add(startLane + 1);
         }
-        Collections.shuffle(lanes, random);
-        int count = Math.min(2, lanes.size());
-        List<Integer> selected = new ArrayList<>(lanes.subList(0, count));
+        lastIceageWindStartLane = startLane;
         board.applyIcyWind(selected);
         lastAffectedLanes.addAll(selected);
         lastActionDescription = "blew icy wind across rows " + selected + ".";
     }
 
     private void freezeColumn(Zombie zomboss, Board board) {
-        int column = random.nextInt(Math.max(1, board.getNumberOfColumns() - 2));
-        int frozen = 0;
-        for (int row = 0; row < board.getNumberOfRows(); row++) {
-            EntityPosition position = new EntityPosition(row, column);
-            Tile tile = board.getTileAt(position);
-            if (tile == null || tile.hasPlant() || board.hasZombieAt(position)
-                    || tile.getTileType() == TileType.WATER
-                    || tile.getTileType() == TileType.GRAVESTONE) {
-                continue;
-            }
-            ZombieType type = row % 2 == 0
-                    ? ZombieType.ICEAGE : ZombieType.ICEAGE_CONEHEAD;
-            Zombie frozenZombie = new Zombie(type, zomboss.getWaveNumber(),
-                    row, column, false);
-            frozenZombie.encaseInIce();
-            board.addZombie(frozenZombie);
-            board.setTileType(position, TileType.FROZEN);
-            lastSpawnedZombies.add(frozenZombie);
-            frozen++;
+        if (hasLivingIceageColumnZombies()) {
+            lastActionDescription = "waited for the previous glacier column to be cleared.";
+            return;
         }
-        lastActionDescription = "froze column " + (column + 1)
-                + " and encased " + frozen + " zombie(s) in ice.";
+        int column = chooseIceageGlacierColumn(board);
+        if (column < 0) {
+            lastActionDescription = "could not find an open middle column to freeze.";
+            return;
+        }
+
+        activeIceageColumnZombies.clear();
+        pendingAction = Action.FREEZE_COLUMN;
+        pendingActionElapsedSeconds = 0.0;
+        pendingActionResolved = false;
+        pendingIceageColumn = column;
+        pendingIceageNextRow = board.getNumberOfRows() - 1;
+        pendingIceageSpawnCount = 0;
+        lastIceageGlacierColumn = column;
+        lastActionDescription = "";
+    }
+
+    private int chooseIceageGlacierColumn(Board board) {
+        // On the 9-column Frostbite lawn the first three columns belong to the
+        // player and the last three are occupied by Zomboss. Only columns 4-6
+        // (zero-based 3-5) are valid glacier-column targets.
+        int firstColumn = 3;
+        int lastColumn = board.getNumberOfColumns() - 4;
+        if (lastColumn < firstColumn) {
+            return -1;
+        }
+        List<Integer> candidates = new ArrayList<>();
+        for (int column = firstColumn; column <= lastColumn; column++) {
+            boolean fullyOpen = true;
+            for (int row = 0; row < board.getNumberOfRows(); row++) {
+                if (!canSpawnFrozenZombieAt(board, row, column)) {
+                    fullyOpen = false;
+                    break;
+                }
+            }
+            if (fullyOpen) {
+                candidates.add(column);
+            }
+        }
+        return candidates.isEmpty()
+                ? -1 : candidates.get(random.nextInt(candidates.size()));
+    }
+
+    private boolean canSpawnFrozenZombieAt(Board board, int row, int column) {
+        EntityPosition position = new EntityPosition(row, column);
+        Tile tile = board.getTileAt(position);
+        return tile != null && !tile.hasPlant() && !board.hasZombieAt(position)
+                && tile.getTileType() != TileType.WATER
+                && tile.getTileType() != TileType.GRAVESTONE;
+    }
+
+    private Zombie spawnIceageGlacierZombie(Zombie zomboss, Board board,
+            int row, int column) {
+        if (!canSpawnFrozenZombieAt(board, row, column)) {
+            return null;
+        }
+        EntityPosition position = new EntityPosition(row, column);
+        ZombieType type = row % 2 == 0
+                ? ZombieType.ICEAGE : ZombieType.ICEAGE_CONEHEAD;
+        Zombie frozenZombie = new Zombie(type, zomboss.getWaveNumber(),
+                row, column, false);
+        frozenZombie.encaseInIce();
+        board.addZombie(frozenZombie);
+        board.setTileType(position, TileType.FROZEN);
+        lastSpawnedZombies.add(frozenZombie);
+        activeIceageColumnZombies.add(frozenZombie);
+        iceageSpawnPresentationStartedAt.put(frozenZombie, lifetimeSeconds);
+        pendingIceageSpawnCount++;
+        return frozenZombie;
+    }
+
+    private double iceageGlacierSpawnTimeForRow(int row, int rowCount) {
+        if (rowCount <= 1) {
+            return ICEAGE_GLACIER_SPAWN_SECONDS[0];
+        }
+        int bottomToTopIndex = rowCount - 1 - row;
+        if (rowCount == ICEAGE_GLACIER_SPAWN_SECONDS.length) {
+            return ICEAGE_GLACIER_SPAWN_SECONDS[Math.max(0, Math.min(
+                    ICEAGE_GLACIER_SPAWN_SECONDS.length - 1,
+                    bottomToTopIndex))];
+        }
+        double progress = bottomToTopIndex / (double) (rowCount - 1);
+        int nearest = (int) Math.round(progress
+                * (ICEAGE_GLACIER_SPAWN_SECONDS.length - 1));
+        return ICEAGE_GLACIER_SPAWN_SECONDS[Math.max(0, Math.min(
+                ICEAGE_GLACIER_SPAWN_SECONDS.length - 1, nearest))];
     }
 
     private void sendBabySharks(Board board) {
@@ -709,6 +846,56 @@ public class ZombossAbility extends ZombieAbility {
         }
         return Math.max(0.0, Math.min(1.0,
                 pendingActionElapsedSeconds / rocketWindupSeconds()));
+    }
+
+    public String getIceageWindClipName() {
+        int clip = Math.max(1, Math.min(4, lastIceageWindStartLane + 1));
+        return "wind_" + clip;
+    }
+
+    public String getIceageGlacierColumnClipName() {
+        // The official glacier-column clips are authored right-to-left on the
+        // lawn: glacier_column_1 lands in visual column 7, column_2 in 6,
+        // column_3 in 5, and column_4 in 4. Since gameplay only permits the
+        // middle visual columns 4-6 (zero-based 3-5), those require clips
+        // 4, 3, and 2 respectively.
+        int clip = 7 - lastIceageGlacierColumn;
+        clip = Math.max(1, Math.min(6, clip));
+        return "glacier_column_" + clip;
+    }
+
+    /**
+     * Fraction of the Ice Age missile's post-slingshot descent. The boss PAM
+     * owns the projectile for its full 3.5-second slingshot clip; only after
+     * that clip has finished does the separate missile enter from above.
+     */
+    public double getIceageRocketDescentProgress() {
+        if (profile != ZombossProfile.ICEAGE
+                || pendingAction != Action.ROCKET
+                || pendingRocketTarget == null) {
+            return -1.0;
+        }
+        double elapsedAfterSlingshot = pendingActionElapsedSeconds
+                - ICEAGE_SLINGSHOT_SECONDS;
+        if (elapsedAfterSlingshot < 0.0) {
+            return -1.0;
+        }
+        return Math.max(0.0, Math.min(1.0,
+                elapsedAfterSlingshot / ICEAGE_ROCKET_DESCENT_SECONDS));
+    }
+
+    /**
+     * Returns 0..1 while a freshly spawned Ice Age column zombie is visually
+     * travelling from Zomboss's trunk to its frozen tile, or -1 otherwise.
+     */
+    public double getIceageColumnSpawnFlightProgress(Zombie zombie) {
+        Double startedAt = iceageSpawnPresentationStartedAt.get(zombie);
+        if (startedAt == null) {
+            return -1.0;
+        }
+        return Math.max(0.0, Math.min(1.0,
+                (lifetimeSeconds - startedAt)
+                        / ICEAGE_GLACIER_SPAWN_FLIGHT_SECONDS));
     }
 
     public int getCurrentPhase() {
