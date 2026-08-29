@@ -18,6 +18,19 @@ public final class ProtocolCodec {
         return gson.toJson(message);
     }
 
+    public <T> T deserializePayload(ProtocolMessage message, Class<T> payloadType)
+            throws ProtocolException {
+        try {
+            return gson.fromJson(message.getPayload(), payloadType);
+        } catch (JsonParseException | IllegalStateException exception) {
+            throw new ProtocolException(
+                    ProtocolErrorCode.MALFORMED_PAYLOAD.name(),
+                    message.getRequestId(),
+                    "The response payload is malformed",
+                    exception);
+        }
+    }
+
     public ProtocolMessage deserialize(String json) throws ProtocolException {
         final JsonObject envelope;
         try {

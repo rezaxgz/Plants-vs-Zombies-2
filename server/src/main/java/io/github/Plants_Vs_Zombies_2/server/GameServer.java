@@ -1,10 +1,14 @@
 package io.github.Plants_Vs_Zombies_2.server;
 
+import io.github.Plants_Vs_Zombies_2.model.auth.JsonUserRepository;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -19,13 +23,15 @@ import java.util.logging.Logger;
 public final class GameServer implements AutoCloseable {
     public static final String DEFAULT_HOST = "127.0.0.1";
     public static final int DEFAULT_PORT = 54555;
+    public static final String USERS_DATABASE_PROPERTY = "pvz.server.users.database";
+    public static final String DEFAULT_USERS_DATABASE = "data/server-users.json";
     private static final Logger LOGGER = Logger.getLogger(GameServer.class.getName());
 
     private final String host;
     private final int requestedPort;
     private final AtomicBoolean running = new AtomicBoolean();
     private final Set<ClientConnection> connections = ConcurrentHashMap.newKeySet();
-    private final ServerMessageHandler messageHandler = new ServerMessageHandler();
+    private final ServerRequestHandler messageHandler;
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private final AtomicInteger connectionThreadNumber = new AtomicInteger();
     private final ExecutorService connectionExecutor = Executors.newCachedThreadPool(runnable -> {
@@ -39,10 +45,19 @@ public final class GameServer implements AutoCloseable {
     private volatile Thread acceptThread;
 
     public GameServer() {
-        this(DEFAULT_HOST, DEFAULT_PORT);
+        this(DEFAULT_HOST, DEFAULT_PORT, resolveDatabasePath());
     }
 
     public GameServer(String host, int port) {
+        this(host, port, resolveDatabasePath());
+    }
+
+    public GameServer(String host, int port, Path databasePath) {
+        this(host, port, new ServerMessageHandler(
+                new ServerAccountService(new JsonUserRepository(databasePath))));
+    }
+
+    GameServer(String host, int port, ServerRequestHandler messageHandler) {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("host must not be blank");
         }
@@ -51,6 +66,7 @@ public final class GameServer implements AutoCloseable {
         }
         this.host = host;
         this.requestedPort = port;
+        this.messageHandler = Objects.requireNonNull(messageHandler, "messageHandler");
     }
 
     public synchronized void start() throws IOException {
@@ -113,6 +129,14 @@ public final class GameServer implements AutoCloseable {
 
     void connectionClosed(ClientConnection connection) {
         connections.remove(connection);
+    }
+
+    private static Path resolveDatabasePath() {
+        String configured = System.getProperty(USERS_DATABASE_PROPERTY);
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured);
+        }
+        return Path.of(DEFAULT_USERS_DATABASE);
     }
 
     @Override

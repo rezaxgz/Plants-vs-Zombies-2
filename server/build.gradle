@@ -22,4 +22,13 @@ test {
   useJUnitPlatform()
 }
 
+tasks.named('run', JavaExec) {
+  ['pvz.server.host', 'pvz.server.port', 'pvz.server.users.database'].each { propertyName ->
+    String value = System.getProperty(propertyName)
+    if (value != null) {
+      systemProperty propertyName, value
+    }
+  }
+}
+
 eclipse.project.name = appName + '-server'

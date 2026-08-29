@@ -1,6 +1,7 @@
 package io.github.Plants_Vs_Zombies_2.server;
 
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolCodec;
+import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolException;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessages;
@@ -21,14 +22,15 @@ final class ClientConnection implements Runnable, AutoCloseable {
 
     private final GameServer server;
     private final Socket socket;
-    private final ServerMessageHandler messageHandler;
+    private final ServerRequestHandler messageHandler;
+    private final ConnectionContext context = new ConnectionContext();
     private final ProtocolCodec codec = new ProtocolCodec();
     private final AtomicBoolean open = new AtomicBoolean(true);
     private final Object sendLock = new Object();
     private final String description;
     private BufferedWriter writer;
 
-    ClientConnection(GameServer server, Socket socket, ServerMessageHandler messageHandler) {
+    ClientConnection(GameServer server, Socket socket, ServerRequestHandler messageHandler) {
         this.server = server;
         this.socket = socket;
         this.messageHandler = messageHandler;
@@ -56,9 +58,9 @@ final class ClientConnection implements Runnable, AutoCloseable {
     }
 
     private void handleLine(String line) {
+        final ProtocolMessage request;
         try {
-            ProtocolMessage request = codec.deserialize(line);
-            send(messageHandler.handle(request));
+            request = codec.deserialize(line);
         } catch (ProtocolException exception) {
             LOGGER.warning(() -> "Protocol error from " + description + ": " + exception.getMessage());
             String requestId = exception.getRequestId();
@@ -66,6 +68,24 @@ final class ClientConnection implements Runnable, AutoCloseable {
                 requestId = ProtocolMessages.newRequestId();
             }
             send(ProtocolMessages.error(requestId, exception.getErrorCode(), exception.getMessage()));
+            return;
+        }
+
+        try {
+            ProtocolMessage response = messageHandler.handle(request, context);
+            if (response == null) {
+                throw new IllegalStateException("Request handler returned no response");
+            }
+            send(response);
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.SEVERE,
+                    "Unexpected request failure for " + description
+                            + " (requestId=" + request.getRequestId() + ")",
+                    exception);
+            send(ProtocolMessages.error(
+                    request.getRequestId(),
+                    ProtocolErrorCode.INTERNAL_SERVER_ERROR,
+                    "The server could not process this request"));
         }
     }
 
@@ -95,6 +115,13 @@ final class ClientConnection implements Runnable, AutoCloseable {
         } catch (IOException exception) {
             LOGGER.log(Level.FINE, "Socket was already closed for " + description, exception);
         } finally {
+            try {
+                messageHandler.connectionClosed(context);
+            } catch (RuntimeException exception) {
+                LOGGER.log(Level.SEVERE,
+                        "Could not release connection state for " + description,
+                        exception);
+            }
             server.connectionClosed(this);
             LOGGER.info(() -> "Client disconnected: " + description);
         }

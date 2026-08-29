@@ -2,12 +2,14 @@ package io.github.Plants_Vs_Zombies_2.network.protocol;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.Gson;
 
 import java.time.Instant;
 import java.util.UUID;
 
 public final class ProtocolMessages {
     public static final int CURRENT_VERSION = 1;
+    private static final Gson GSON = new Gson();
 
     private ProtocolMessages() {
     }
@@ -50,5 +52,20 @@ public final class ProtocolMessages {
         payload.addProperty("code", code);
         payload.addProperty("message", message);
         return new ProtocolMessage(MessageType.ERROR, requestId, CURRENT_VERSION, payload);
+    }
+
+    public static ProtocolMessage error(
+            String requestId, ProtocolErrorCode code, String message) {
+        return error(requestId, code.name(), message);
+    }
+
+    public static ProtocolMessage withPayload(
+            MessageType type, String requestId, Object payload) {
+        return new ProtocolMessage(
+                type, requestId, CURRENT_VERSION, GSON.toJsonTree(payload));
+    }
+
+    public static ProtocolMessage empty(MessageType type, String requestId) {
+        return new ProtocolMessage(type, requestId, CURRENT_VERSION, new JsonObject());
     }
 }
