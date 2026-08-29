@@ -1,0 +1,25 @@
+plugins {
+  id 'application'
+}
+
+java {
+  sourceCompatibility = JavaVersion.VERSION_17
+  targetCompatibility = JavaVersion.VERSION_17
+}
+
+application {
+  mainClass = 'io.github.Plants_Vs_Zombies_2.server.ServerLauncher'
+}
+
+dependencies {
+  implementation project(':core')
+  testImplementation platform('org.junit:junit-bom:5.11.4')
+  testImplementation 'org.junit.jupiter:junit-jupiter'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+  useJUnitPlatform()
+}
+
+eclipse.project.name = appName + '-server'
