@@ -7056,6 +7056,7 @@ public final class GameScreen extends AbstractScreen {
         private final TextureRegion zombieHead;
         private final TextureRegion flagPole;
         private final TextureRegion flag;
+        private float displayedProgress;
 
         private WaveProgressActor(Game game) {
             this.game = game;
@@ -7067,6 +7068,25 @@ public final class GameScreen extends AbstractScreen {
             zombieHead = requireAssetRegion(WAVE_PROGRESS_ZOMBIE_HEAD);
             flagPole = requireAssetRegion(WAVE_PROGRESS_FLAG_POLE);
             flag = requireAssetRegion(WAVE_PROGRESS_FLAG);
+            displayedProgress = deploymentProgress();
+        }
+
+        @Override
+        public void act(float delta) {
+            super.act(delta);
+            float target = deploymentProgress();
+            if (target <= displayedProgress) {
+                displayedProgress = target;
+                return;
+            }
+            // Ease the meter toward each newly deployed zombie instead of
+            // snapping the head/bar by a whole zombie step on one frame.
+            float safeDelta = Math.max(0f, Math.min(0.25f, delta));
+            float blend = 1f - (float) Math.exp(-5.0f * safeDelta);
+            displayedProgress += (target - displayedProgress) * blend;
+            if (target - displayedProgress < 0.0005f) {
+                displayedProgress = target;
+            }
         }
 
         @Override
@@ -7076,14 +7096,12 @@ public final class GameScreen extends AbstractScreen {
                 return;
             }
 
-            int totalZombies = totalWaveZombieCount(waves);
+            int totalZombies = game.getScheduledPrimaryWaveZombieCount();
             if (totalZombies <= 0) {
                 return;
             }
-            int spawnedZombies = spawnedWaveZombieCount(waves,
-                    game.getZombieWaveNumber());
             float progress = Math.max(0f, Math.min(1f,
-                    spawnedZombies / (float) totalZombies));
+                    displayedProgress));
 
             float x = getX();
             float y = getY();
@@ -7122,8 +7140,9 @@ public final class GameScreen extends AbstractScreen {
             // Every wave boundary is shown with a pole and red flag. The
             // positions are proportional to how many zombies that wave adds.
             int cumulative = 0;
-            for (ZombieWave wave : waves) {
-                cumulative += wave.getZombieTypes().size();
+            for (int waveIndex = 0; waveIndex < waves.size(); waveIndex++) {
+                cumulative += game.getScheduledPrimaryWaveZombieCount(
+                        waveIndex);
                 float boundaryProgress = cumulative / (float) totalZombies;
                 float markerX = barRight - barWidth * boundaryProgress;
                 boolean passed = progress + 0.0001f >= boundaryProgress;
@@ -7152,23 +7171,14 @@ public final class GameScreen extends AbstractScreen {
             batch.setColor(previous);
         }
 
-        private int totalWaveZombieCount(List<ZombieWave> waves) {
-            int total = 0;
-            for (ZombieWave wave : waves) {
-                total += wave.getZombieTypes().size();
+        private float deploymentProgress() {
+            int total = game.getScheduledPrimaryWaveZombieCount();
+            if (total <= 0) {
+                return 0f;
             }
-            return total;
-        }
-
-        private int spawnedWaveZombieCount(List<ZombieWave> waves,
-                int currentWaveNumber) {
-            int spawned = 0;
-            int spawnedWaveCount = Math.max(0,
-                    Math.min(currentWaveNumber, waves.size()));
-            for (int index = 0; index < spawnedWaveCount; index++) {
-                spawned += waves.get(index).getZombieTypes().size();
-            }
-            return spawned;
+            return Math.max(0f, Math.min(1f,
+                    game.getDeployedPrimaryWaveZombieCount()
+                            / (float) total));
         }
 
         private void dispose() {

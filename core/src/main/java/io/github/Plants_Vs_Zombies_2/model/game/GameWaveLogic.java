@@ -18,6 +18,12 @@ import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 import io.github.Plants_Vs_Zombies_2.view.game.ZombieView;
 
 abstract class GameWaveLogic extends GameAbilityLogic {
+    private static final int MAX_INITIAL_WAVE_ZOMBIES = 2;
+    private static final int MIN_NON_BOSS_WAVE_ZOMBIES = 4;
+    private static final double MIN_WAVE_SPAWN_SPACING_SECONDS = 3.0;
+    private static final double MAX_WAVE_SPAWN_SPACING_SECONDS = 6.0;
+    private static final double TARGET_WAVE_DEPLOYMENT_SECONDS = 24.0;
+
     protected GameWaveLogic(Board board, GameType gameType,
             int initialSunCount, List<ZombieWave> zombieWaves,
             Random random, boolean startWavesImmediately,
@@ -126,7 +132,17 @@ abstract class GameWaveLogic extends GameAbilityLogic {
             return true;
         }
 
-        List<Zombie> previousWave = spawnedZombiesByWave.get(nextWaveIndex - 1);
+        int previousWaveIndex = nextWaveIndex - 1;
+        // The old implementation put every member of a wave on the lawn
+        // immediately, so the 25% health threshold could never be evaluated
+        // before those zombies existed. Preserve that exact readiness model:
+        // delayed members are still part of the current wave and must enter
+        // the lawn before the normal next-wave health check can succeed.
+        if (hasPendingPrimaryWaveSpawns(previousWaveIndex)) {
+            return false;
+        }
+
+        List<Zombie> previousWave = spawnedZombiesByWave.get(previousWaveIndex);
         if (previousWave.isEmpty()) {
             return true;
         }
@@ -158,57 +174,288 @@ abstract class GameWaveLogic extends GameAbilityLogic {
         List<Zombie> spawnedZombies = spawnedZombiesByWave.get(waveIndex);
         boolean bossWave = isBossWave(wave);
         if (!bossWave) {
+            // Chapter-specific wave events still occur at the instant the wave
+            // begins. Only the ordinary zombies belonging to the wave budget
+            // are staggered; changing these hooks would alter necromancy,
+            // Frostbite wind, or Big Wave Beach tide timing.
             applyDarkAgesWave(waveNumber, spawnedZombies);
             applyFrostbiteIcyWind(waveNumber);
             applyBigWaveBeachWaterWave(waveNumber, spawnedZombies);
         }
-        double normalSpawnColumn = board.getNumberOfColumns() - 0.001;
-        for (ZombieType zombieType : wave.getZombieTypes()) {
-            int lane = zombieType.isBoss()
-                    ? initialBossLane(zombieType)
-                    : random.nextInt(board.getNumberOfRows());
-            boolean glowing = !zombieType.isBoss()
-                    && random.nextDouble() < Constants.GLOWING_ZOMBIE_CHANCE;
-            int tornadoAdvance = zombieType.isBoss()
-                    ? 0 : chooseTornadoAdvance(wave);
-            double spawnColumn = normalSpawnColumn - tornadoAdvance;
-            if (zombieType == ZombieType.ZOMBOSS_EGYPT) {
-                // Egypt Zomboss is wider than a normal zombie. Starting it at
-                // the ordinary right-edge spawn column leaves most of the
-                // machine clipped off-screen; use the same home column its
-                // movement ability returns to after repositioning.
-                spawnColumn = Math.max(1.0,
-                        board.getNumberOfColumns() - 2.0);
-            } else if (zombieType == ZombieType.ZOMBOSS_ICEAGE) {
-                // The Ice Age machine is also wider than a normal zombie, but
-                // only needs a small visual step onto the lawn to fit fully.
-                spawnColumn = Math.max(1.0,
-                        board.getNumberOfColumns() - 1.75);
-            } else if (zombieType == ZombieType.ZOMBOSS_BEACH) {
-                // Big Wave Beach Zomboss is even wider than the regular shark
-                // zombies. Spawn it on the same in-bounds home column the boss
-                // returns to after lane changes so the intro starts fully on
-                // screen instead of clipped beyond the right edge.
-                spawnColumn = Math.max(1.0,
-                        board.getNumberOfColumns() - 2.0);
-            } else if (zombieType == ZombieType.ZOMBOSS_DARK) {
-                // Dark Ages Zomboss also has a large 390px PAM and a long
-                // entrance animation. Start it on the normal Zomboss home
-                // column so the whole intro is visible on the lawn.
-                spawnColumn = Math.max(1.0,
-                        board.getNumberOfColumns() - 2.0);
+
+        ensureWaveSpawnSchedulingState();
+        List<ZombieType> types = scheduledWaveZombieTypes(wave);
+        primaryWaveSpawnCounts[waveIndex] = 0;
+        nextPrimaryWaveSpawnAtSeconds[waveIndex] = -1.0;
+
+        if (bossWave) {
+            // Zomboss levels remain a single immediate boss spawn. Normal
+            // one- and two-zombie waves are expanded below so their staggered
+            // deployment is visible instead of ending on the first frame.
+            for (ZombieType zombieType : types) {
+                spawnPrimaryWaveZombie(waveIndex, wave, zombieType);
+                primaryWaveSpawnCounts[waveIndex]++;
             }
-            Zombie zombie = new Zombie(zombieType, waveNumber, lane,
-                    spawnColumn, glowing);
-            zombie.setTornadoAdvanceColumns(tornadoAdvance);
-            applyDifficultyToZombie(zombie);
-            spawnedZombies.add(zombie);
-            board.addZombie(zombie);
-            onZombieSpawned(zombie);
-            pendingResults.add(ZombieView.buildSpawnMessage(
-                    zombie, tornadoAdvance));
+        } else {
+            int initialCount = initialWaveSpawnCount(types.size());
+            for (int index = 0; index < initialCount; index++) {
+                spawnPrimaryWaveZombie(waveIndex, wave, types.get(index));
+                primaryWaveSpawnCounts[waveIndex]++;
+            }
+            if (primaryWaveSpawnCounts[waveIndex] < types.size()) {
+                nextPrimaryWaveSpawnAtSeconds[waveIndex] = elapsedSeconds
+                        + waveSpawnSpacingSeconds(types.size(), initialCount);
+            }
         }
         zombieWaveNumber = waveNumber;
+    }
+
+    /**
+     * Adds delayed members of all waves that have already started. Each wave
+     * releases at most one scheduled zombie per update, so even a long frame
+     * cannot collapse the remaining deployment into a single burst.
+     */
+    @Override
+    void updatePendingWaveSpawns() {
+        ensureWaveSpawnSchedulingState();
+        int startedWaveCount = Math.min(nextWaveIndex, zombieWaves.size());
+        for (int waveIndex = 0; waveIndex < startedWaveCount; waveIndex++) {
+            ZombieWave wave = zombieWaves.get(waveIndex);
+            List<ZombieType> types = scheduledWaveZombieTypes(wave);
+            int count = Math.max(0, Math.min(types.size(),
+                    primaryWaveSpawnCounts[waveIndex]));
+            if (count >= types.size()) {
+                nextPrimaryWaveSpawnAtSeconds[waveIndex] = -1.0;
+                continue;
+            }
+
+            double nextAt = nextPrimaryWaveSpawnAtSeconds[waveIndex];
+            if (nextAt < 0.0) {
+                // Compatibility for old saves made before staggered waves:
+                // existing tracked primary zombies are treated as already
+                // deployed and any missing members resume from now.
+                count = inferPrimaryWaveSpawnCount(waveIndex, types);
+                primaryWaveSpawnCounts[waveIndex] = count;
+                if (count >= types.size()) {
+                    continue;
+                }
+                nextAt = elapsedSeconds
+                        + waveSpawnSpacingSeconds(types.size(),
+                                initialWaveSpawnCount(types.size()));
+                nextPrimaryWaveSpawnAtSeconds[waveIndex] = nextAt;
+            }
+
+            double spacing = waveSpawnSpacingSeconds(types.size(),
+                    initialWaveSpawnCount(types.size()));
+            if (count < types.size()
+                    && elapsedSeconds + TIME_EPSILON >= nextAt) {
+                // Never release multiple scheduled members on one update.
+                // Even after a long pause or lag spike the remaining zombies
+                // still enter one at a time rather than forming a new burst.
+                spawnPrimaryWaveZombie(waveIndex, wave, types.get(count));
+                count++;
+                primaryWaveSpawnCounts[waveIndex] = count;
+                if (count < types.size()) {
+                    nextAt = Math.max(nextAt + spacing,
+                            elapsedSeconds + spacing);
+                    nextPrimaryWaveSpawnAtSeconds[waveIndex] = nextAt;
+                } else {
+                    nextPrimaryWaveSpawnAtSeconds[waveIndex] = -1.0;
+                }
+            }
+        }
+    }
+
+    private List<ZombieType> scheduledWaveZombieTypes(ZombieWave wave) {
+        if (wave == null) {
+            return Collections.emptyList();
+        }
+        List<ZombieType> original = wave.getZombieTypes();
+        if (original.isEmpty() || isBossWave(wave)
+                || original.size() >= MIN_NON_BOSS_WAVE_ZOMBIES) {
+            return original;
+        }
+
+        // Very small normal waves used to finish before the stagger was even
+        // noticeable. Repeat their existing composition until the wave has at
+        // least four primary zombies; no new zombie type is introduced and
+        // the level's original type mix is preserved (A,B becomes A,B,A,B).
+        List<ZombieType> expanded = new ArrayList<>(
+                MIN_NON_BOSS_WAVE_ZOMBIES);
+        for (int index = 0; index < MIN_NON_BOSS_WAVE_ZOMBIES; index++) {
+            expanded.add(original.get(index % original.size()));
+        }
+        return expanded;
+    }
+
+    private int initialWaveSpawnCount(int waveSize) {
+        if (waveSize <= 0) {
+            return 0;
+        }
+        // Only a small opening group enters immediately. The rest arrive one
+        // at a time across a much longer deployment window so each wave reads
+        // as a sustained attack rather than a burst at the flag marker.
+        return Math.min(waveSize, Math.min(MAX_INITIAL_WAVE_ZOMBIES,
+                Math.max(1, (waveSize + 4) / 5)));
+    }
+
+    private double waveSpawnSpacingSeconds(int waveSize, int initialCount) {
+        int delayedCount = Math.max(0, waveSize - initialCount);
+        if (delayedCount <= 0) {
+            return 0.0;
+        }
+        return Math.max(MIN_WAVE_SPAWN_SPACING_SECONDS,
+                Math.min(MAX_WAVE_SPAWN_SPACING_SECONDS,
+                        TARGET_WAVE_DEPLOYMENT_SECONDS / delayedCount));
+    }
+
+    private boolean hasPendingPrimaryWaveSpawns(int waveIndex) {
+        if (waveIndex < 0 || waveIndex >= zombieWaves.size()) {
+            return false;
+        }
+        ensureWaveSpawnSchedulingState();
+        List<ZombieType> scheduledTypes = scheduledWaveZombieTypes(
+                zombieWaves.get(waveIndex));
+        int waveSize = scheduledTypes.size();
+        int count = Math.max(0, Math.min(waveSize,
+                primaryWaveSpawnCounts[waveIndex]));
+        if (count == 0 && !spawnedZombiesByWave.get(waveIndex).isEmpty()) {
+            count = inferPrimaryWaveSpawnCount(waveIndex, scheduledTypes);
+            primaryWaveSpawnCounts[waveIndex] = count;
+        }
+        return count < waveSize;
+    }
+
+    private boolean hasAnyPendingPrimaryWaveSpawns() {
+        int startedWaveCount = Math.min(nextWaveIndex, zombieWaves.size());
+        for (int waveIndex = 0; waveIndex < startedWaveCount; waveIndex++) {
+            if (hasPendingPrimaryWaveSpawns(waveIndex)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int inferPrimaryWaveSpawnCount(int waveIndex,
+            List<ZombieType> waveTypes) {
+        if (waveTypes == null || waveTypes.isEmpty()) {
+            return 0;
+        }
+        int[] neededByType = new int[ZombieType.values().length];
+        for (ZombieType type : waveTypes) {
+            neededByType[type.ordinal()]++;
+        }
+        int matched = 0;
+        for (Zombie zombie : spawnedZombiesByWave.get(waveIndex)) {
+            if (zombie == null) {
+                continue;
+            }
+            int ordinal = zombie.getType().ordinal();
+            if (neededByType[ordinal] > 0) {
+                neededByType[ordinal]--;
+                matched++;
+            }
+        }
+        return Math.min(waveTypes.size(), matched);
+    }
+
+    private void ensureWaveSpawnSchedulingState() {
+        int waveCount = zombieWaves.size();
+        if (primaryWaveSpawnCounts == null
+                || primaryWaveSpawnCounts.length != waveCount) {
+            primaryWaveSpawnCounts = new int[waveCount];
+            for (int waveIndex = 0;
+                    waveIndex < Math.min(nextWaveIndex, waveCount);
+                    waveIndex++) {
+                primaryWaveSpawnCounts[waveIndex] = inferPrimaryWaveSpawnCount(
+                        waveIndex, scheduledWaveZombieTypes(
+                                zombieWaves.get(waveIndex)));
+            }
+        }
+        if (nextPrimaryWaveSpawnAtSeconds == null
+                || nextPrimaryWaveSpawnAtSeconds.length != waveCount) {
+            nextPrimaryWaveSpawnAtSeconds = new double[waveCount];
+            java.util.Arrays.fill(nextPrimaryWaveSpawnAtSeconds, -1.0);
+        }
+    }
+
+    /** Total number of primary wave zombies that will be deployed. */
+    public int getScheduledPrimaryWaveZombieCount() {
+        int total = 0;
+        for (ZombieWave wave : zombieWaves) {
+            total += scheduledWaveZombieTypes(wave).size();
+        }
+        return total;
+    }
+
+    /** Number of primary wave zombies that have actually entered the lawn. */
+    public int getDeployedPrimaryWaveZombieCount() {
+        ensureWaveSpawnSchedulingState();
+        int total = 0;
+        for (int waveIndex = 0; waveIndex < zombieWaves.size(); waveIndex++) {
+            int scheduled = scheduledWaveZombieTypes(
+                    zombieWaves.get(waveIndex)).size();
+            total += Math.max(0, Math.min(scheduled,
+                    primaryWaveSpawnCounts[waveIndex]));
+        }
+        return total;
+    }
+
+    /** Scheduled primary-zombie count for one zero-based wave index. */
+    public int getScheduledPrimaryWaveZombieCount(int waveIndex) {
+        if (waveIndex < 0 || waveIndex >= zombieWaves.size()) {
+            return 0;
+        }
+        return scheduledWaveZombieTypes(zombieWaves.get(waveIndex)).size();
+    }
+
+    private void spawnPrimaryWaveZombie(int waveIndex, ZombieWave wave,
+            ZombieType zombieType) {
+        int waveNumber = waveIndex + 1;
+        int lane = zombieType.isBoss()
+                ? initialBossLane(zombieType)
+                : random.nextInt(board.getNumberOfRows());
+        boolean glowing = !zombieType.isBoss()
+                && random.nextDouble() < Constants.GLOWING_ZOMBIE_CHANCE;
+        int tornadoAdvance = zombieType.isBoss()
+                ? 0 : chooseTornadoAdvance(wave);
+        double spawnColumn = board.getNumberOfColumns() - 0.001
+                - tornadoAdvance;
+        if (zombieType == ZombieType.ZOMBOSS_EGYPT) {
+            // Egypt Zomboss is wider than a normal zombie. Starting it at
+            // the ordinary right-edge spawn column leaves most of the
+            // machine clipped off-screen; use the same home column its
+            // movement ability returns to after repositioning.
+            spawnColumn = Math.max(1.0,
+                    board.getNumberOfColumns() - 2.0);
+        } else if (zombieType == ZombieType.ZOMBOSS_ICEAGE) {
+            // The Ice Age machine is also wider than a normal zombie, but
+            // only needs a small visual step onto the lawn to fit fully.
+            spawnColumn = Math.max(1.0,
+                    board.getNumberOfColumns() - 1.75);
+        } else if (zombieType == ZombieType.ZOMBOSS_BEACH) {
+            // Big Wave Beach Zomboss is even wider than the regular shark
+            // zombies. Spawn it on the same in-bounds home column the boss
+            // returns to after lane changes so the intro starts fully on
+            // screen instead of clipped beyond the right edge.
+            spawnColumn = Math.max(1.0,
+                    board.getNumberOfColumns() - 2.0);
+        } else if (zombieType == ZombieType.ZOMBOSS_DARK) {
+            // Dark Ages Zomboss also has a large 390px PAM and a long
+            // entrance animation. Start it on the normal Zomboss home
+            // column so the whole intro is visible on the lawn.
+            spawnColumn = Math.max(1.0,
+                    board.getNumberOfColumns() - 2.0);
+        }
+        Zombie zombie = new Zombie(zombieType, waveNumber, lane,
+                spawnColumn, glowing);
+        zombie.setTornadoAdvanceColumns(tornadoAdvance);
+        applyDifficultyToZombie(zombie);
+        spawnedZombiesByWave.get(waveIndex).add(zombie);
+        board.addZombie(zombie);
+        onZombieSpawned(zombie);
+        pendingResults.add(ZombieView.buildSpawnMessage(
+                zombie, tornadoAdvance));
     }
 
     boolean isBossWave(ZombieWave wave) {
@@ -421,7 +668,8 @@ abstract class GameWaveLogic extends GameAbilityLogic {
 
     void checkForWin() {
         if (zombieWaves.isEmpty()
-                || nextWaveIndex < zombieWaves.size()) {
+                || nextWaveIndex < zombieWaves.size()
+                || hasAnyPendingPrimaryWaveSpawns()) {
             return;
         }
         for (Zombie zombie : board.getZombies()) {

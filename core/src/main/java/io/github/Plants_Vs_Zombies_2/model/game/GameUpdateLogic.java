@@ -100,6 +100,10 @@ abstract class GameUpdateLogic extends GameState {
         applyPlantCooldownResetRequests();
         pendingResults.addAll(board.drainResults());
         elapsedSeconds += deltaSeconds;
+        // Wave start/advance rules are unchanged. This only releases the
+        // ordinary zombies that the current wave already owns when their
+        // staggered deployment timestamps become due.
+        updatePendingWaveSpawns();
 
         if (resolveSaveOurSeedsFailure()
                 || resolveTimedWar(deltaSeconds)
