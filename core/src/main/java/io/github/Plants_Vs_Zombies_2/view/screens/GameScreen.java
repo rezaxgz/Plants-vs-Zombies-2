@@ -162,8 +162,10 @@ public final class GameScreen extends AbstractScreen {
     private static final String DARK_NECROMANCY_DISC_INNER_ASSET =
             "IMAGE_EFFECTS_TOMBSTONE_DARK_SPAWN_EFFECT_"
                     + "ZOMBIE_EGYPT_TOMBRAISER_DISC_02";
-    private static final String DARK_BURNING_TILE_ASSET =
-            "IMAGE_BACKGROUNDS_FIRETILE_FIRETILE_117X117";
+    private static final String DARK_BURNING_TILE_PAM =
+            "768/INITIAL/EFFECTS/FIREPEASHOOTER_FIRE/"
+                    + "FIREPEASHOOTER_FIRE.PAM";
+    private static final String DARK_BURNING_TILE_CLIP = "idle";
     private static final String EGYPT_SANDSTORM_REAR_PAM =
             "768/INITIAL/EFFECTS/SANDSTORM_REAR/SANDSTORM_REAR.PAM";
     private static final String EGYPT_SANDSTORM_TOP_PAM =
@@ -190,6 +192,16 @@ public final class GameScreen extends AbstractScreen {
                     + "ZOMBOSS_SHARK_PROJECTILE.PAM";
     private static final String ZOMBOSS_BEACH_SHARK_IDLE_CLIP = "idle";
     private static final String ZOMBOSS_BEACH_SHARK_ATTACK_CLIP = "attack";
+    private static final String ZOMBOSS_DARK_FIREBALL_PAM =
+            "768/FULL/EFFECTS/ZOMBOSS_DARK_FIREBALL/"
+                    + "ZOMBOSS_DARK_FIREBALL.PAM";
+    private static final String ZOMBOSS_DARK_FIREBALL_FALL_CLIP = "fall";
+    private static final String ZOMBOSS_DARK_FIREBALL_IMPACT_CLIP = "impact";
+    private static final String ZOMBOSS_DARK_FIREBALL_RETICLE_PAM =
+            "768/FULL/EFFECTS/ZOMBOSS_MISSILE_EXPLOSION_DARK/"
+                    + "ZOMBOSS_MISSILE_EXPLOSION_DARK.PAM";
+    private static final String ZOMBOSS_DARK_FIREBALL_RETICLE_CLIP =
+            "missile_lock_reticle";
     private static final String ZOMBOSS_DEFAULT_MISSILE_RETICLE_CLIP =
             "missile_lock_reticle";
     private static final String ZOMBOSS_ICEAGE_MISSILE_RETICLE_CLIP =
@@ -466,6 +478,16 @@ public final class GameScreen extends AbstractScreen {
     private ZombossAbility renderedBeachSharkAbility;
     private int renderedBeachSharkTargetSequence = -1;
     private boolean renderedBeachSharkAttackPhase;
+    private Group zombossDarkFireballEffectLayer;
+    private final Map<EntityPosition, PamAnimationActor>
+            zombossDarkFireballReticleActors = new HashMap<>();
+    private final Map<EntityPosition, PamAnimationActor>
+            zombossDarkFireballActors = new HashMap<>();
+    private final Map<EntityPosition, PamAnimationActor>
+            zombossDarkFireballImpactActors = new HashMap<>();
+    private ZombossAbility renderedDarkFireballAbility;
+    private int renderedDarkFireballTargetSequence = -1;
+    private int renderedDarkFireballPhase = -1;
     private PamAnimationActor zombossMissileReticleActor;
     private PamAnimationActor zombossMissileActor;
     private PamAnimationActor zombossMissileExplosionActor;
@@ -538,6 +560,7 @@ public final class GameScreen extends AbstractScreen {
         installZombossMissileEffects();
         installBeachTurbineEffects();
         installBeachSharkEffects();
+        installDarkFireballEffects();
         installFrostbitePlantIceRendering();
         installIZombieBoardOverlay();
         installVaseBreakerSeedTray();
@@ -1553,11 +1576,20 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private Actor createBurningGroundMarker() {
-        Image fire = createAssetImage(DARK_BURNING_TILE_ASSET);
-        fire.setScaling(Scaling.stretch);
-        fire.setTouchable(Touchable.disabled);
-        fire.setColor(1f, 1f, 1f, 0.92f);
-        return fire;
+        try {
+            PamAnimationActor fire = new PamAnimationActor(
+                    navigator.getPamPlayer(), DARK_BURNING_TILE_PAM,
+                    DARK_BURNING_TILE_CLIP);
+            fire.setTouchable(Touchable.disabled);
+            fire.setColor(1f, 1f, 1f, 0.94f);
+            return fire;
+        } catch (RuntimeException ignored) {
+            // Keep the board playable if the optional visual resource cannot
+            // be loaded; the burning tile remains active in the model.
+            Actor fallback = new Actor();
+            fallback.setTouchable(Touchable.disabled);
+            return fallback;
+        }
     }
 
     private void positionBurningGroundMarker(Actor marker,
@@ -3982,6 +4014,179 @@ public final class GameScreen extends AbstractScreen {
         actor.setVisible(true);
     }
 
+    private void installDarkFireballEffects() {
+        if (!isModelBackedGame() || !isBossLevel()
+                || zombossDarkFireballEffectLayer != null) {
+            return;
+        }
+        zombossDarkFireballEffectLayer = new Group();
+        zombossDarkFireballEffectLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(zombossDarkFireballEffectLayer);
+        refreshDarkFireballEffects();
+    }
+
+    private void refreshDarkFireballEffects() {
+        if (zombossDarkFireballEffectLayer == null) {
+            return;
+        }
+        Zombie zomboss = findActiveZomboss();
+        ZombossAbility ability = zomboss == null
+                ? null : findZombossAbility(zomboss);
+        if (zomboss == null
+                || zomboss.getType() != ZombieType.ZOMBOSS_DARK
+                || ability == null) {
+            clearDarkFireballEffects();
+            renderedDarkFireballAbility = null;
+            renderedDarkFireballTargetSequence = -1;
+            renderedDarkFireballPhase = -1;
+            return;
+        }
+        if (ability != renderedDarkFireballAbility) {
+            clearDarkFireballEffects();
+            renderedDarkFireballAbility = ability;
+            renderedDarkFireballTargetSequence = -1;
+            renderedDarkFireballPhase = -1;
+        }
+        if (!ability.isDarkFireballAttackActive()) {
+            clearDarkFireballEffects();
+            renderedDarkFireballPhase = -1;
+            return;
+        }
+
+        double descentProgress = ability.getDarkFireballDescentProgress();
+        int phase = ability.isDarkFireballImpacting()
+                ? 2 : descentProgress >= 0.0 ? 1 : 0;
+        int sequence = ability.getDarkFireballTargetSequence();
+        if (sequence != renderedDarkFireballTargetSequence
+                || phase != renderedDarkFireballPhase) {
+            clearDarkFireballEffects();
+            renderedDarkFireballTargetSequence = sequence;
+            renderedDarkFireballPhase = phase;
+            for (EntityPosition target : ability.getDarkFireballTargets()) {
+                if (phase < 2) {
+                    PamAnimationActor reticle = createDarkFireballActor(
+                            ZOMBOSS_DARK_FIREBALL_RETICLE_PAM,
+                            ZOMBOSS_DARK_FIREBALL_RETICLE_CLIP);
+                    if (reticle != null) {
+                        zombossDarkFireballReticleActors.put(target, reticle);
+                        zombossDarkFireballEffectLayer.addActor(reticle);
+                    }
+                }
+                if (phase == 1) {
+                    PamAnimationActor projectile = createDarkFireballActor(
+                            ZOMBOSS_DARK_FIREBALL_PAM,
+                            ZOMBOSS_DARK_FIREBALL_FALL_CLIP);
+                    if (projectile != null) {
+                        zombossDarkFireballActors.put(target, projectile);
+                        zombossDarkFireballEffectLayer.addActor(projectile);
+                    }
+                } else if (phase == 2) {
+                    PamAnimationActor impact = createDarkFireballActor(
+                            ZOMBOSS_DARK_FIREBALL_PAM,
+                            ZOMBOSS_DARK_FIREBALL_IMPACT_CLIP);
+                    if (impact != null) {
+                        zombossDarkFireballImpactActors.put(target, impact);
+                        zombossDarkFireballEffectLayer.addActor(impact);
+                    }
+                }
+            }
+        }
+
+        for (Map.Entry<EntityPosition, PamAnimationActor> entry
+                : zombossDarkFireballReticleActors.entrySet()) {
+            positionDarkFireballReticle(entry.getValue(), entry.getKey());
+        }
+        float fallProgress = descentProgress < 0.0
+                ? 0f : (float) Math.max(0.0, Math.min(1.0, descentProgress));
+        for (Map.Entry<EntityPosition, PamAnimationActor> entry
+                : zombossDarkFireballActors.entrySet()) {
+            positionDarkFireballProjectile(
+                    entry.getValue(), entry.getKey(), fallProgress);
+        }
+        for (Map.Entry<EntityPosition, PamAnimationActor> entry
+                : zombossDarkFireballImpactActors.entrySet()) {
+            positionDarkFireballImpact(entry.getValue(), entry.getKey());
+        }
+    }
+
+    private PamAnimationActor createDarkFireballActor(String pamPath,
+            String clip) {
+        try {
+            PamAnimationActor actor = new PamAnimationActor(
+                    navigator.getPamPlayer(), pamPath, clip);
+            actor.setTouchable(Touchable.disabled);
+            return actor;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private void clearDarkFireballEffects() {
+        for (PamAnimationActor actor
+                : zombossDarkFireballReticleActors.values()) {
+            actor.remove();
+        }
+        for (PamAnimationActor actor : zombossDarkFireballActors.values()) {
+            actor.remove();
+        }
+        for (PamAnimationActor actor
+                : zombossDarkFireballImpactActors.values()) {
+            actor.remove();
+        }
+        zombossDarkFireballReticleActors.clear();
+        zombossDarkFireballActors.clear();
+        zombossDarkFireballImpactActors.clear();
+    }
+
+    private void positionDarkFireballReticle(PamAnimationActor actor,
+            EntityPosition target) {
+        CellBounds cell = screenBoundsForCell(target);
+        if (actor == null || cell == null) {
+            return;
+        }
+        float width = cell.width * 1.18f;
+        float height = cell.height * 1.18f;
+        actor.setBounds(
+                cell.x + (cell.width - width) * 0.5f,
+                cell.y + (cell.height - height) * 0.5f,
+                width, height);
+        actor.setVisible(true);
+    }
+
+    private void positionDarkFireballProjectile(PamAnimationActor actor,
+            EntityPosition target, float progress) {
+        CellBounds cell = screenBoundsForCell(target);
+        if (actor == null || cell == null) {
+            return;
+        }
+        float centerX = cell.x + cell.width * 0.5f;
+        float targetCenterY = cell.y + cell.height * 0.5f;
+        float startCenterY = Gdx.graphics.getHeight() + cell.height * 0.8f;
+        float eased = progress * progress;
+        float centerY = startCenterY
+                + (targetCenterY - startCenterY) * eased;
+        float width = cell.width * 0.90f;
+        float height = cell.height * 1.20f;
+        actor.setBounds(centerX - width * 0.5f,
+                centerY - height * 0.5f, width, height);
+        actor.setVisible(true);
+    }
+
+    private void positionDarkFireballImpact(PamAnimationActor actor,
+            EntityPosition target) {
+        CellBounds cell = screenBoundsForCell(target);
+        if (actor == null || cell == null) {
+            return;
+        }
+        float width = cell.width * 1.65f;
+        float height = cell.height * 1.65f;
+        actor.setBounds(
+                cell.x + (cell.width - width) * 0.5f,
+                cell.y + (cell.height - height) * 0.5f,
+                width, height);
+        actor.setVisible(true);
+    }
+
     /**
      * Shows the official Zomboss missile lock reticle under the selected plant
      * during the wind-up, then replaces it with the explosion PAM when the
@@ -5896,6 +6101,7 @@ public final class GameScreen extends AbstractScreen {
         refreshZombieRendering();
         refreshBeachTurbineEffects();
         refreshBeachSharkEffects();
+        refreshDarkFireballEffects();
         refreshZombossMissileEffects();
         refreshFrostbiteZombieIceRendering();
         refreshFrostbiteWindRendering();

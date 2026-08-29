@@ -191,6 +191,12 @@ abstract class GameWaveLogic extends GameAbilityLogic {
                 // screen instead of clipped beyond the right edge.
                 spawnColumn = Math.max(1.0,
                         board.getNumberOfColumns() - 2.0);
+            } else if (zombieType == ZombieType.ZOMBOSS_DARK) {
+                // Dark Ages Zomboss also has a large 390px PAM and a long
+                // entrance animation. Start it on the normal Zomboss home
+                // column so the whole intro is visible on the lawn.
+                spawnColumn = Math.max(1.0,
+                        board.getNumberOfColumns() - 2.0);
             }
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);

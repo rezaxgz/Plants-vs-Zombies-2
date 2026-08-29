@@ -64,10 +64,10 @@ final class ZombiePamActor extends Actor {
                 ? 0 : bossAbility.getActionSequence();
         refreshSizingBounds();
         if (zombie.getType() == ZombieType.ZOMBOSS_ICEAGE
-                || zombie.getType() == ZombieType.ZOMBOSS_BEACH) {
-            // Both the Ice Age mammoth and the Big Wave Beach shark machine
-            // have dedicated intro clips that should play once as soon as the
-            // boss first appears on the lawn.
+                || zombie.getType() == ZombieType.ZOMBOSS_BEACH
+                || zombie.getType() == ZombieType.ZOMBOSS_DARK) {
+            // These chapter bosses have dedicated intro clips that should play
+            // once as soon as the boss first appears on the lawn.
             String introClip = firstAvailable("intro", resolveWalkClip());
             setClip(introClip);
             bossActionRemainingSeconds = Math.max(0.05f,
@@ -285,18 +285,30 @@ final class ZombiePamActor extends Actor {
     }
 
     private String resolveBossContinuousClip(ZombossAbility ability) {
-        if (ability == null || zombie.getType() != ZombieType.ZOMBOSS_BEACH) {
+        if (ability == null) {
             return null;
         }
-        if (ability.isBeachMoveSubmerging()) {
-            return firstAvailable("submerge", "idle");
+        if (zombie.getType() == ZombieType.ZOMBOSS_BEACH) {
+            if (ability.isBeachMoveSubmerging()) {
+                return firstAvailable("submerge", "idle");
+            }
+            if (ability.isBeachMoveEmerging()) {
+                return firstAvailable("emerge", "idle");
+            }
+            String turbineClip = ability.getBeachTurbineClipName();
+            if (turbineClip != null && !turbineClip.isBlank()) {
+                return firstAvailable(turbineClip, "idle");
+            }
         }
-        if (ability.isBeachMoveEmerging()) {
-            return firstAvailable("emerge", "idle");
-        }
-        String turbineClip = ability.getBeachTurbineClipName();
-        if (turbineClip != null && !turbineClip.isBlank()) {
-            return firstAvailable(turbineClip, "idle");
+        if (zombie.getType() == ZombieType.ZOMBOSS_DARK) {
+            String fireAttackClip = ability.getDarkFireBreathClipName();
+            if (fireAttackClip != null && !fireAttackClip.isBlank()) {
+                return firstAvailable(fireAttackClip, "idle");
+            }
+            String fireBombClip = ability.getDarkFireballBossClipName();
+            if (fireBombClip != null && !fireBombClip.isBlank()) {
+                return firstAvailable(fireBombClip, "idle");
+            }
         }
         return null;
     }
