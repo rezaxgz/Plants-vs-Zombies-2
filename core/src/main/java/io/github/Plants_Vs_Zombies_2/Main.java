@@ -5,6 +5,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
+import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.network.session.RemoteAccountSession;
 import io.github.Plants_Vs_Zombies_2.view.screens.PvzSkinCompatibility;
 import io.github.Plants_Vs_Zombies_2.view.screens.ScreenNavigator;
 import pvz.libpvz.textures.TextureBank;
@@ -23,6 +25,7 @@ public class Main extends Game {
     private Skin skin;
     private TextureBank textureBank;
     private ScreenNavigator screenNavigator;
+    private RemoteAccountSession remoteAccountSession;
 
     @Override
     public void create() {
@@ -35,7 +38,13 @@ public class Main extends Game {
         textureBank = new TextureBank(
                 "768", Gdx.files.internal(PVZ_ASSETS_ROOT));
 
-        screenNavigator = new ScreenNavigator(this, skin, textureBank);
+        // A legacy SessionManager username is not proof of a remote session.
+        // Keep terminal behavior intact, but graphical startup always requires
+        // a fresh server login until persistent remote tokens exist.
+        App.getInstance().setLoggedInUser(null);
+        remoteAccountSession = RemoteAccountSession.fromSystemProperties();
+        screenNavigator = new ScreenNavigator(
+                this, skin, textureBank, remoteAccountSession);
         screenNavigator.showStartupScreen();
     }
 
@@ -57,6 +66,11 @@ public class Main extends Game {
     public void dispose() {
         if (screenNavigator != null) {
             screenNavigator.dispose();
+        }
+        if (remoteAccountSession != null) {
+            // Closing the socket also releases the server's online-session
+            // ownership if the window closes before an explicit logout.
+            remoteAccountSession.close();
         }
         UserManager.saveAllUsers();
         if (textureBank != null) {

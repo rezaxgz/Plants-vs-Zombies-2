@@ -35,6 +35,12 @@ import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
+import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
+import io.github.Plants_Vs_Zombies_2.network.session.AccountSession;
+import io.github.Plants_Vs_Zombies_2.network.session.AuthenticationErrorMessages;
+import io.github.Plants_Vs_Zombies_2.network.session.ClientSessionState;
+import io.github.Plants_Vs_Zombies_2.network.session.RemoteGameplayUserFactory;
+import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
 import pvz.libpvz.pam.PamPlayer;
 import pvz.libpvz.textures.TextureBank;
 
@@ -49,13 +55,20 @@ public final class ScreenNavigator {
     private final TextureBank textureBank;
     private final PamPlayer pamPlayer;
     private final App app;
+    private final AccountSession accountSession;
+    private final UiDispatcher uiDispatcher;
     private final Deque<Menu> history = new ArrayDeque<>();
 
     private Menu displayedMenu;
     private boolean transientScreenVisible;
+    private boolean logoutInProgress;
+    private boolean disposed;
+    private String pendingAuthenticationNotice;
 
-    public ScreenNavigator(Main game, Skin skin, TextureBank textureBank) {
-        if (game == null || skin == null || textureBank == null) {
+    public ScreenNavigator(Main game, Skin skin, TextureBank textureBank,
+            AccountSession accountSession) {
+        if (game == null || skin == null || textureBank == null
+                || accountSession == null) {
             throw new IllegalArgumentException(
                     "game, skin and textureBank are required");
         }
@@ -65,6 +78,14 @@ public final class ScreenNavigator {
         this.pamPlayer = new PamPlayer(
                 textureBank, Gdx.files.internal(PVZ_ASSETS_ROOT));
         this.app = App.getInstance();
+        this.accountSession = accountSession;
+        this.uiDispatcher = runnable -> Gdx.app.postRunnable(runnable);
+        accountSession.addStateListener((previous, current, failure) -> {
+            if (previous == ClientSessionState.AUTHENTICATED
+                    && current == ClientSessionState.DISCONNECTED) {
+                uiDispatcher.dispatch(() -> handleAuthenticationLost(failure));
+            }
+        });
     }
 
     public Skin getSkin() {
@@ -79,19 +100,29 @@ public final class ScreenNavigator {
         return pamPlayer;
     }
 
+    public AccountSession getAccountSession() {
+        return accountSession;
+    }
+
+    public UiDispatcher getUiDispatcher() {
+        return uiDispatcher;
+    }
+
+    public String consumeAuthenticationNotice() {
+        String notice = pendingAuthenticationNotice;
+        pendingAuthenticationNotice = null;
+        return notice;
+    }
+
     /**
-     * Chooses the first graphical screen from the restored login session. A
-     * valid persistent session starts directly in the main menu; otherwise
-     * the application always starts at registration.
+     * Persistent remote login tokens are not implemented, so graphical startup
+     * never treats SessionManager's stored local username as authenticated.
      */
     public void showStartupScreen() {
         history.clear();
         transientScreenVisible = false;
-        if (app.getLoggedInUser() == null) {
-            app.changeMenu(new SignUpMenu());
-        } else {
-            app.changeMenu(new MainMenu());
-        }
+        app.setLoggedInUser(null);
+        app.changeMenu(new SignUpMenu());
         showCurrentMenu();
     }
 
@@ -149,11 +180,56 @@ public final class ScreenNavigator {
      * phase-one App.logout() behavior is left untouched for terminal commands.
      */
     public void logout() {
+        if (logoutInProgress) {
+            return;
+        }
+        logoutInProgress = true;
+        accountSession.logout().whenComplete((ignored, failure) ->
+                uiDispatcher.dispatch(() -> finishRemoteLogout(failure)));
+    }
+
+    private void finishRemoteLogout(Throwable failure) {
+        if (disposed) {
+            return;
+        }
+        logoutInProgress = false;
         history.clear();
         transientScreenVisible = false;
         AdventureSession.getInstance().reset();
-        UserManager.saveAllUsers();
-        app.logout();
+        app.setLoggedInUser(null);
+        if (failure != null) {
+            pendingAuthenticationNotice = "Logged out locally. "
+                    + AuthenticationErrorMessages.forFailure(failure);
+        }
+        app.changeMenu(new LoginMenu());
+        showCurrentMenu();
+    }
+
+    public void completeRemoteLogin(AccountProfile profile) {
+        app.setLoggedInUser(RemoteGameplayUserFactory.create(profile));
+        history.clear();
+        app.changeMenu(new MainMenu());
+        showCurrentMenu();
+    }
+
+    public void showLoginAfterRegistration() {
+        history.clear();
+        app.changeMenu(new LoginMenu());
+        pendingAuthenticationNotice = "Account created. Log in with your new credentials.";
+        showCurrentMenu();
+    }
+
+    private void handleAuthenticationLost(Throwable failure) {
+        if (disposed || app.getLoggedInUser() == null) {
+            return;
+        }
+        history.clear();
+        transientScreenVisible = false;
+        AdventureSession.getInstance().reset();
+        app.setLoggedInUser(null);
+        pendingAuthenticationNotice = failure == null
+                ? "The server connection was lost. Please log in again."
+                : AuthenticationErrorMessages.forFailure(failure);
         app.changeMenu(new LoginMenu());
         showCurrentMenu();
     }
@@ -352,6 +428,7 @@ public final class ScreenNavigator {
     }
 
     public void dispose() {
+        disposed = true;
         Screen current = game.getScreen();
         if (current != null) {
             current.dispose();
