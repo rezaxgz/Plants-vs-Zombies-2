@@ -199,8 +199,8 @@ abstract class GameAbilityLogic extends GameUpdateLogic {
             return;
         }
         pendingResults.add(hunter.getName() + " hit " + target.getName()
-                + " with " + snowball.getLastSnowballCount()
-                + " snowball(s), raising it to freeze level "
+                + " with a " + snowball.getLastSnowballCount()
+                + "-snowball barrage, raising it by one level to freeze level "
                 + target.getFreezeLevel() + "/"
                 + BasePlant.MAX_FREEZE_LEVEL + "."
                 + (snowball.didLastBarrageFreezeTarget()

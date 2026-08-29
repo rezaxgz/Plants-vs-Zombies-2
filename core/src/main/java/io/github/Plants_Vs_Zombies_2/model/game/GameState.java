@@ -59,6 +59,12 @@ abstract class GameState implements java.io.Serializable {
     final List<Integer> lastFrostbiteIcyWindLanes = new ArrayList<>();
     final List<ZombieWave> zombieWaves;
     final List<List<Zombie>> spawnedZombiesByWave;
+    // Primary wave zombies are deployed gradually instead of all being added
+    // to the board on the wave-start frame. These arrays are deliberately not
+    // final so older serialized saves (where the fields deserialize as null)
+    // can lazily rebuild the scheduling state without invalidating the save.
+    int[] primaryWaveSpawnCounts;
+    double[] nextPrimaryWaveSpawnAtSeconds;
     final List<String> pendingResults = new ArrayList<>();
     final Map<String, Double> plantCooldowns = new HashMap<>();
     final Map<String, PlantFamily> plantCooldownFamilies = new HashMap<>();
@@ -122,6 +128,9 @@ abstract class GameState implements java.io.Serializable {
                 : new ArrayList<>(zombieWaves);
         validateBossWaves(this.zombieWaves);
         this.spawnedZombiesByWave = createWaveTracking(this.zombieWaves.size());
+        this.primaryWaveSpawnCounts = new int[this.zombieWaves.size()];
+        this.nextPrimaryWaveSpawnAtSeconds = new double[this.zombieWaves.size()];
+        java.util.Arrays.fill(this.nextPrimaryWaveSpawnAtSeconds, -1.0);
         this.random = random;
         for (Zombie zombie : board.getZombies()) {
             applyDifficultyToZombie(zombie);
@@ -228,6 +237,8 @@ abstract class GameState implements java.io.Serializable {
     abstract void updateSkySuns();
 
     abstract void startNextWaveIfPossible();
+
+    abstract void updatePendingWaveSpawns();
 
     abstract boolean hasZombieReachedHouse();
 

@@ -2,11 +2,13 @@ package io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.abilities;
 
 import io.github.Plants_Vs_Zombies_2.model.game.Board;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantTag;
 import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
 
 /**
- * Hunter throws a three-snowball barrage at the nearest plant in its lane.
- * Three accumulated ice hits freeze the plant.
+ * Hunter throws a snowball barrage at the nearest non-fire plant in its lane.
+ * A completed barrage raises the target's freeze level by exactly one, matching
+ * Frostbite Caves icy-wind freezing.
  */
 public class SnowballThrowAbility extends ZombieAbility {
     private final int snowballsPerBarrage;
@@ -50,14 +52,12 @@ public class SnowballThrowAbility extends ZombieAbility {
         }
 
         lastTarget = target;
-        for (int i = 0; i < snowballsPerBarrage && !target.isFrozen(); i++) {
-            lastSnowballCount++;
-            if (target.applyIceHit()) {
-                lastBarrageFrozeTarget = true;
-            }
-        }
+        // The barrage can contain several visible snowballs, but Phase-1 rules
+        // define the Hunter's freezing effect as one icy-wind-equivalent hit.
+        lastSnowballCount = snowballsPerBarrage;
+        lastBarrageFrozeTarget = target.applyIceHit();
         resetCooldown();
-        return lastSnowballCount > 0;
+        return true;
     }
 
     private BasePlant findNearestTarget(Zombie zombie, Board board) {
@@ -65,6 +65,7 @@ public class SnowballThrowAbility extends ZombieAbility {
         int nearestColumn = Integer.MIN_VALUE;
         for (BasePlant plant : board.getPlants()) {
             if (plant.isRemoved() || plant.isFrozen()
+                    || plant.hasTag(PlantTag.FIRE)
                     || plant.getEntityPosition() == null
                     || plant.getEntityPosition().getRow() != zombie.getLane()) {
                 continue;
