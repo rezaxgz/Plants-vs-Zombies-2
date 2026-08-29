@@ -63,10 +63,11 @@ final class ZombiePamActor extends Actor {
         this.lastBossActionSequence = bossAbility == null
                 ? 0 : bossAbility.getActionSequence();
         refreshSizingBounds();
-        if (zombie.getType() == ZombieType.ZOMBOSS_ICEAGE) {
-            // The mammoth machine has a dedicated 4.7 second entrance in the
-            // uploaded/official PAM. Play it once when the boss actor first
-            // appears, then fall back to idle until its first attack begins.
+        if (zombie.getType() == ZombieType.ZOMBOSS_ICEAGE
+                || zombie.getType() == ZombieType.ZOMBOSS_BEACH) {
+            // Both the Ice Age mammoth and the Big Wave Beach shark machine
+            // have dedicated intro clips that should play once as soon as the
+            // boss first appears on the lawn.
             String introClip = firstAvailable("intro", resolveWalkClip());
             setClip(introClip);
             bossActionRemainingSeconds = Math.max(0.05f,
@@ -258,6 +259,13 @@ final class ZombiePamActor extends Actor {
             return;
         }
         int sequence = ability.getActionSequence();
+        String continuousClip = resolveBossContinuousClip(ability);
+        if (continuousClip != null) {
+            lastBossActionSequence = sequence;
+            bossActionRemainingSeconds = 0f;
+            setClip(continuousClip);
+            return;
+        }
         if (sequence != lastBossActionSequence) {
             lastBossActionSequence = sequence;
             String actionClip = resolveBossActionClip(ability);
@@ -274,6 +282,23 @@ final class ZombiePamActor extends Actor {
             }
         }
         setClip(resolveWalkClip());
+    }
+
+    private String resolveBossContinuousClip(ZombossAbility ability) {
+        if (ability == null || zombie.getType() != ZombieType.ZOMBOSS_BEACH) {
+            return null;
+        }
+        if (ability.isBeachMoveSubmerging()) {
+            return firstAvailable("submerge", "idle");
+        }
+        if (ability.isBeachMoveEmerging()) {
+            return firstAvailable("emerge", "idle");
+        }
+        String turbineClip = ability.getBeachTurbineClipName();
+        if (turbineClip != null && !turbineClip.isBlank()) {
+            return firstAvailable(turbineClip, "idle");
+        }
+        return null;
     }
 
     private ZombossAbility findZombossAbility() {

@@ -184,6 +184,13 @@ abstract class GameWaveLogic extends GameAbilityLogic {
                 // only needs a small visual step onto the lawn to fit fully.
                 spawnColumn = Math.max(1.0,
                         board.getNumberOfColumns() - 1.75);
+            } else if (zombieType == ZombieType.ZOMBOSS_BEACH) {
+                // Big Wave Beach Zomboss is even wider than the regular shark
+                // zombies. Spawn it on the same in-bounds home column the boss
+                // returns to after lane changes so the intro starts fully on
+                // screen instead of clipped beyond the right edge.
+                spawnColumn = Math.max(1.0,
+                        board.getNumberOfColumns() - 2.0);
             }
             Zombie zombie = new Zombie(zombieType, waveNumber, lane,
                     spawnColumn, glowing);

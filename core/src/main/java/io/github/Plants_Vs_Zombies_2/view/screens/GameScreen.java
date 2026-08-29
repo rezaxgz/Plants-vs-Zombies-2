@@ -180,6 +180,16 @@ public final class GameScreen extends AbstractScreen {
     private static final String ZOMBOSS_ICEAGE_MISSILE_RETICLE_PAM =
             "768/INITIAL/EFFECTS/MISSILE_TOE_RETICLE/"
                     + "MISSILE_TOE_RETICLE.PAM";
+    private static final String ZOMBOSS_BEACH_TURBINE_WIND_PAM =
+            "768/FULL/EFFECTS/ZOMBOSS_TURBINE_WIND/"
+                    + "ZOMBOSS_TURBINE_WIND.PAM";
+    private static final String ZOMBOSS_BEACH_TURBINE_WIND_CLIP =
+            "animation";
+    private static final String ZOMBOSS_BEACH_SHARK_PROJECTILE_PAM =
+            "768/FULL/EFFECTS/ZOMBOSS_SHARK_PROJECTILE/"
+                    + "ZOMBOSS_SHARK_PROJECTILE.PAM";
+    private static final String ZOMBOSS_BEACH_SHARK_IDLE_CLIP = "idle";
+    private static final String ZOMBOSS_BEACH_SHARK_ATTACK_CLIP = "attack";
     private static final String ZOMBOSS_DEFAULT_MISSILE_RETICLE_CLIP =
             "missile_lock_reticle";
     private static final String ZOMBOSS_ICEAGE_MISSILE_RETICLE_CLIP =
@@ -448,6 +458,14 @@ public final class GameScreen extends AbstractScreen {
             new IdentityHashMap<>();
 
     private Group zombossMissileEffectLayer;
+    private Group zombossBeachTurbineEffectLayer;
+    private PamAnimationActor zombossBeachTurbineWindActor;
+    private Group zombossBeachSharkEffectLayer;
+    private final Map<EntityPosition, PamAnimationActor>
+            zombossBeachSharkActors = new HashMap<>();
+    private ZombossAbility renderedBeachSharkAbility;
+    private int renderedBeachSharkTargetSequence = -1;
+    private boolean renderedBeachSharkAttackPhase;
     private PamAnimationActor zombossMissileReticleActor;
     private PamAnimationActor zombossMissileActor;
     private PamAnimationActor zombossMissileExplosionActor;
@@ -518,6 +536,8 @@ public final class GameScreen extends AbstractScreen {
                 navigator.getPamPlayer(), menu.getGame(), chapter));
         installPlantingInteraction();
         installZombossMissileEffects();
+        installBeachTurbineEffects();
+        installBeachSharkEffects();
         installFrostbitePlantIceRendering();
         installIZombieBoardOverlay();
         installVaseBreakerSeedTray();
@@ -3763,6 +3783,205 @@ public final class GameScreen extends AbstractScreen {
         actor.setVisible(true);
     }
 
+    private void installBeachTurbineEffects() {
+        if (!isModelBackedGame() || !isBossLevel()
+                || zombossBeachTurbineEffectLayer != null) {
+            return;
+        }
+        zombossBeachTurbineEffectLayer = new Group();
+        zombossBeachTurbineEffectLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(zombossBeachTurbineEffectLayer);
+        refreshBeachTurbineEffects();
+    }
+
+    private void refreshBeachTurbineEffects() {
+        if (zombossBeachTurbineEffectLayer == null) {
+            return;
+        }
+        Zombie zomboss = findActiveZomboss();
+        ZombossAbility ability = zomboss == null
+                ? null : findZombossAbility(zomboss);
+        boolean active = zomboss != null
+                && zomboss.getType() == ZombieType.ZOMBOSS_BEACH
+                && ability != null
+                && ability.isBeachTurbineActive();
+        if (!active) {
+            clearBeachTurbineEffects();
+            return;
+        }
+        if (zombossBeachTurbineWindActor == null) {
+            try {
+                zombossBeachTurbineWindActor = new PamAnimationActor(
+                        navigator.getPamPlayer(),
+                        ZOMBOSS_BEACH_TURBINE_WIND_PAM,
+                        ZOMBOSS_BEACH_TURBINE_WIND_CLIP);
+                zombossBeachTurbineWindActor.setTouchable(
+                        Touchable.disabled);
+                zombossBeachTurbineWindActor.setColor(1f, 1f, 1f, 0.88f);
+                zombossBeachTurbineEffectLayer.addActor(
+                        zombossBeachTurbineWindActor);
+            } catch (RuntimeException ignored) {
+                zombossBeachTurbineWindActor = null;
+            }
+        }
+        positionBeachTurbineEffect(zomboss);
+    }
+
+    private void clearBeachTurbineEffects() {
+        if (zombossBeachTurbineWindActor != null) {
+            zombossBeachTurbineWindActor.remove();
+            zombossBeachTurbineWindActor = null;
+        }
+    }
+
+    private void positionBeachTurbineEffect(Zombie zomboss) {
+        if (zomboss == null || zombossBeachTurbineWindActor == null) {
+            return;
+        }
+        ZombiePamActor bossActor = zombieActors.get(zomboss);
+        if (bossActor != null) {
+            float width = bossActor.getWidth() * 1.18f;
+            float height = bossActor.getHeight() * 0.92f;
+            float x = bossActor.getX() - bossActor.getWidth() * 0.58f;
+            float y = bossActor.getY() + bossActor.getHeight() * 0.04f;
+            zombossBeachTurbineWindActor.setBounds(x, y, width, height);
+            return;
+        }
+        BoardLayout layout = currentBoardLayout();
+        if (layout == null) {
+            return;
+        }
+        float windowWidth = Gdx.graphics.getWidth();
+        float windowHeight = Gdx.graphics.getHeight();
+        float boardX = windowWidth * layout.left / layout.sourceWidth;
+        float boardY = windowHeight
+                * (layout.sourceHeight - layout.bottom)
+                / layout.sourceHeight;
+        float boardWidth = windowWidth
+                * (layout.right - layout.left) / layout.sourceWidth;
+        float boardHeight = windowHeight
+                * (layout.bottom - layout.top) / layout.sourceHeight;
+        float cellWidth = boardWidth / BOARD_COLUMNS;
+        float cellHeight = boardHeight / BOARD_ROWS;
+        ZombossAbility bossAbility = findZombossAbility(zomboss);
+        int bottomLane = bossAbility == null
+                ? zomboss.getLane()
+                : bossAbility.getPresentationLane(zomboss.getLane());
+        double mouthColumn = Math.min(zomboss.getColumnPosition(),
+                BOARD_COLUMNS - 2.0) - 1.0;
+        float x = boardX + (float) mouthColumn * cellWidth;
+        float y = boardY
+                + (BOARD_ROWS - 1 - bottomLane) * cellHeight
+                - cellHeight * 0.15f;
+        zombossBeachTurbineWindActor.setBounds(
+                x - cellWidth * 0.35f,
+                y,
+                cellWidth * 2.9f,
+                cellHeight * 2.5f);
+    }
+
+    private void installBeachSharkEffects() {
+        if (!isModelBackedGame() || !isBossLevel()
+                || zombossBeachSharkEffectLayer != null) {
+            return;
+        }
+        zombossBeachSharkEffectLayer = new Group();
+        zombossBeachSharkEffectLayer.setTouchable(Touchable.disabled);
+        addBackgroundOverlay(zombossBeachSharkEffectLayer);
+        refreshBeachSharkEffects();
+    }
+
+    private void refreshBeachSharkEffects() {
+        if (zombossBeachSharkEffectLayer == null) {
+            return;
+        }
+        Zombie zomboss = findActiveZomboss();
+        ZombossAbility ability = zomboss == null
+                ? null : findZombossAbility(zomboss);
+        if (zomboss == null
+                || zomboss.getType() != ZombieType.ZOMBOSS_BEACH
+                || ability == null) {
+            clearBeachSharkEffects();
+            renderedBeachSharkAbility = null;
+            renderedBeachSharkTargetSequence = -1;
+            return;
+        }
+
+        if (ability != renderedBeachSharkAbility) {
+            clearBeachSharkEffects();
+            renderedBeachSharkAbility = ability;
+            renderedBeachSharkTargetSequence = -1;
+        }
+
+        if (!ability.isBeachSharkAttackActive()) {
+            clearBeachSharkEffects();
+            return;
+        }
+
+        int sequence = ability.getBeachSharkTargetSequence();
+        boolean attacking = ability.isBeachSharkAttacking();
+        if (sequence != renderedBeachSharkTargetSequence
+                || attacking != renderedBeachSharkAttackPhase) {
+            clearBeachSharkEffects();
+            renderedBeachSharkTargetSequence = sequence;
+            renderedBeachSharkAttackPhase = attacking;
+            String clip = attacking
+                    ? ZOMBOSS_BEACH_SHARK_ATTACK_CLIP
+                    : ZOMBOSS_BEACH_SHARK_IDLE_CLIP;
+            for (EntityPosition target : ability.getBeachSharkTargets()) {
+                PamAnimationActor shark = createBeachSharkActor(clip);
+                if (shark != null) {
+                    zombossBeachSharkActors.put(target, shark);
+                    zombossBeachSharkEffectLayer.addActor(shark);
+                }
+            }
+        }
+
+        for (Map.Entry<EntityPosition, PamAnimationActor> entry
+                : zombossBeachSharkActors.entrySet()) {
+            positionBeachSharkActor(entry.getValue(), entry.getKey());
+        }
+    }
+
+    private PamAnimationActor createBeachSharkActor(String clip) {
+        try {
+            PamAnimationActor actor = new PamAnimationActor(
+                    navigator.getPamPlayer(),
+                    ZOMBOSS_BEACH_SHARK_PROJECTILE_PAM, clip);
+            actor.setTouchable(Touchable.disabled);
+            return actor;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private void clearBeachSharkEffects() {
+        for (PamAnimationActor actor : zombossBeachSharkActors.values()) {
+            actor.remove();
+        }
+        zombossBeachSharkActors.clear();
+        renderedBeachSharkAttackPhase = false;
+    }
+
+    private void positionBeachSharkActor(PamAnimationActor actor,
+            EntityPosition target) {
+        if (actor == null || target == null) {
+            return;
+        }
+        CellBounds cell = screenBoundsForCell(target);
+        if (cell == null) {
+            actor.setVisible(false);
+            return;
+        }
+        float width = cell.width * 1.35f;
+        float height = cell.height * 1.35f;
+        actor.setBounds(
+                cell.x + (cell.width - width) * 0.5f,
+                cell.y + (cell.height - height) * 0.48f,
+                width, height);
+        actor.setVisible(true);
+    }
+
     /**
      * Shows the official Zomboss missile lock reticle under the selected plant
      * during the wind-up, then replaces it with the explosion PAM when the
@@ -4322,9 +4541,11 @@ public final class GameScreen extends AbstractScreen {
         float cellHeight = boardHeight / BOARD_ROWS;
 
         double renderColumn = zombie.getColumnPosition();
+        int renderLane = zombie.getLane();
         ZombossAbility bossAbility = findZombossAbility(zombie);
         if (bossAbility != null) {
             renderColumn = bossAbility.getPresentationColumn(renderColumn);
+            renderLane = bossAbility.getPresentationLane(renderLane);
         }
         // Frostbite Zomboss's PAM is visually anchored farther to the right
         // than its gameplay column. Shift only its rendered position by half
@@ -4336,7 +4557,7 @@ public final class GameScreen extends AbstractScreen {
         float centerX = boardX
                 + (float) (renderColumn + 0.5) * cellWidth;
         float laneBottom = boardY
-                + (BOARD_ROWS - 1 - zombie.getLane()) * cellHeight;
+                + (BOARD_ROWS - 1 - renderLane) * cellHeight;
 
         float widthScale = zombie.getType().isLarge() ? 1.55f : 1.08f;
         float heightScale = zombie.getType().isLarge() ? 2.25f : 1.62f;
@@ -5673,6 +5894,8 @@ public final class GameScreen extends AbstractScreen {
         refreshDarkAgesTerrainRendering();
         refreshStructureRendering();
         refreshZombieRendering();
+        refreshBeachTurbineEffects();
+        refreshBeachSharkEffects();
         refreshZombossMissileEffects();
         refreshFrostbiteZombieIceRendering();
         refreshFrostbiteWindRendering();

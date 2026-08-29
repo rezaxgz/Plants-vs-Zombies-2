@@ -34,6 +34,19 @@ public class ZombossAbility extends ZombieAbility {
     private static final double ICEAGE_ROCKET_WINDUP_SECONDS =
             ICEAGE_SLINGSHOT_SECONDS + ICEAGE_ROCKET_DESCENT_SECONDS;
     private static final double ICEAGE_GLACIER_ACTION_SECONDS = 6.3;
+    private static final double BEACH_MOVE_SUBMERGE_SECONDS = 1.7;
+    private static final double BEACH_MOVE_EMERGE_SECONDS = 1.6;
+    private static final double BEACH_TURBINE_ON_SECONDS = 2.1333;
+    private static final double BEACH_TURBINE_LOOP_SECONDS = 2.0;
+    private static final double BEACH_TURBINE_OFF_SECONDS = 2.5;
+    private static final double BEACH_TURBINE_TOTAL_SECONDS =
+            BEACH_TURBINE_ON_SECONDS + BEACH_TURBINE_LOOP_SECONDS
+                    + BEACH_TURBINE_OFF_SECONDS;
+    private static final double BEACH_TURBINE_PULL_STEP_SECONDS = 0.25;
+    private static final double BEACH_SHARK_IDLE_SECONDS = 1.0;
+    private static final double BEACH_SHARK_ATTACK_SECONDS = 2.1333;
+    private static final double BEACH_SHARK_TOTAL_SECONDS =
+            BEACH_SHARK_IDLE_SECONDS + BEACH_SHARK_ATTACK_SECONDS;
     // The uploaded ZOMBIE_ICEAGE_ZOMBOSS.PAM emits five "submerged"
     // commands during every glacier_column clip at these exact timestamps.
     // They run bottom-to-top and are the natural spawn frames for the column.
@@ -48,6 +61,7 @@ public class ZombossAbility extends ZombieAbility {
     private final List<BasePlant> lastDestroyedPlants;
     private final List<Integer> lastAffectedLanes;
     private final List<Zombie> activeIceageColumnZombies;
+    private final List<EntityPosition> pendingBeachSharkTargets;
     private final Map<Zombie, Double> iceageSpawnPresentationStartedAt;
 
     private Action lastAction;
@@ -62,8 +76,12 @@ public class ZombossAbility extends ZombieAbility {
     private int pendingIceageColumn = -1;
     private int pendingIceageNextRow = -1;
     private int pendingIceageSpawnCount;
+    private int pendingMoveStartLane = -1;
+    private int pendingMoveTargetLane = -1;
+    private double pendingTurbineNextPullSeconds;
     private int lastIceageGlacierColumn = -1;
     private int lastIceageWindStartLane = -1;
+    private int beachSharkTargetSequence;
     private int rocketTargetSequence;
     private int rocketImpactSequence;
     private double lifetimeSeconds;
@@ -90,6 +108,7 @@ public class ZombossAbility extends ZombieAbility {
         this.lastDestroyedPlants = new ArrayList<>();
         this.lastAffectedLanes = new ArrayList<>();
         this.activeIceageColumnZombies = new ArrayList<>();
+        this.pendingBeachSharkTargets = new ArrayList<>();
         this.iceageSpawnPresentationStartedAt = new IdentityHashMap<>();
         // ZombieAbility starts ready by default. Zomboss should wait a few
         // seconds before its first random move, matching the phase-two
@@ -236,7 +255,27 @@ public class ZombossAbility extends ZombieAbility {
             lastActionDescription = "held its position.";
             return;
         }
-        int lane = randomBossLane(board);
+        int startLane = ensureBossLane(zomboss, board);
+        int lane = randomBossLaneExcluding(board, startLane);
+        if (profile == ZombossProfile.BEACH) {
+            pendingAction = Action.MOVE;
+            pendingActionElapsedSeconds = 0.0;
+            pendingActionResolved = false;
+            pendingMoveStartLane = startLane;
+            pendingMoveTargetLane = lane;
+            for (int affectedLane : occupiedBossLanes(startLane)) {
+                if (!lastAffectedLanes.contains(affectedLane)) {
+                    lastAffectedLanes.add(affectedLane);
+                }
+            }
+            for (int affectedLane : occupiedBossLanes(lane)) {
+                if (!lastAffectedLanes.contains(affectedLane)) {
+                    lastAffectedLanes.add(affectedLane);
+                }
+            }
+            lastActionDescription = "";
+            return;
+        }
         zomboss.moveToLane(lane);
         zomboss.moveTo(ZombossProfile.homeColumn(board));
         lastAffectedLanes.add(lane - 1);
@@ -257,13 +296,21 @@ public class ZombossAbility extends ZombieAbility {
         int spawnCount = currentPhase >= 3 ? 2 : 1;
         int bottomLane = ensureBossLane(zomboss, board);
         double spawnColumn = profile == ZombossProfile.EGYPT
-                ? mouthSpawnColumn(zomboss, board)
-                : board.getNumberOfColumns() - 0.001;
+                || profile == ZombossProfile.BEACH
+                        ? mouthSpawnColumn(zomboss, board)
+                        : board.getNumberOfColumns() - 0.001;
+        List<Integer> beachSpawnLanes = beachSpawnLanes(bottomLane);
         for (int index = 0; index < spawnCount; index++) {
             ZombieType type = pool.get(random.nextInt(pool.size()));
-            int spawnLane = profile == ZombossProfile.EGYPT
-                    ? bottomLane
-                    : random.nextInt(board.getNumberOfRows());
+            int spawnLane;
+            if (profile == ZombossProfile.EGYPT) {
+                spawnLane = bottomLane;
+            } else if (profile == ZombossProfile.BEACH) {
+                spawnLane = beachSpawnLanes.get(index
+                        % beachSpawnLanes.size());
+            } else {
+                spawnLane = random.nextInt(board.getNumberOfRows());
+            }
             Zombie spawned = spawnZombie(type, zomboss.getWaveNumber(),
                     spawnLane, spawnColumn, board);
             lastSpawnedZombies.add(spawned);
@@ -353,6 +400,34 @@ public class ZombossAbility extends ZombieAbility {
     }
 
     private boolean advancePendingAction(Zombie zomboss, Board board) {
+        if (pendingAction == Action.MOVE) {
+            boolean changed = false;
+            if (profile != ZombossProfile.BEACH) {
+                clearPendingAction();
+                return false;
+            }
+            if (!pendingActionResolved
+                    && pendingActionElapsedSeconds
+                            >= BEACH_MOVE_SUBMERGE_SECONDS) {
+                pendingActionResolved = true;
+                zomboss.moveToLane(pendingMoveTargetLane);
+                zomboss.moveTo(ZombossProfile.homeColumn(board));
+                changed = true;
+            }
+            if (pendingActionElapsedSeconds >= BEACH_MOVE_SUBMERGE_SECONDS
+                    + BEACH_MOVE_EMERGE_SECONDS) {
+                lastActionDescription = "submerged from rows "
+                        + pendingMoveStartLane + " and "
+                        + (pendingMoveStartLane + 1)
+                        + " and emerged on rows "
+                        + pendingMoveTargetLane + " and "
+                        + (pendingMoveTargetLane + 1) + ".";
+                performedActionThisUse = true;
+                clearPendingAction();
+                return true;
+            }
+            return changed;
+        }
         if (pendingAction == Action.RUSH) {
             boolean changed = false;
             double crushAt = EGYPT_RUSH_SECONDS * EGYPT_RUSH_CRUSH_FRACTION;
@@ -401,6 +476,47 @@ public class ZombossAbility extends ZombieAbility {
             }
             return false;
         }
+        if (pendingAction == Action.TURBINE) {
+            boolean changed = false;
+            double activePullEnd = BEACH_TURBINE_ON_SECONDS
+                    + BEACH_TURBINE_LOOP_SECONDS;
+            while (pendingTurbineNextPullSeconds <= activePullEnd
+                    && pendingActionElapsedSeconds
+                            >= pendingTurbineNextPullSeconds) {
+                changed |= applyBeachTurbinePullStep(zomboss, board);
+                pendingTurbineNextPullSeconds
+                        += BEACH_TURBINE_PULL_STEP_SECONDS;
+            }
+            if (pendingActionElapsedSeconds >= BEACH_TURBINE_TOTAL_SECONDS) {
+                int swallowedPlants = lastDestroyedPlants.size();
+                int swallowedZombies = lastDestroyedZombies.size();
+                lastActionDescription = "used its turbine on two rows, "
+                        + "dragged everything toward its mouth, and "
+                        + "swallowed " + swallowedPlants + " plant(s) "
+                        + "and " + swallowedZombies + " zombie(s).";
+                performedActionThisUse = true;
+                clearPendingAction();
+                return true;
+            }
+            return changed;
+        }
+        if (pendingAction == Action.BABY_SHARK) {
+            if (pendingActionElapsedSeconds >= BEACH_SHARK_TOTAL_SECONDS) {
+                for (EntityPosition position
+                        : new ArrayList<>(pendingBeachSharkTargets)) {
+                    for (BasePlant plant
+                            : new ArrayList<>(board.getPlantsAt(position))) {
+                        destroyPlant(plant);
+                    }
+                }
+                lastActionDescription = "sent baby sharks that swallowed "
+                        + lastDestroyedPlants.size() + " water plant(s).";
+                performedActionThisUse = true;
+                clearPendingAction();
+                return true;
+            }
+            return false;
+        }
         clearPendingAction();
         return false;
     }
@@ -427,6 +543,10 @@ public class ZombossAbility extends ZombieAbility {
         pendingIceageColumn = -1;
         pendingIceageNextRow = -1;
         pendingIceageSpawnCount = 0;
+        pendingMoveStartLane = -1;
+        pendingMoveTargetLane = -1;
+        pendingTurbineNextPullSeconds = 0.0;
+        pendingBeachSharkTargets.clear();
     }
 
     private int addRandomGraves(Board board, int count) {
@@ -629,36 +749,61 @@ public class ZombossAbility extends ZombieAbility {
     }
 
     private void sendBabySharks(Board board) {
-        List<BasePlant> candidates = new ArrayList<>();
+        Set<EntityPosition> candidatePositions = new LinkedHashSet<>();
         for (BasePlant plant : board.getPlants()) {
-            if (plant.getEntityPosition() == null || plant.isDestroyed()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (position == null || plant.isDestroyed()) {
                 continue;
             }
-            Tile tile = board.getTileAt(plant.getEntityPosition());
+            Tile tile = board.getTileAt(position);
             if (tile != null && tile.getTileType() == TileType.WATER) {
-                candidates.add(plant);
+                candidatePositions.add(position);
             }
         }
+        List<EntityPosition> candidates = new ArrayList<>(candidatePositions);
         Collections.shuffle(candidates, random);
         int targetCount = Math.min(currentPhase == 1 ? 1 : 2,
                 candidates.size());
-        for (int index = 0; index < targetCount; index++) {
-            destroyPlant(candidates.get(index));
+        if (targetCount <= 0) {
+            lastActionDescription =
+                    "sent baby sharks, but no plant was standing in water.";
+            return;
         }
-        lastActionDescription = candidates.isEmpty()
-                ? "sent baby sharks, but no plant was standing in water."
-                : "sent baby sharks that swallowed "
-                        + lastDestroyedPlants.size() + " water plant(s).";
+
+        pendingBeachSharkTargets.clear();
+        for (int index = 0; index < targetCount; index++) {
+            pendingBeachSharkTargets.add(candidates.get(index));
+        }
+        if (pendingBeachSharkTargets.isEmpty()) {
+            lastActionDescription =
+                    "sent baby sharks, but no valid water target remained.";
+            return;
+        }
+
+        pendingAction = Action.BABY_SHARK;
+        pendingActionElapsedSeconds = 0.0;
+        pendingActionResolved = false;
+        beachSharkTargetSequence++;
+        lastActionDescription = "";
     }
 
     private void useTurbine(Zombie zomboss, Board board) {
         int bottomLane = ensureBossLane(zomboss, board);
-        List<Integer> lanes = occupiedBossLanes(bottomLane);
-        lastAffectedLanes.addAll(lanes);
+        lastAffectedLanes.addAll(occupiedBossLanes(bottomLane));
+        pendingAction = Action.TURBINE;
+        pendingActionElapsedSeconds = 0.0;
+        pendingActionResolved = false;
+        pendingTurbineNextPullSeconds = BEACH_TURBINE_ON_SECONDS;
+        lastActionDescription = "";
+    }
 
+    private boolean applyBeachTurbinePullStep(Zombie zomboss, Board board) {
+        int bottomLane = ensureBossLane(zomboss, board);
+        List<Integer> lanes = occupiedBossLanes(bottomLane);
         int mouthColumn = Math.max(1,
-                (int) Math.floor(ZombossProfile.homeColumn(board) - 1.0));
-        int pulledPlantStacks = 0;
+                (int) Math.floor(mouthSpawnColumn(zomboss, board) + 0.25));
+        boolean changed = false;
+
         Set<EntityPosition> handledPlantPositions = new LinkedHashSet<>();
         List<BasePlant> plants = new ArrayList<>(board.getPlants());
         plants.sort((first, second) -> Integer.compare(
@@ -673,42 +818,43 @@ public class ZombossAbility extends ZombieAbility {
                 continue;
             }
             if (source.getColumn() >= mouthColumn) {
-                for (BasePlant stacked : new ArrayList<>(board.getPlantsAt(source))) {
+                for (BasePlant stacked
+                        : new ArrayList<>(board.getPlantsAt(source))) {
                     destroyPlant(stacked);
+                    changed = true;
                 }
                 continue;
             }
             int destinationColumn = Math.min(mouthColumn,
-                    source.getColumn() + 2);
+                    source.getColumn() + 1);
             if (destinationColumn > source.getColumn()
                     && board.movePlantStack(source,
                             new EntityPosition(source.getRow(),
                                     destinationColumn))) {
-                pulledPlantStacks++;
+                changed = true;
             }
         }
 
-        int pulledZombies = 0;
-        double mouthPosition = mouthColumn + 0.25;
+        double mouthPosition = mouthColumn + 0.20;
         for (Zombie zombie : new ArrayList<>(board.getZombies())) {
-            if (zombie == zomboss || zombie.isDead()
+            if (zombie == zomboss || zombie.isDead() || zombie.isRemoved()
                     || !lanes.contains(zombie.getLane())) {
                 continue;
             }
-            if (zombie.getColumnPosition() >= mouthPosition) {
+            if (zombie.getColumnPosition() >= mouthPosition - 0.05) {
                 zombie.kill();
                 lastDestroyedZombies.add(zombie);
+                changed = true;
                 continue;
             }
-            zombie.moveTo(Math.min(mouthPosition,
-                    zombie.getColumnPosition() + 2.0));
-            pulledZombies++;
+            double destination = Math.min(mouthPosition,
+                    zombie.getColumnPosition() + 0.80);
+            if (destination > zombie.getColumnPosition()) {
+                zombie.moveTo(destination);
+                changed = true;
+            }
         }
-        lastActionDescription = "used its turbine on two rows, pulled "
-                + pulledPlantStacks + " plant stack(s) and "
-                + pulledZombies + " zombie(s) toward its mouth, and swallowed "
-                + lastDestroyedPlants.size() + " plant(s) and "
-                + lastDestroyedZombies.size() + " zombie(s) already close enough.";
+        return changed;
     }
 
     private void destroyPlantsInArea(EntityPosition center, int radius,
@@ -754,6 +900,15 @@ public class ZombossAbility extends ZombieAbility {
                 Math.min(board.getNumberOfColumns() - 0.001, mouthColumn));
     }
 
+    private List<Integer> beachSpawnLanes(int bottomLane) {
+        List<Integer> lanes = new ArrayList<>();
+        lanes.add(bottomLane);
+        if (bottomLane > 0) {
+            lanes.add(bottomLane - 1);
+        }
+        return lanes;
+    }
+
     private static Zombie spawnZombie(ZombieType type, int waveNumber,
             int lane, double column, Board board) {
         Zombie zombie = new Zombie(type, waveNumber, lane, column);
@@ -762,10 +917,24 @@ public class ZombossAbility extends ZombieAbility {
     }
 
     private int randomBossLane(Board board) {
+        return randomBossLaneExcluding(board, Integer.MIN_VALUE);
+    }
+
+    private int randomBossLaneExcluding(Board board, int excludedLane) {
         if (board.getNumberOfRows() <= 1) {
             return 0;
         }
-        return 1 + random.nextInt(board.getNumberOfRows() - 1);
+        List<Integer> candidates = new ArrayList<>();
+        for (int lane = 1; lane < board.getNumberOfRows(); lane++) {
+            if (lane != excludedLane) {
+                candidates.add(lane);
+            }
+        }
+        if (candidates.isEmpty()) {
+            return Math.max(1,
+                    Math.min(board.getNumberOfRows() - 1, excludedLane));
+        }
+        return candidates.get(random.nextInt(candidates.size()));
     }
 
     private int ensureBossLane(Zombie zomboss, Board board) {
@@ -896,6 +1065,70 @@ public class ZombossAbility extends ZombieAbility {
         return Math.max(0.0, Math.min(1.0,
                 (lifetimeSeconds - startedAt)
                         / ICEAGE_GLACIER_SPAWN_FLIGHT_SECONDS));
+    }
+
+    public int getPresentationLane(int fallbackLane) {
+        if (profile == ZombossProfile.BEACH && pendingAction == Action.MOVE) {
+            if (pendingActionElapsedSeconds < BEACH_MOVE_SUBMERGE_SECONDS
+                    && pendingMoveStartLane >= 0) {
+                return pendingMoveStartLane;
+            }
+            if (pendingMoveTargetLane >= 0) {
+                return pendingMoveTargetLane;
+            }
+        }
+        return fallbackLane;
+    }
+
+    public boolean isBeachMoveSubmerging() {
+        return profile == ZombossProfile.BEACH
+                && pendingAction == Action.MOVE
+                && pendingActionElapsedSeconds < BEACH_MOVE_SUBMERGE_SECONDS;
+    }
+
+    public boolean isBeachMoveEmerging() {
+        return profile == ZombossProfile.BEACH
+                && pendingAction == Action.MOVE
+                && pendingActionElapsedSeconds >= BEACH_MOVE_SUBMERGE_SECONDS;
+    }
+
+    public boolean isBeachTurbineActive() {
+        return profile == ZombossProfile.BEACH
+                && pendingAction == Action.TURBINE;
+    }
+
+    public boolean isBeachSharkAttackActive() {
+        return profile == ZombossProfile.BEACH
+                && pendingAction == Action.BABY_SHARK
+                && !pendingBeachSharkTargets.isEmpty();
+    }
+
+    public boolean isBeachSharkAttacking() {
+        return isBeachSharkAttackActive()
+                && pendingActionElapsedSeconds >= BEACH_SHARK_IDLE_SECONDS;
+    }
+
+    public int getBeachSharkTargetSequence() {
+        return beachSharkTargetSequence;
+    }
+
+    public List<EntityPosition> getBeachSharkTargets() {
+        return Collections.unmodifiableList(
+                new ArrayList<>(pendingBeachSharkTargets));
+    }
+
+    public String getBeachTurbineClipName() {
+        if (!isBeachTurbineActive()) {
+            return null;
+        }
+        if (pendingActionElapsedSeconds < BEACH_TURBINE_ON_SECONDS) {
+            return "suction_on";
+        }
+        if (pendingActionElapsedSeconds
+                < BEACH_TURBINE_ON_SECONDS + BEACH_TURBINE_LOOP_SECONDS) {
+            return "suction_loop";
+        }
+        return "suction_off";
     }
 
     public int getCurrentPhase() {
