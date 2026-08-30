@@ -12,12 +12,9 @@ import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 final class ServerAccountService {
     private final UserRepository repository;
-    private final ConcurrentMap<String, String> onlineSessions = new ConcurrentHashMap<>();
 
     ServerAccountService(UserRepository repository) {
         this.repository = repository;
@@ -56,15 +53,7 @@ final class ServerAccountService {
                     "The username or password is incorrect");
         }
 
-        String existingConnection = onlineSessions.putIfAbsent(
-                user.getUsername(), context.getConnectionId());
-        if (existingConnection != null) {
-            throw new AccountServiceException(
-                    ProtocolErrorCode.USER_ALREADY_ONLINE,
-                    "This account is already online");
-        }
         if (!context.authenticate(user.getUsername())) {
-            onlineSessions.remove(user.getUsername(), context.getConnectionId());
             throw new AccountServiceException(
                     ProtocolErrorCode.ALREADY_AUTHENTICATED,
                     "This connection is already authenticated");
@@ -72,14 +61,14 @@ final class ServerAccountService {
         return AccountProfile.fromUser(user);
     }
 
-    void logout(ConnectionContext context) throws AccountServiceException {
+    String logout(ConnectionContext context) throws AccountServiceException {
         String username = context.clearAuthentication();
         if (username == null) {
             throw new AccountServiceException(
                     ProtocolErrorCode.AUTH_REQUIRED,
                     "Authentication is required");
         }
-        onlineSessions.remove(username, context.getConnectionId());
+        return username;
     }
 
     AccountProfile getProfile(ConnectionContext context) throws AccountServiceException {
@@ -94,11 +83,12 @@ final class ServerAccountService {
         return AccountProfile.fromUser(user);
     }
 
-    void connectionClosed(ConnectionContext context) {
-        String username = context.clearAuthentication();
-        if (username != null) {
-            onlineSessions.remove(username, context.getConnectionId());
-        }
+    String connectionClosed(ConnectionContext context) {
+        return context.clearAuthentication();
+    }
+
+    boolean usernameExists(String username) {
+        return repository.findByUsername(username).isPresent();
     }
 
     private static void validateRegistration(RegistrationDetails details)

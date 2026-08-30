@@ -4,6 +4,7 @@ import java.util.concurrent.CompletableFuture;
 
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 
 /** Testable boundary between graphical authentication flows and the network. */
 public interface AccountSession extends AutoCloseable {
@@ -22,6 +23,8 @@ public interface AccountSession extends AutoCloseable {
     AccountProfile getProfile();
 
     Throwable getLastFailure();
+
+    default MatchmakingClient getMatchmakingClient() { return null; }
 
     default void addStateListener(SessionStateListener listener) {
     }

@@ -6,10 +6,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class ConnectionContext {
+    private final ClientConnection connection;
     private final String connectionId = UUID.randomUUID().toString();
     private final Instant connectedAt = Instant.now();
     private final AtomicBoolean handshakeCompleted = new AtomicBoolean();
     private final AtomicReference<String> authenticatedUsername = new AtomicReference<>();
+
+    ConnectionContext(ClientConnection connection) {
+        this.connection = connection;
+    }
 
     public String getConnectionId() {
         return connectionId;
@@ -26,6 +31,8 @@ public final class ConnectionContext {
     public String getAuthenticatedUsername() {
         return authenticatedUsername.get();
     }
+
+    ClientConnection getConnection() { return connection; }
 
     boolean completeHandshake() {
         return handshakeCompleted.compareAndSet(false, true);

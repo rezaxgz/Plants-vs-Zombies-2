@@ -242,6 +242,11 @@ class GameServerIntegrationTest {
             public void connectionClosed(ConnectionContext context) {
                 delegate.connectionClosed(context);
             }
+
+            @Override
+            public void close() {
+                delegate.close();
+            }
         };
         server = new GameServer(GameServer.DEFAULT_HOST, 0, failingHandler);
         server.start();

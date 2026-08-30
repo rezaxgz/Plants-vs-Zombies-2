@@ -9,16 +9,19 @@ import io.github.Plants_Vs_Zombies_2.network.auth.AuthenticationClient;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkMessageListener;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
 
 final class NetworkAccountTransport implements RemoteAccountTransport {
     private final NetworkClient networkClient;
     private final AuthenticationClient authenticationClient;
+    private final MatchmakingClient matchmakingClient;
     private volatile Consumer<Throwable> disconnectListener = ignored -> { };
 
     NetworkAccountTransport(NetworkClient networkClient) {
         this.networkClient = Objects.requireNonNull(networkClient, "networkClient");
         authenticationClient = new AuthenticationClient(networkClient);
+        matchmakingClient = new MatchmakingClient(networkClient);
         networkClient.addListener(new NetworkMessageListener() {
             @Override
             public void onMessage(ProtocolMessage message) {
@@ -68,12 +71,18 @@ final class NetworkAccountTransport implements RemoteAccountTransport {
     }
 
     @Override
+    public MatchmakingClient getMatchmakingClient() {
+        return matchmakingClient;
+    }
+
+    @Override
     public void disconnect() {
         networkClient.disconnect();
     }
 
     @Override
     public void close() {
+        matchmakingClient.close();
         networkClient.close();
     }
 }

@@ -9,6 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 
 /**
  * One application-scoped remote account session. It never blocks its caller;
@@ -20,6 +21,7 @@ public final class RemoteAccountSession implements AccountSession {
 
     private final Object lock = new Object();
     private final RemoteAccountTransport transport;
+    private final MatchmakingClient matchmakingClient;
     private final List<SessionStateListener> listeners = new CopyOnWriteArrayList<>();
     private volatile ClientSessionState state = ClientSessionState.DISCONNECTED;
     private volatile AccountProfile profile;
@@ -36,6 +38,7 @@ public final class RemoteAccountSession implements AccountSession {
 
     RemoteAccountSession(RemoteAccountTransport transport) {
         this.transport = Objects.requireNonNull(transport, "transport");
+        this.matchmakingClient = transport.getMatchmakingClient();
         transport.setDisconnectListener(this::handleDisconnect);
     }
 
@@ -123,6 +126,7 @@ public final class RemoteAccountSession implements AccountSession {
         AccountProfile previousProfile = profile;
         profile = null;
         if (!transport.isConnected()) {
+            clearMatchmakingState();
             transition(ClientSessionState.DISCONNECTED, null);
             return CompletableFuture.completedFuture(null);
         }
@@ -132,6 +136,7 @@ public final class RemoteAccountSession implements AccountSession {
                 : transport.logout();
         return request.whenComplete((ignored, failure) -> {
             profile = null;
+            clearMatchmakingState();
             if (failure != null && transport.isConnected()) {
                 // A timed-out logout has an unknown server outcome. Closing the
                 // connection is the only safe way to release any online-session
@@ -161,6 +166,11 @@ public final class RemoteAccountSession implements AccountSession {
     }
 
     @Override
+    public MatchmakingClient getMatchmakingClient() {
+        return matchmakingClient;
+    }
+
+    @Override
     public void addStateListener(SessionStateListener listener) {
         listeners.add(Objects.requireNonNull(listener, "listener"));
     }
@@ -173,6 +183,7 @@ public final class RemoteAccountSession implements AccountSession {
     @Override
     public void disconnect() {
         profile = null;
+        clearMatchmakingState();
         transport.disconnect();
         transition(ClientSessionState.DISCONNECTED, null);
     }
@@ -186,12 +197,14 @@ public final class RemoteAccountSession implements AccountSession {
             closed = true;
         }
         profile = null;
+        clearMatchmakingState();
         transport.close();
         transition(ClientSessionState.CLOSED, null);
     }
 
     private void handleDisconnect(Throwable failure) {
         profile = null;
+        clearMatchmakingState();
         transition(closed ? ClientSessionState.CLOSED
                 : ClientSessionState.DISCONNECTED, failure);
     }
@@ -205,6 +218,12 @@ public final class RemoteAccountSession implements AccountSession {
                     ? (profile == null ? ClientSessionState.CONNECTED
                             : ClientSessionState.AUTHENTICATED)
                     : ClientSessionState.DISCONNECTED, unwrap(failure));
+        }
+    }
+
+    private void clearMatchmakingState() {
+        if (matchmakingClient != null) {
+            matchmakingClient.clearState();
         }
     }
 

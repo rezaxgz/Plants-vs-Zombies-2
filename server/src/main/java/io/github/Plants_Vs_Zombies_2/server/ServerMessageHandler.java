@@ -8,9 +8,23 @@ import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessages;
 
 public final class ServerMessageHandler implements ServerRequestHandler {
     private final ServerAccountService accountService;
+    private final ServerConnectionDirectory connectionDirectory;
+    private final MatchmakingService matchmakingService;
 
     ServerMessageHandler(ServerAccountService accountService) {
+        this(accountService, new ServerConnectionDirectory(), null);
+    }
+
+    ServerMessageHandler(ServerAccountService accountService,
+            ServerConnectionDirectory connectionDirectory,
+            MatchmakingService matchmakingService) {
         this.accountService = accountService;
+        this.connectionDirectory = connectionDirectory;
+        this.matchmakingService = matchmakingService == null
+                ? new MatchmakingService(accountService::usernameExists,
+                        connectionDirectory::isOnline, connectionDirectory::publish,
+                        MatchmakingService.DEFAULT_INVITATION_DURATION)
+                : matchmakingService;
     }
 
     @Override
@@ -35,12 +49,24 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             return handleAfterHandshake(message, context);
         } catch (AccountServiceException exception) {
             return error(message, exception.getErrorCode(), exception.getMessage());
+        } catch (MatchmakingServiceException exception) {
+            return error(message, exception.getErrorCode(), exception.getMessage());
         }
     }
 
     @Override
     public void connectionClosed(ConnectionContext context) {
-        accountService.connectionClosed(context);
+        String username = accountService.connectionClosed(context);
+        if (username != null && connectionDirectory.unregister(
+                username, context.getConnection())) {
+            matchmakingService.playerDisconnected(username);
+        }
+    }
+
+    @Override
+    public void close() {
+        matchmakingService.close();
+        connectionDirectory.clear();
     }
 
     private ProtocolMessage handleHello(ProtocolMessage message, ConnectionContext context)
@@ -69,13 +95,18 @@ public final class ServerMessageHandler implements ServerRequestHandler {
 
     private ProtocolMessage handleAfterHandshake(
             ProtocolMessage message, ConnectionContext context)
-            throws AccountServiceException {
+            throws AccountServiceException, MatchmakingServiceException {
         return switch (message.getType()) {
             case PING -> ProtocolMessages.pong(message.getRequestId(), message.getPayload());
             case REGISTER_REQUEST -> register(message);
             case LOGIN_REQUEST -> login(message, context);
             case LOGOUT_REQUEST -> logout(message, context);
             case GET_PROFILE_REQUEST -> getProfile(message, context);
+            case SEND_INVITATION_REQUEST -> sendInvitation(message, context);
+            case RESPOND_INVITATION_REQUEST -> respondInvitation(message, context);
+            case CANCEL_INVITATION_REQUEST -> cancelInvitation(message, context);
+            case JOIN_RANDOM_QUEUE_REQUEST -> joinRandomQueue(message, context);
+            case LEAVE_RANDOM_QUEUE_REQUEST -> leaveRandomQueue(message, context);
             default -> error(
                     message,
                     ProtocolErrorCode.UNSUPPORTED_MESSAGE_TYPE,
@@ -92,6 +123,14 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             throws AccountServiceException {
         AccountProfile profile = accountService.login(
                 context, PayloadReader.from(message).login());
+        if (!connectionDirectory.register(profile.getUsername(),
+                context.getConnection(), () -> matchmakingService.playerDisconnected(
+                        profile.getUsername()))) {
+            context.clearAuthentication();
+            throw new AccountServiceException(
+                    ProtocolErrorCode.USER_ALREADY_ONLINE,
+                    "This account is already online");
+        }
         return ProtocolMessages.withPayload(
                 MessageType.LOGIN_RESPONSE, message.getRequestId(), profile);
     }
@@ -99,8 +138,71 @@ public final class ServerMessageHandler implements ServerRequestHandler {
     private ProtocolMessage logout(ProtocolMessage message, ConnectionContext context)
             throws AccountServiceException {
         PayloadReader.from(message);
-        accountService.logout(context);
+        String username = accountService.logout(context);
+        if (connectionDirectory.unregister(username, context.getConnection())) {
+            matchmakingService.playerDisconnected(username);
+        }
         return ProtocolMessages.empty(MessageType.LOGOUT_RESPONSE, message.getRequestId());
+    }
+
+    private ProtocolMessage sendInvitation(
+            ProtocolMessage message, ConnectionContext context)
+            throws AccountServiceException, MatchmakingServiceException {
+        String username = requireAuthentication(context);
+        String recipient = PayloadReader.from(message).requiredString("username");
+        return ProtocolMessages.withPayload(MessageType.SEND_INVITATION_RESPONSE,
+                message.getRequestId(), matchmakingService.invite(username, recipient));
+    }
+
+    private ProtocolMessage respondInvitation(
+            ProtocolMessage message, ConnectionContext context)
+            throws AccountServiceException, MatchmakingServiceException {
+        String username = requireAuthentication(context);
+        PayloadReader payload = PayloadReader.from(message);
+        matchmakingService.respond(username,
+                payload.requiredString("invitationId"),
+                payload.requiredBoolean("accept"));
+        return ProtocolMessages.empty(MessageType.RESPOND_INVITATION_RESPONSE,
+                message.getRequestId());
+    }
+
+    private ProtocolMessage cancelInvitation(
+            ProtocolMessage message, ConnectionContext context)
+            throws AccountServiceException, MatchmakingServiceException {
+        String username = requireAuthentication(context);
+        matchmakingService.cancel(username,
+                PayloadReader.from(message).requiredString("invitationId"));
+        return ProtocolMessages.empty(MessageType.CANCEL_INVITATION_RESPONSE,
+                message.getRequestId());
+    }
+
+    private ProtocolMessage joinRandomQueue(
+            ProtocolMessage message, ConnectionContext context)
+            throws AccountServiceException, MatchmakingServiceException {
+        String username = requireAuthentication(context);
+        PayloadReader.from(message);
+        return ProtocolMessages.withPayload(MessageType.JOIN_RANDOM_QUEUE_RESPONSE,
+                message.getRequestId(), matchmakingService.joinQueue(username));
+    }
+
+    private ProtocolMessage leaveRandomQueue(
+            ProtocolMessage message, ConnectionContext context)
+            throws AccountServiceException, MatchmakingServiceException {
+        String username = requireAuthentication(context);
+        PayloadReader.from(message);
+        matchmakingService.leaveQueue(username);
+        return ProtocolMessages.empty(MessageType.LEAVE_RANDOM_QUEUE_RESPONSE,
+                message.getRequestId());
+    }
+
+    private static String requireAuthentication(ConnectionContext context)
+            throws AccountServiceException {
+        String username = context.getAuthenticatedUsername();
+        if (username == null) {
+            throw new AccountServiceException(ProtocolErrorCode.AUTH_REQUIRED,
+                    "Authentication is required");
+        }
+        return username;
     }
 
     private ProtocolMessage getProfile(ProtocolMessage message, ConnectionContext context)

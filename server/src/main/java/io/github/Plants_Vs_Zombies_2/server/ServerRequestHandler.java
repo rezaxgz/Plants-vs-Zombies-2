@@ -7,4 +7,7 @@ interface ServerRequestHandler {
 
     default void connectionClosed(ConnectionContext context) {
     }
+
+    default void close() {
+    }
 }

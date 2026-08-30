@@ -23,7 +23,7 @@ final class ClientConnection implements Runnable, AutoCloseable {
     private final GameServer server;
     private final Socket socket;
     private final ServerRequestHandler messageHandler;
-    private final ConnectionContext context = new ConnectionContext();
+    private final ConnectionContext context;
     private final ProtocolCodec codec = new ProtocolCodec();
     private final AtomicBoolean open = new AtomicBoolean(true);
     private final Object sendLock = new Object();
@@ -34,6 +34,7 @@ final class ClientConnection implements Runnable, AutoCloseable {
         this.server = server;
         this.socket = socket;
         this.messageHandler = messageHandler;
+        this.context = new ConnectionContext(this);
         this.description = String.valueOf(socket.getRemoteSocketAddress());
     }
 
@@ -103,6 +104,14 @@ final class ClientConnection implements Runnable, AutoCloseable {
                 close();
             }
         }
+    }
+
+    void sendEvent(ProtocolMessage message) {
+        send(message);
+    }
+
+    boolean isOpen() {
+        return open.get() && !socket.isClosed();
     }
 
     @Override

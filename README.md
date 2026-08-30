@@ -50,8 +50,9 @@ with Java system properties passed to Gradle:
 .\gradlew.bat "-Dpvz.client.server.host=192.168.1.20" "-Dpvz.client.server.port=54556" lwjgl3:run
 ```
 
-Server properties are `pvz.server.host`, `pvz.server.port`, and optionally
-`pvz.server.users.database`. Client properties are `pvz.client.server.host` and
+Server properties are `pvz.server.host`, `pvz.server.port`, optionally
+`pvz.server.users.database`, and `pvz.server.invitation.expiration.seconds`
+(30 seconds by default). Client properties are `pvz.client.server.host` and
 `pvz.client.server.port`.
 
 Loopback only accepts clients on the same computer. For another computer on the
@@ -66,3 +67,26 @@ password recovery are not implemented yet, so the graphical client requires a
 fresh login after restart. The temporary `User` exposed to legacy gameplay is a
 non-persisted compatibility snapshot with no usable local password; gameplay
 progress synchronization remains out of scope for this stage.
+
+## Headless matchmaking foundation
+
+Authenticated clients can use the typed `MatchmakingClient` exposed by
+`RemoteAccountSession`. It reuses the session's existing `NetworkClient` socket;
+it does not open a second connection. Its asynchronous API supports direct
+invitations (accept, reject, cancel, and expiration) and a FIFO random queue.
+Successful pairing delivers typed `MatchAssignment` values with one `PLANTS`
+role, one `ZOMBIES` role, a shared match ID, creation time, and `PRE_GAME` status.
+
+The wire protocol uses correlated request/response pairs for invitation and
+queue commands. `INVITATION_RECEIVED`, `INVITATION_RESULT`,
+`QUEUE_STATUS_CHANGED`, `MATCH_FOUND`, and `MATCH_CANCELLED` are unsolicited
+server events routed only to the authenticated account's active connection.
+Matchmaking listener callbacks run on the `NetworkClient` reader thread. UI code
+must dispatch from that callback to the LibGDX render thread before changing
+actors or screens. Listener failures are isolated, and listeners can be removed
+with `removeListener`.
+
+Matchmaking state is intentionally transient. Logout, disconnect, or server
+shutdown clears invitations, queue membership, and pre-game matches. Actual
+I, Zombie gameplay, board synchronization, and graphical matchmaking screens
+are not part of this foundation.

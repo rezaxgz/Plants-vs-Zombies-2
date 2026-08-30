@@ -70,6 +70,15 @@ final class PayloadReader {
         }
     }
 
+    boolean requiredBoolean(String field) throws AccountServiceException {
+        JsonElement value = payload.get(field);
+        if (value == null || !value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isBoolean()) {
+            throw malformed(field + " must be a boolean");
+        }
+        return value.getAsBoolean();
+    }
+
     private static AccountServiceException malformed(String message) {
         return new AccountServiceException(ProtocolErrorCode.MALFORMED_PAYLOAD, message);
     }

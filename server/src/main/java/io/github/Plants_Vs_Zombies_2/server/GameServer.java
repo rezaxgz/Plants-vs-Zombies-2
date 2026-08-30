@@ -8,6 +8,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +26,8 @@ public final class GameServer implements AutoCloseable {
     public static final int DEFAULT_PORT = 54555;
     public static final String USERS_DATABASE_PROPERTY = "pvz.server.users.database";
     public static final String DEFAULT_USERS_DATABASE = "data/server-users.json";
+    public static final String INVITATION_DURATION_SECONDS_PROPERTY =
+            "pvz.server.invitation.expiration.seconds";
     private static final Logger LOGGER = Logger.getLogger(GameServer.class.getName());
 
     private final String host;
@@ -53,8 +56,12 @@ public final class GameServer implements AutoCloseable {
     }
 
     public GameServer(String host, int port, Path databasePath) {
-        this(host, port, new ServerMessageHandler(
-                new ServerAccountService(new JsonUserRepository(databasePath))));
+        this(host, port, databasePath, configuredInvitationDuration());
+    }
+
+    public GameServer(String host, int port, Path databasePath,
+            Duration invitationDuration) {
+        this(host, port, createHandler(databasePath, invitationDuration));
     }
 
     GameServer(String host, int port, ServerRequestHandler messageHandler) {
@@ -85,6 +92,7 @@ public final class GameServer implements AutoCloseable {
             LOGGER.info(() -> "Server listening on " + host + ":" + getPort());
         } catch (IOException | RuntimeException exception) {
             running.set(false);
+            messageHandler.close();
             shutdownLatch.countDown();
             throw exception;
         }
@@ -139,9 +147,31 @@ public final class GameServer implements AutoCloseable {
         return Path.of(DEFAULT_USERS_DATABASE);
     }
 
+    private static ServerRequestHandler createHandler(
+            Path databasePath, Duration invitationDuration) {
+        ServerAccountService accounts = new ServerAccountService(
+                new JsonUserRepository(databasePath));
+        ServerConnectionDirectory directory = new ServerConnectionDirectory();
+        MatchmakingService matchmaking = new MatchmakingService(
+                accounts::usernameExists, directory::isOnline,
+                directory::publish, invitationDuration);
+        return new ServerMessageHandler(accounts, directory, matchmaking);
+    }
+
+    private static Duration configuredInvitationDuration() {
+        long seconds = Long.getLong(INVITATION_DURATION_SECONDS_PROPERTY,
+                MatchmakingService.DEFAULT_INVITATION_DURATION.toSeconds());
+        if (seconds <= 0) {
+            throw new IllegalArgumentException(
+                    INVITATION_DURATION_SECONDS_PROPERTY + " must be positive");
+        }
+        return Duration.ofSeconds(seconds);
+    }
+
     @Override
     public synchronized void close() {
         if (!running.getAndSet(false)) {
+            messageHandler.close();
             shutdownLatch.countDown();
             return;
         }
@@ -175,6 +205,11 @@ public final class GameServer implements AutoCloseable {
             connectionExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         } finally {
+            try {
+                messageHandler.close();
+            } catch (RuntimeException exception) {
+                LOGGER.log(Level.SEVERE, "Could not clear server services", exception);
+            }
             shutdownLatch.countDown();
             LOGGER.info("Server stopped");
         }

@@ -23,7 +23,8 @@ test {
 }
 
 tasks.named('run', JavaExec) {
-  ['pvz.server.host', 'pvz.server.port', 'pvz.server.users.database'].each { propertyName ->
+  ['pvz.server.host', 'pvz.server.port', 'pvz.server.users.database',
+      'pvz.server.invitation.expiration.seconds'].each { propertyName ->
     String value = System.getProperty(propertyName)
     if (value != null) {
       systemProperty propertyName, value
