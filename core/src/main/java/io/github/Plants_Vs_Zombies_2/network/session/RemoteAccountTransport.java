@@ -6,6 +6,7 @@ import java.util.function.Consumer;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
 
 interface RemoteAccountTransport extends AutoCloseable {
     CompletableFuture<Void> connect();
@@ -23,6 +24,8 @@ interface RemoteAccountTransport extends AutoCloseable {
     void setDisconnectListener(Consumer<Throwable> listener);
 
     default MatchmakingClient getMatchmakingClient() { return null; }
+
+    default MultiplayerGameClient getMultiplayerGameClient() { return null; }
 
     void disconnect();
 

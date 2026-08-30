@@ -10,6 +10,7 @@ import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
 
 /**
  * One application-scoped remote account session. It never blocks its caller;
@@ -22,6 +23,7 @@ public final class RemoteAccountSession implements AccountSession {
     private final Object lock = new Object();
     private final RemoteAccountTransport transport;
     private final MatchmakingClient matchmakingClient;
+    private final MultiplayerGameClient multiplayerGameClient;
     private final List<SessionStateListener> listeners = new CopyOnWriteArrayList<>();
     private volatile ClientSessionState state = ClientSessionState.DISCONNECTED;
     private volatile AccountProfile profile;
@@ -39,6 +41,7 @@ public final class RemoteAccountSession implements AccountSession {
     RemoteAccountSession(RemoteAccountTransport transport) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.matchmakingClient = transport.getMatchmakingClient();
+        this.multiplayerGameClient = transport.getMultiplayerGameClient();
         transport.setDisconnectListener(this::handleDisconnect);
     }
 
@@ -171,6 +174,11 @@ public final class RemoteAccountSession implements AccountSession {
     }
 
     @Override
+    public MultiplayerGameClient getMultiplayerGameClient() {
+        return multiplayerGameClient;
+    }
+
+    @Override
     public void addStateListener(SessionStateListener listener) {
         listeners.add(Objects.requireNonNull(listener, "listener"));
     }
@@ -224,6 +232,9 @@ public final class RemoteAccountSession implements AccountSession {
     private void clearMatchmakingState() {
         if (matchmakingClient != null) {
             matchmakingClient.clearState();
+        }
+        if (multiplayerGameClient != null) {
+            multiplayerGameClient.clearState();
         }
     }
 

@@ -90,3 +90,34 @@ Matchmaking state is intentionally transient. Logout, disconnect, or server
 shutdown clears invitations, queue membership, and pre-game matches. Actual
 I, Zombie gameplay, board synchronization, and graphical matchmaking screens
 are not part of this foundation.
+
+## Headless multiplayer I, Zombie sessions
+
+Every matchmaking assignment now creates one canonical server session. Players
+move from `PRE_GAME` to `READY` when one participant is ready and to `ACTIVE`
+only after both are ready. The server derives the authenticated username and
+fixed `PLANTS`/`ZOMBIES` role from the connection; clients never submit either
+as authoritative command data. Leaving, logging out, or disconnecting cancels
+the session, notifies the remaining player, and releases both accounts back to
+matchmaking.
+
+Stage 5 uses a deterministic, empty 5-by-9 `FIRST_BITE` board. Plants may be
+placed in columns 0 through 3 and zombies in columns 4 through 8. The plant side
+starts with 500 resource and the zombie side with 300; existing plant costs and
+`IZombieLevel` zombie-card costs are authoritative. The balances are independent,
+and removing a plant provides no refund. The server generates and stores the
+match seed. Multiplayer setup does not use the single-player `IZombie` random
+plant defense or its automatic sun-producer zombies.
+
+Each immutable snapshot has a monotonic revision beginning at 0. Ready changes
+and accepted placement/removal commands increment it once. Reads and rejected
+commands do not. Mutation commands must supply the exact expected revision.
+Network entity IDs are server-generated, stable for the life of an entity, and
+never reused within a match.
+
+`MultiplayerGameClient`, exposed by `RemoteAccountSession`, shares the existing
+`NetworkClient` socket and provides typed ready, state, plant, zombie, removal,
+and leave operations. Its listener callbacks run on the network reader thread,
+are exception-isolated, and must be dispatched before graphical UI updates.
+Stage 5 remains headless: movement, combat, projectiles, real-time ticks, and
+periodic snapshot broadcasting are deferred to Stage 6.

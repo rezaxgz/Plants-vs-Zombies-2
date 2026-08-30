@@ -79,6 +79,19 @@ final class PayloadReader {
         return value.getAsBoolean();
     }
 
+    long requiredLong(String field) throws AccountServiceException {
+        JsonElement value = payload.get(field);
+        if (value == null || !value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isNumber()) {
+            throw malformed(field + " must be an integer");
+        }
+        try {
+            return value.getAsBigDecimal().longValueExact();
+        } catch (ArithmeticException | NumberFormatException exception) {
+            throw malformed(field + " must be an integer");
+        }
+    }
+
     private static AccountServiceException malformed(String message) {
         return new AccountServiceException(ProtocolErrorCode.MALFORMED_PAYLOAD, message);
     }
