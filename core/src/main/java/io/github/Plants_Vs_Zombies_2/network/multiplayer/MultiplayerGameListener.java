@@ -6,5 +6,7 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchCancelled;
 public interface MultiplayerGameListener {
     default void opponentReady(ReadyStatus status) { }
     default void matchStarted(MatchStateSnapshot snapshot) { }
+    default void matchStateUpdated(MatchStateSnapshot snapshot) { }
+    default void matchFinished(MatchStateSnapshot snapshot) { }
     default void matchCancelled(MatchCancelled cancellation) { }
 }

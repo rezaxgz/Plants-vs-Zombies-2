@@ -119,5 +119,40 @@ never reused within a match.
 `NetworkClient` socket and provides typed ready, state, plant, zombie, removal,
 and leave operations. Its listener callbacks run on the network reader thread,
 are exception-isolated, and must be dispatched before graphical UI updates.
-Stage 5 remains headless: movement, combat, projectiles, real-time ticks, and
-periodic snapshot broadcasting are deferred to Stage 6.
+The Stage 5 baseline is intentionally headless; the Stage 6 section below adds
+movement, combat, projectiles, real-time ticks, and periodic authoritative
+snapshots without adding graphical multiplayer screens.
+
+### Stage 6 authoritative simulation
+
+When both participants are ready the server advances each active I, Zombie
+match at a fixed rate. `pvz.server.multiplayer.tick.rate` controls that rate and
+defaults to 20 ticks/second. One shared scheduler advances all matches; each
+match serializes its own mutations, and socket publication happens after match
+locks are released. Tests use the same fixed-step path directly, so combat and
+timer behavior do not depend on sleeps or wall-clock scheduling.
+
+The match duration defaults to 120 seconds and can be changed with
+`pvz.server.multiplayer.match.duration.seconds`. Zombies move toward their lane's
+brain, stop to eat blocking plants, and are damaged by plant projectiles. Plants
+win with `TIME_EXPIRED` when time reaches zero while a brain remains. Zombies win
+with `ALL_BRAINS_EATEN` when the final brain is consumed. A normal result is
+chosen once, transitions the match to `FINISHED`, stops future simulation, and
+releases both accounts for matchmaking. Leave, disconnect, and server shutdown
+are cancellations (`PLAYER_LEFT`, `PLAYER_DISCONNECTED`, `SERVER_SHUTDOWN`), not
+victories.
+
+Snapshots now separate automatic `simulationTick` progression from the
+optimistic-lock `revision`: simulation ticks never make a valid placement command
+stale; only accepted player/lifecycle mutations increment `revision`. Snapshots
+also carry elapsed/remaining time, health, precise zombie positions, projectiles,
+brains, and terminal winner/reason. The server sends `MATCH_STATE_UPDATED`
+periodically (up to five times per second) and sends `MATCH_FINISHED` once to
+each participant for a normal terminal result.
+
+`MultiplayerGameClient` consumes those unsolicited typed events on the existing
+`NetworkClient` reader thread, ignores older simulation snapshots, isolates
+listener exceptions, and supports removable listeners. Callbacks must never
+call LibGDX UI APIs directly; graphical code must dispatch to the render thread.
+Graphical multiplayer UI/interpolation, reactions, leaderboard support, and
+gameplay-progress persistence remain later-stage work.

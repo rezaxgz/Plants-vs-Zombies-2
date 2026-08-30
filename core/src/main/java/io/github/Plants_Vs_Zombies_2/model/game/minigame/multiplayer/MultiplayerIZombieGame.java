@@ -161,6 +161,32 @@ public final class MultiplayerIZombieGame {
         return List.copyOf(result);
     }
 
+    /**
+     * Mirrors automatic Stage 6 removals back into the Stage 5 placement board
+     * without changing either player resource balance.
+     */
+    public void removeEntityAfterSimulation(String entityId) {
+        OwnedEntity owned = entities.remove(entityId);
+        if (owned != null) {
+            board.removeEntity(owned.entity());
+        }
+    }
+
+    /** Keeps placement occupancy aligned with authoritative zombie movement. */
+    public void synchronizeZombiePosition(String entityId, int row,
+            double columnPosition) {
+        OwnedEntity owned = entities.get(entityId);
+        if (owned == null || owned.role() != MatchRole.ZOMBIES
+                || !(owned.entity() instanceof Zombie)) {
+            return;
+        }
+        Zombie zombie = (Zombie) owned.entity();
+        zombie.moveToLane(row);
+        zombie.moveTo(columnPosition);
+        entities.put(entityId, new OwnedEntity(owned.id(), owned.type(),
+                owned.role(), row, (int) Math.floor(columnPosition), zombie));
+    }
+
     public MultiplayerIZombieConfig getConfig() { return config; }
     public long getSeed() { return seed; }
     public int getPlantResource() { return plantResource; }

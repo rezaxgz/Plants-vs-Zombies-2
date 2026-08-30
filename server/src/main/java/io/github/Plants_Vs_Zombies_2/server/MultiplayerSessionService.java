@@ -7,26 +7,40 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.multiplayer.MultiplayerIZombieConfig;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.multiplayer.MultiplayerIZombieGame;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.multiplayer.MultiplayerRuleException;
-import io.github.Plants_Vs_Zombies_2.model.game.minigame.multiplayer.PlacedMatchEntity;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchCancelled;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchStatus;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ActionResult;
-import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchEntitySnapshot;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchFinishReason;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchPlayerSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ReadyStatus;
 import io.github.Plants_Vs_Zombies_2.network.protocol.MessageType;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 
-/** Canonical owner of Stage 5 match lifecycle and authoritative game state. */
+/** Canonical owner of authoritative multiplayer I, Zombie sessions. */
 final class MultiplayerSessionService implements AutoCloseable {
+    static final String TICK_RATE_PROPERTY = "pvz.server.multiplayer.tick.rate";
+    static final String MATCH_DURATION_PROPERTY =
+            "pvz.server.multiplayer.match.duration.seconds";
+    static final int DEFAULT_TICK_RATE = 20;
+    static final double DEFAULT_MATCH_DURATION_SECONDS = 120.0;
+    private static final int SNAPSHOT_BROADCASTS_PER_SECOND = 5;
+    private static final Logger LOGGER = Logger.getLogger(
+            MultiplayerSessionService.class.getName());
+
     private final Object registryLock = new Object();
     private final Map<String, Session> sessions = new HashMap<>();
     private final Map<String, String> matchByPlayer = new HashMap<>();
@@ -34,22 +48,63 @@ final class MultiplayerSessionService implements AutoCloseable {
     private final MultiplayerIZombieConfig config;
     private final Clock clock;
     private final LongSupplier seedSupplier;
+    private final int tickRate;
+    private final double matchDurationSeconds;
+    private final int broadcastEveryTicks;
+    private final ScheduledExecutorService simulationScheduler;
+    private final ScheduledFuture<?> simulationTask;
     private boolean closed;
 
     MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher) {
-        SecureRandom seeds = new SecureRandom();
-        this.publisher = Objects.requireNonNull(publisher, "publisher");
-        this.config = MultiplayerIZombieConfig.firstBiteDefaults();
-        this.clock = Clock.systemUTC();
-        this.seedSupplier = seeds::nextLong;
+        this(publisher, MultiplayerIZombieConfig.firstBiteDefaults(),
+                Clock.systemUTC(), secureSeedSupplier(), configuredTickRate(),
+                configuredMatchDuration(), createSimulationScheduler(), true);
+    }
+
+    /**
+     * Deterministic constructor used by tests. No real-time task is installed;
+     * tests advance the fixed-step simulation with {@link #tickOnceForTesting()}.
+     */
+    MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher,
+            MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier) {
+        this(publisher, config, clock, seedSupplier, DEFAULT_TICK_RATE,
+                DEFAULT_MATCH_DURATION_SECONDS, null, false);
     }
 
     MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher,
-            MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier) {
+            MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier,
+            int tickRate, double matchDurationSeconds) {
+        this(publisher, config, clock, seedSupplier, tickRate,
+                matchDurationSeconds, null, false);
+    }
+
+    private MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher,
+            MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier,
+            int tickRate, double matchDurationSeconds,
+            ScheduledExecutorService simulationScheduler, boolean autoSchedule) {
+        if (tickRate <= 0 || !Double.isFinite(matchDurationSeconds)
+                || matchDurationSeconds <= 0.0) {
+            throw new IllegalArgumentException(
+                    "Multiplayer tick rate and match duration must be positive");
+        }
         this.publisher = Objects.requireNonNull(publisher, "publisher");
         this.config = Objects.requireNonNull(config, "config");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.seedSupplier = Objects.requireNonNull(seedSupplier, "seedSupplier");
+        this.tickRate = tickRate;
+        this.matchDurationSeconds = matchDurationSeconds;
+        this.broadcastEveryTicks = Math.max(1,
+                tickRate / SNAPSHOT_BROADCASTS_PER_SECOND);
+        this.simulationScheduler = simulationScheduler;
+        if (autoSchedule) {
+            long periodNanos = Math.max(1L,
+                    Math.round(1_000_000_000.0 / tickRate));
+            this.simulationTask = simulationScheduler.scheduleAtFixedRate(
+                    this::scheduledTickSafely, periodNanos, periodNanos,
+                    TimeUnit.NANOSECONDS);
+        } else {
+            this.simulationTask = null;
+        }
     }
 
     void createSession(String matchId, String firstUsername, MatchRole firstRole,
@@ -71,8 +126,11 @@ final class MultiplayerSessionService implements AutoCloseable {
                     ? firstUsername : secondUsername;
             String zombies = firstRole == MatchRole.ZOMBIES
                     ? firstUsername : secondUsername;
+            MultiplayerIZombieGame game = new MultiplayerIZombieGame(
+                    config, seedSupplier.getAsLong());
             Session session = new Session(matchId, plants, zombies, createdAt,
-                    new MultiplayerIZombieGame(config, seedSupplier.getAsLong()));
+                    game, new AuthoritativeIZombieSimulation(
+                            config.getBoardRows(), config.getBoardColumns()));
             sessions.put(matchId, session);
             matchByPlayer.put(firstUsername, matchId);
             matchByPlayer.put(secondUsername, matchId);
@@ -88,7 +146,7 @@ final class MultiplayerSessionService implements AutoCloseable {
     ReadyStatus markReady(String username, String matchId)
             throws MultiplayerSessionException {
         SessionOutcome<ReadyStatus> outcome = requireSession(matchId).markReady(username);
-        publisher.accept(outcome.events());
+        publish(outcome.events());
         return outcome.value();
     }
 
@@ -122,39 +180,92 @@ final class MultiplayerSessionService implements AutoCloseable {
             Session session = sessions.get(matchId);
             if (session == null) throw notFound();
             session.requireParticipant(username);
-            events = cancelLocked(session, username, "Opponent left the match");
+            events = cancelLocked(session, username, MatchFinishReason.PLAYER_LEFT);
         }
-        publisher.accept(events);
+        publish(events);
     }
 
     void playerDisconnected(String username) {
         if (username == null) return;
         List<MatchmakingEvent> events = List.of();
         synchronized (registryLock) {
+            if (closed) return;
             String matchId = matchByPlayer.get(username);
             Session session = matchId == null ? null : sessions.get(matchId);
             if (session != null) {
                 events = cancelLocked(session, username,
-                        "Opponent disconnected before the match finished");
+                        MatchFinishReason.PLAYER_DISCONNECTED);
             }
         }
-        publisher.accept(events);
+        publish(events);
     }
 
     int activeSessionCount() {
         synchronized (registryLock) { return sessions.size(); }
     }
 
+    /** One exact fixed step; package-private so tests never need sleeps. */
+    void tickOnceForTesting() {
+        tickAllSessions();
+    }
+
+    private void scheduledTickSafely() {
+        try {
+            tickAllSessions();
+        } catch (RuntimeException exception) {
+            // Scheduled executors suppress all future executions if an unchecked
+            // exception escapes. Keep other matches alive and report the fault.
+            LOGGER.log(Level.SEVERE, "Multiplayer simulation tick failed", exception);
+        }
+    }
+
+    private void tickAllSessions() {
+        List<Session> current;
+        synchronized (registryLock) {
+            if (closed) return;
+            current = List.copyOf(sessions.values());
+        }
+
+        List<MatchmakingEvent> events = new ArrayList<>();
+        List<Session> finished = new ArrayList<>();
+        for (Session session : current) {
+            TickOutcome outcome;
+            try {
+                outcome = session.tick();
+            } catch (RuntimeException exception) {
+                LOGGER.log(Level.WARNING,
+                        "Isolated failure in match " + session.matchId, exception);
+                continue;
+            }
+            events.addAll(outcome.events());
+            if (outcome.finished()) finished.add(session);
+        }
+
+        if (!finished.isEmpty()) {
+            synchronized (registryLock) {
+                for (Session session : finished) {
+                    if (sessions.remove(session.matchId, session)) {
+                        matchByPlayer.remove(session.plantsUsername, session.matchId);
+                        matchByPlayer.remove(session.zombiesUsername, session.matchId);
+                    }
+                }
+            }
+        }
+        // Never write to sockets while a session or registry monitor is held.
+        publish(events);
+    }
+
     private List<MatchmakingEvent> cancelLocked(Session session,
-            String departingUsername, String reason) {
-        Cancellation cancellation = session.cancel(departingUsername);
+            String departingUsername, MatchFinishReason reason) {
+        Cancellation cancellation = session.cancel(departingUsername, reason);
         sessions.remove(session.matchId, session);
         matchByPlayer.remove(session.plantsUsername, session.matchId);
         matchByPlayer.remove(session.zombiesUsername, session.matchId);
         if (cancellation.remainingUsername() == null) return List.of();
         return List.of(new MatchmakingEvent(cancellation.remainingUsername(),
                 MessageType.MATCH_CANCELLED,
-                new MatchCancelled(session.matchId, departingUsername, reason)));
+                new MatchCancelled(session.matchId, departingUsername,
+                        reason.name())));
     }
 
     private Session requireSession(String matchId) throws MultiplayerSessionException {
@@ -174,13 +285,71 @@ final class MultiplayerSessionService implements AutoCloseable {
 
     @Override
     public void close() {
+        List<MatchmakingEvent> cancellationEvents = new ArrayList<>();
         synchronized (registryLock) {
             if (closed) return;
             closed = true;
-            for (Session session : sessions.values()) session.close();
+            for (Session session : sessions.values()) {
+                session.cancelForShutdown();
+                cancellationEvents.add(new MatchmakingEvent(
+                        session.plantsUsername, MessageType.MATCH_CANCELLED,
+                        new MatchCancelled(session.matchId,
+                                session.zombiesUsername,
+                                MatchFinishReason.SERVER_SHUTDOWN.name())));
+                cancellationEvents.add(new MatchmakingEvent(
+                        session.zombiesUsername, MessageType.MATCH_CANCELLED,
+                        new MatchCancelled(session.matchId,
+                                session.plantsUsername,
+                                MatchFinishReason.SERVER_SHUTDOWN.name())));
+            }
             sessions.clear();
             matchByPlayer.clear();
         }
+        if (simulationTask != null) simulationTask.cancel(false);
+        if (simulationScheduler != null) simulationScheduler.shutdownNow();
+        publish(cancellationEvents);
+    }
+
+    private void publish(List<MatchmakingEvent> events) {
+        if (events == null || events.isEmpty()) return;
+        try {
+            publisher.accept(List.copyOf(events));
+        } catch (RuntimeException exception) {
+            // A failed/slow client route must never terminate the shared tick task.
+            LOGGER.log(Level.WARNING, "Could not publish multiplayer event", exception);
+        }
+    }
+
+    private static int configuredTickRate() {
+        int value = Integer.getInteger(TICK_RATE_PROPERTY, DEFAULT_TICK_RATE);
+        if (value <= 0) {
+            throw new IllegalArgumentException(TICK_RATE_PROPERTY + " must be positive");
+        }
+        return value;
+    }
+
+    private static double configuredMatchDuration() {
+        String configured = System.getProperty(MATCH_DURATION_PROPERTY);
+        double value = configured == null || configured.isBlank()
+                ? DEFAULT_MATCH_DURATION_SECONDS : Double.parseDouble(configured);
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(
+                    MATCH_DURATION_PROPERTY + " must be positive");
+        }
+        return value;
+    }
+
+    private static ScheduledExecutorService createSimulationScheduler() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "pvz2-multiplayer-simulation");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    private static LongSupplier secureSeedSupplier() {
+        SecureRandom seeds = new SecureRandom();
+        return seeds::nextLong;
     }
 
     private static MultiplayerSessionException notFound() {
@@ -199,20 +368,27 @@ final class MultiplayerSessionService implements AutoCloseable {
         private final String zombiesUsername;
         private final long createdAt;
         private final MultiplayerIZombieGame game;
+        private final AuthoritativeIZombieSimulation simulation;
         private boolean plantsReady;
         private boolean zombiesReady;
+        private boolean simulationStarted;
         private MatchStatus status = MatchStatus.PRE_GAME;
+        private long simulationTick;
         private long revision;
+        private MatchRole winner;
+        private MatchFinishReason finishReason;
         private MatchStateSnapshot snapshot;
 
         private Session(String matchId, String plantsUsername,
                 String zombiesUsername, long createdAt,
-                MultiplayerIZombieGame game) {
+                MultiplayerIZombieGame game,
+                AuthoritativeIZombieSimulation simulation) {
             this.matchId = matchId;
             this.plantsUsername = plantsUsername;
             this.zombiesUsername = zombiesUsername;
             this.createdAt = createdAt;
             this.game = game;
+            this.simulation = simulation;
             refreshSnapshot();
         }
 
@@ -236,6 +412,7 @@ final class MultiplayerSessionService implements AutoCloseable {
             revision++;
             status = plantsReady && zombiesReady
                     ? MatchStatus.ACTIVE : MatchStatus.READY;
+            if (status == MatchStatus.ACTIVE) simulationStarted = true;
             refreshSnapshot();
 
             String opponent = role == MatchRole.PLANTS
@@ -266,6 +443,7 @@ final class MultiplayerSessionService implements AutoCloseable {
             requireActiveRevision(expectedRevision);
             try {
                 String id = game.placePlant(plantType, row, column);
+                simulation.addPlant(id, plantType, row, column);
                 return accepted(id);
             } catch (MultiplayerRuleException exception) {
                 throw ruleFailure(exception);
@@ -277,7 +455,9 @@ final class MultiplayerSessionService implements AutoCloseable {
             requireRole(username, MatchRole.PLANTS);
             requireActiveRevision(expectedRevision);
             try {
-                return accepted(game.removePlant(entityId));
+                String removed = game.removePlant(entityId);
+                simulation.removePlant(entityId);
+                return accepted(removed);
             } catch (MultiplayerRuleException exception) {
                 throw ruleFailure(exception);
             }
@@ -290,6 +470,12 @@ final class MultiplayerSessionService implements AutoCloseable {
             requireActiveRevision(expectedRevision);
             try {
                 String id = game.placeZombie(zombieType, row, column);
+                // Stage 5 already validates the requested card. Its canonical
+                // enum name is exposed by the accepted entity snapshot.
+                String canonicalType = game.getZombies().stream()
+                        .filter(entity -> entity.getEntityId().equals(id))
+                        .findFirst().orElseThrow().getEntityType();
+                simulation.addZombie(id, canonicalType, row, column);
                 return accepted(id);
             } catch (MultiplayerRuleException exception) {
                 throw ruleFailure(exception);
@@ -332,10 +518,64 @@ final class MultiplayerSessionService implements AutoCloseable {
             }
         }
 
-        synchronized Cancellation cancel(String departingUsername) {
-            if (status != MatchStatus.CANCELLED) {
+        synchronized TickOutcome tick() {
+            if (!simulationStarted || status != MatchStatus.ACTIVE) {
+                return TickOutcome.EMPTY;
+            }
+            AuthoritativeIZombieSimulation.TickResult result = simulation.tick(
+                    1.0 / tickRate);
+            simulationTick++;
+            for (String removedId : result.removedEntityIds()) {
+                game.removeEntityAfterSimulation(removedId);
+            }
+            for (AuthoritativeIZombieSimulation.ZombiePosition position
+                    : simulation.zombiePositions()) {
+                game.synchronizeZombiePosition(position.entityId(), position.row(),
+                        position.columnPosition());
+            }
+
+            if (simulation.allBrainsEaten()) {
+                finish(MatchRole.ZOMBIES, MatchFinishReason.ALL_BRAINS_EATEN);
+                return terminalEvents();
+            }
+            if (elapsedSeconds() + 0.0000001 >= matchDurationSeconds) {
+                finish(MatchRole.PLANTS, MatchFinishReason.TIME_EXPIRED);
+                return terminalEvents();
+            }
+
+            refreshSnapshot();
+            if (simulationTick % broadcastEveryTicks == 0) {
+                return new TickOutcome(false, stateEvents(MessageType.MATCH_STATE_UPDATED));
+            }
+            return TickOutcome.EMPTY;
+        }
+
+        private void finish(MatchRole winningRole, MatchFinishReason reason) {
+            if (status == MatchStatus.FINISHED) return;
+            winner = winningRole;
+            finishReason = reason;
+            status = MatchStatus.FINISHED;
+            revision++; // lifecycle mutation; simulation ticks never touch revision.
+            refreshSnapshot();
+        }
+
+        private TickOutcome terminalEvents() {
+            return new TickOutcome(true, stateEvents(MessageType.MATCH_FINISHED));
+        }
+
+        private List<MatchmakingEvent> stateEvents(MessageType type) {
+            return List.of(
+                    new MatchmakingEvent(plantsUsername, type, snapshot),
+                    new MatchmakingEvent(zombiesUsername, type, snapshot));
+        }
+
+        synchronized Cancellation cancel(String departingUsername,
+                MatchFinishReason reason) {
+            if (status != MatchStatus.CANCELLED && status != MatchStatus.FINISHED) {
                 status = MatchStatus.CANCELLED;
+                finishReason = reason;
                 revision++;
+                simulationStarted = false;
                 refreshSnapshot();
             }
             String remaining = plantsUsername.equals(departingUsername)
@@ -343,8 +583,13 @@ final class MultiplayerSessionService implements AutoCloseable {
             return new Cancellation(remaining);
         }
 
-        synchronized void close() {
+        synchronized void cancelForShutdown() {
+            if (status == MatchStatus.FINISHED) return;
             status = MatchStatus.CANCELLED;
+            finishReason = MatchFinishReason.SERVER_SHUTDOWN;
+            revision++;
+            simulationStarted = false;
+            refreshSnapshot();
         }
 
         private ReadyStatus readyStatus() {
@@ -352,10 +597,18 @@ final class MultiplayerSessionService implements AutoCloseable {
                     zombiesReady, revision);
         }
 
+        private double elapsedSeconds() {
+            return Math.min(matchDurationSeconds,
+                    simulationTick / (double) tickRate);
+        }
+
         private void refreshSnapshot() {
-            snapshot = new MatchStateSnapshot(matchId, status, revision,
-                    clock.millis(), game.getConfig().getLevel().name(),
-                    game.getSeed(), game.getConfig().getBoardRows(),
+            double elapsed = elapsedSeconds();
+            snapshot = new MatchStateSnapshot(matchId, status, simulationTick,
+                    revision, clock.millis(), elapsed,
+                    Math.max(0.0, matchDurationSeconds - elapsed),
+                    game.getConfig().getLevel().name(), game.getSeed(),
+                    game.getConfig().getBoardRows(),
                     game.getConfig().getBoardColumns(),
                     game.getConfig().getRedLineColumn(),
                     List.of(
@@ -364,20 +617,13 @@ final class MultiplayerSessionService implements AutoCloseable {
                             new MatchPlayerSnapshot(zombiesUsername,
                                     MatchRole.ZOMBIES, zombiesReady)),
                     game.getPlantResource(), game.getZombieResource(),
-                    entitySnapshots(game.getPlants()),
-                    entitySnapshots(game.getZombies()),
-                    game.getBrainsAvailable());
+                    simulation.plantSnapshots(), simulation.zombieSnapshots(),
+                    simulation.projectileSnapshots(), simulation.brainsAvailable(),
+                    winner, finishReason);
         }
 
         @SuppressWarnings("unused")
         long getCreatedAt() { return createdAt; }
-    }
-
-    private static List<MatchEntitySnapshot> entitySnapshots(
-            List<PlacedMatchEntity> entities) {
-        return entities.stream().map(entity -> new MatchEntitySnapshot(
-                entity.getEntityId(), entity.getEntityType(), entity.getOwnerRole(),
-                entity.getRow(), entity.getColumn())).toList();
     }
 
     private static MultiplayerSessionException ruleFailure(
@@ -388,4 +634,7 @@ final class MultiplayerSessionService implements AutoCloseable {
 
     private record SessionOutcome<T>(T value, List<MatchmakingEvent> events) { }
     private record Cancellation(String remainingUsername) { }
+    private record TickOutcome(boolean finished, List<MatchmakingEvent> events) {
+        private static final TickOutcome EMPTY = new TickOutcome(false, List.of());
+    }
 }
