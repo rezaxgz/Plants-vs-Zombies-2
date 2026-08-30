@@ -18,7 +18,6 @@ import java.util.function.Predicate;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.Invitation;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.InvitationStatus;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
-import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchCancelled;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchStatus;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.PlayerMatchmakingState;
@@ -42,8 +41,7 @@ final class MatchmakingService implements AutoCloseable {
     private final Map<String, String> activeInvitationByPlayer = new HashMap<>();
     private final Map<String, ScheduledFuture<?>> expirationTasks = new HashMap<>();
     private final ArrayDeque<QueueEntry> queue = new ArrayDeque<>();
-    private final Map<String, PreGameMatch> matches = new HashMap<>();
-    private final Map<String, String> matchByPlayer = new HashMap<>();
+    private final MultiplayerSessionService sessionService;
     private boolean firstPlayerGetsPlants = true;
     private boolean closed;
 
@@ -54,12 +52,23 @@ final class MatchmakingService implements AutoCloseable {
                     Thread thread = new Thread(runnable, "pvz2-invitation-expiration");
                     thread.setDaemon(true);
                     return thread;
-                }));
+                }), new MultiplayerSessionService(publisher));
     }
 
     MatchmakingService(Predicate<String> accountExists, Predicate<String> online,
             Consumer<List<MatchmakingEvent>> publisher, Duration invitationDuration,
             Clock clock, ScheduledExecutorService scheduler) {
+        this(accountExists, online, publisher, invitationDuration, clock, scheduler,
+                new MultiplayerSessionService(publisher,
+                        io.github.Plants_Vs_Zombies_2.model.game.minigame.multiplayer
+                                .MultiplayerIZombieConfig.firstBiteDefaults(),
+                        clock, () -> 0L));
+    }
+
+    MatchmakingService(Predicate<String> accountExists, Predicate<String> online,
+            Consumer<List<MatchmakingEvent>> publisher, Duration invitationDuration,
+            Clock clock, ScheduledExecutorService scheduler,
+            MultiplayerSessionService sessionService) {
         if (invitationDuration == null || invitationDuration.isNegative()
                 || invitationDuration.isZero() || invitationDuration.toMillis() <= 0) {
             throw new IllegalArgumentException("invitationDuration must be at least 1 millisecond");
@@ -70,6 +79,8 @@ final class MatchmakingService implements AutoCloseable {
         this.invitationDuration = invitationDuration;
         this.clock = java.util.Objects.requireNonNull(clock, "clock");
         this.scheduler = java.util.Objects.requireNonNull(scheduler, "scheduler");
+        this.sessionService = java.util.Objects.requireNonNull(
+                sessionService, "sessionService");
     }
 
     Invitation invite(String inviter, String recipient) throws MatchmakingServiceException {
@@ -215,6 +226,7 @@ final class MatchmakingService implements AutoCloseable {
             return;
         }
         List<MatchmakingEvent> events = new ArrayList<>();
+        boolean disconnectSession = false;
         synchronized (lock) {
             if (closed) {
                 return;
@@ -230,23 +242,13 @@ final class MatchmakingService implements AutoCloseable {
                 queue.removeIf(entry -> entry.username().equals(username));
                 playerStates.remove(username);
             } else if (state == PlayerMatchmakingState.MATCHED) {
-                String matchId = matchByPlayer.remove(username);
-                PreGameMatch match = matches.remove(matchId);
-                playerStates.remove(username);
-                if (match != null) {
-                    String remaining = match.first().equals(username)
-                            ? match.second() : match.first();
-                    matchByPlayer.remove(remaining, matchId);
-                    playerStates.remove(remaining);
-                    events.add(new MatchmakingEvent(remaining, MessageType.MATCH_CANCELLED,
-                            new MatchCancelled(matchId, username,
-                                    "Opponent disconnected before gameplay started")));
-                }
+                disconnectSession = true;
             } else {
                 playerStates.remove(username);
             }
         }
         publisher.accept(events);
+        if (disconnectSession) sessionService.playerDisconnected(username);
     }
 
     PlayerMatchmakingState stateOfPlayer(String username) {
@@ -256,7 +258,7 @@ final class MatchmakingService implements AutoCloseable {
     }
 
     int activeMatchCount() {
-        synchronized (lock) { return matches.size(); }
+        return sessionService.activeSessionCount();
     }
 
     int queuedPlayerCount() {
@@ -273,11 +275,10 @@ final class MatchmakingService implements AutoCloseable {
             invitations.clear();
             activeInvitationByPlayer.clear();
             queue.clear();
-            matches.clear();
-            matchByPlayer.clear();
             playerStates.clear();
         }
         scheduler.shutdownNow();
+        sessionService.close();
     }
 
     void expireInvitation(String invitationId) {
@@ -299,7 +300,8 @@ final class MatchmakingService implements AutoCloseable {
         publisher.accept(events);
     }
 
-    private List<MatchmakingEvent> acceptInvitation(Invitation current) {
+    private List<MatchmakingEvent> acceptInvitation(Invitation current)
+            throws MatchmakingServiceException {
         cancelExpiration(current.getInvitationId());
         Invitation accepted = copyWithStatus(current, InvitationStatus.ACCEPTED);
         invitations.put(current.getInvitationId(), accepted);
@@ -337,19 +339,21 @@ final class MatchmakingService implements AutoCloseable {
         playerStates.remove(invitation.getRecipientUsername());
     }
 
-    private MatchEvents createMatch(String first, String second, long createdAt) {
+    private MatchEvents createMatch(String first, String second, long createdAt)
+            throws MatchmakingServiceException {
         String matchId = UUID.randomUUID().toString();
         MatchRole firstRole = firstPlayerGetsPlants ? MatchRole.PLANTS : MatchRole.ZOMBIES;
         firstPlayerGetsPlants = !firstPlayerGetsPlants;
         MatchRole secondRole = firstRole == MatchRole.PLANTS
                 ? MatchRole.ZOMBIES : MatchRole.PLANTS;
-        PreGameMatch match = new PreGameMatch(matchId, first, second,
-                firstRole, secondRole, createdAt);
-        matches.put(matchId, match);
-        matchByPlayer.put(first, matchId);
-        matchByPlayer.put(second, matchId);
-        playerStates.put(first, PlayerMatchmakingState.MATCHED);
-        playerStates.put(second, PlayerMatchmakingState.MATCHED);
+        try {
+            sessionService.createSession(matchId, first, firstRole,
+                    second, secondRole, createdAt);
+        } catch (MultiplayerSessionException exception) {
+            throw failure(exception.getErrorCode(), exception.getMessage());
+        }
+        playerStates.remove(first);
+        playerStates.remove(second);
         return new MatchEvents(List.of(
                 new MatchmakingEvent(first, MessageType.MATCH_FOUND,
                         new MatchAssignment(matchId, first, second, firstRole, createdAt,
@@ -400,8 +404,14 @@ final class MatchmakingService implements AutoCloseable {
     }
 
     private PlayerMatchmakingState stateOf(String username) {
-        return playerStates.getOrDefault(username, PlayerMatchmakingState.AVAILABLE);
+        PlayerMatchmakingState local = playerStates.get(username);
+        if (local != null) return local;
+        return sessionService.hasSession(username)
+                ? PlayerMatchmakingState.MATCHED
+                : PlayerMatchmakingState.AVAILABLE;
     }
+
+    MultiplayerSessionService getSessionService() { return sessionService; }
 
     private void cancelExpiration(String invitationId) {
         ScheduledFuture<?> task = expirationTasks.remove(invitationId);
@@ -429,6 +439,4 @@ final class MatchmakingService implements AutoCloseable {
 
     private record QueueEntry(String username, long joinedAt) { }
     private record MatchEvents(List<MatchmakingEvent> events) { }
-    private record PreGameMatch(String id, String first, String second,
-            MatchRole firstRole, MatchRole secondRole, long createdAt) { }
 }

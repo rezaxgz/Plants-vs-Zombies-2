@@ -10,6 +10,7 @@ public final class ServerMessageHandler implements ServerRequestHandler {
     private final ServerAccountService accountService;
     private final ServerConnectionDirectory connectionDirectory;
     private final MatchmakingService matchmakingService;
+    private final MultiplayerSessionService multiplayerSessionService;
 
     ServerMessageHandler(ServerAccountService accountService) {
         this(accountService, new ServerConnectionDirectory(), null);
@@ -25,6 +26,7 @@ public final class ServerMessageHandler implements ServerRequestHandler {
                         connectionDirectory::isOnline, connectionDirectory::publish,
                         MatchmakingService.DEFAULT_INVITATION_DURATION)
                 : matchmakingService;
+        this.multiplayerSessionService = this.matchmakingService.getSessionService();
     }
 
     @Override
@@ -50,6 +52,8 @@ public final class ServerMessageHandler implements ServerRequestHandler {
         } catch (AccountServiceException exception) {
             return error(message, exception.getErrorCode(), exception.getMessage());
         } catch (MatchmakingServiceException exception) {
+            return error(message, exception.getErrorCode(), exception.getMessage());
+        } catch (MultiplayerSessionException exception) {
             return error(message, exception.getErrorCode(), exception.getMessage());
         }
     }
@@ -95,7 +99,8 @@ public final class ServerMessageHandler implements ServerRequestHandler {
 
     private ProtocolMessage handleAfterHandshake(
             ProtocolMessage message, ConnectionContext context)
-            throws AccountServiceException, MatchmakingServiceException {
+            throws AccountServiceException, MatchmakingServiceException,
+            MultiplayerSessionException {
         return switch (message.getType()) {
             case PING -> ProtocolMessages.pong(message.getRequestId(), message.getPayload());
             case REGISTER_REQUEST -> register(message);
@@ -107,6 +112,12 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             case CANCEL_INVITATION_REQUEST -> cancelInvitation(message, context);
             case JOIN_RANDOM_QUEUE_REQUEST -> joinRandomQueue(message, context);
             case LEAVE_RANDOM_QUEUE_REQUEST -> leaveRandomQueue(message, context);
+            case MATCH_READY_REQUEST -> matchReady(message, context);
+            case LEAVE_MATCH_REQUEST -> leaveMatch(message, context);
+            case PLACE_MATCH_PLANT_REQUEST -> placeMatchPlant(message, context);
+            case REMOVE_MATCH_PLANT_REQUEST -> removeMatchPlant(message, context);
+            case PLACE_MATCH_ZOMBIE_REQUEST -> placeMatchZombie(message, context);
+            case GET_MATCH_STATE_REQUEST -> getMatchState(message, context);
             default -> error(
                     message,
                     ProtocolErrorCode.UNSUPPORTED_MESSAGE_TYPE,
@@ -193,6 +204,76 @@ public final class ServerMessageHandler implements ServerRequestHandler {
         matchmakingService.leaveQueue(username);
         return ProtocolMessages.empty(MessageType.LEAVE_RANDOM_QUEUE_RESPONSE,
                 message.getRequestId());
+    }
+
+    private ProtocolMessage matchReady(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        String matchId = PayloadReader.from(message).requiredString("matchId");
+        return ProtocolMessages.withPayload(MessageType.MATCH_READY_RESPONSE,
+                message.getRequestId(),
+                multiplayerSessionService.markReady(username, matchId));
+    }
+
+    private ProtocolMessage leaveMatch(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        String matchId = PayloadReader.from(message).requiredString("matchId");
+        multiplayerSessionService.leave(username, matchId);
+        return ProtocolMessages.empty(MessageType.LEAVE_MATCH_RESPONSE,
+                message.getRequestId());
+    }
+
+    private ProtocolMessage placeMatchPlant(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        PayloadReader payload = PayloadReader.from(message);
+        return ProtocolMessages.withPayload(MessageType.PLACE_MATCH_PLANT_RESPONSE,
+                message.getRequestId(), multiplayerSessionService.placePlant(
+                        username, payload.requiredString("matchId"),
+                        payload.requiredString("entityType"),
+                        payload.requiredInteger("row"),
+                        payload.requiredInteger("column"),
+                        payload.requiredLong("expectedRevision")));
+    }
+
+    private ProtocolMessage removeMatchPlant(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        PayloadReader payload = PayloadReader.from(message);
+        return ProtocolMessages.withPayload(MessageType.REMOVE_MATCH_PLANT_RESPONSE,
+                message.getRequestId(), multiplayerSessionService.removePlant(
+                        username, payload.requiredString("matchId"),
+                        payload.requiredString("entityId"),
+                        payload.requiredLong("expectedRevision")));
+    }
+
+    private ProtocolMessage placeMatchZombie(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        PayloadReader payload = PayloadReader.from(message);
+        return ProtocolMessages.withPayload(MessageType.PLACE_MATCH_ZOMBIE_RESPONSE,
+                message.getRequestId(), multiplayerSessionService.placeZombie(
+                        username, payload.requiredString("matchId"),
+                        payload.requiredString("entityType"),
+                        payload.requiredInteger("row"),
+                        payload.requiredInteger("column"),
+                        payload.requiredLong("expectedRevision")));
+    }
+
+    private ProtocolMessage getMatchState(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        String matchId = PayloadReader.from(message).requiredString("matchId");
+        return ProtocolMessages.withPayload(MessageType.GET_MATCH_STATE_RESPONSE,
+                message.getRequestId(),
+                multiplayerSessionService.getState(username, matchId));
     }
 
     private static String requireAuthentication(ConnectionContext context)
