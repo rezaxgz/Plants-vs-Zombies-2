@@ -5,6 +5,7 @@ import java.util.Deque;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.Main;
@@ -36,11 +37,16 @@ import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.SpecialLevelType;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.session.AccountSession;
 import io.github.Plants_Vs_Zombies_2.network.session.AuthenticationErrorMessages;
 import io.github.Plants_Vs_Zombies_2.network.session.ClientSessionState;
 import io.github.Plants_Vs_Zombies_2.network.session.RemoteGameplayUserFactory;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
+import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMatchmakingTransport;
+import io.github.Plants_Vs_Zombies_2.view.multiplayer.InvitationNotificationBridge;
 import pvz.libpvz.pam.PamPlayer;
 import pvz.libpvz.textures.TextureBank;
 
@@ -57,6 +63,8 @@ public final class ScreenNavigator {
     private final App app;
     private final AccountSession accountSession;
     private final UiDispatcher uiDispatcher;
+    private final InvitationNotificationBridge invitationBridge;
+    private Dialog invitationDialog;
     private final Deque<Menu> history = new ArrayDeque<>();
 
     private Menu displayedMenu;
@@ -79,8 +87,27 @@ public final class ScreenNavigator {
                 textureBank, Gdx.files.internal(PVZ_ASSETS_ROOT));
         this.app = App.getInstance();
         this.accountSession = accountSession;
-        this.uiDispatcher = runnable -> Gdx.app.postRunnable(runnable);
+        this.uiDispatcher = UiDispatcher.libGdx();
+        MatchmakingClient matchmakingClient = accountSession.getMatchmakingClient();
+        this.invitationBridge = matchmakingClient == null ? null
+                : new InvitationNotificationBridge(
+                        new ClientMatchmakingTransport(matchmakingClient),
+                        uiDispatcher, new InvitationNotificationBridge.Observer() {
+                            @Override public void invitationChanged(
+                                    InvitationNotificationBridge.InvitationView invitation) {
+                                handleInvitationChanged(invitation);
+                            }
+
+                            @Override public void matchFound(MatchAssignment assignment) {
+                                showMultiplayerPregame(assignment);
+                            }
+                        });
         accountSession.addStateListener((previous, current, failure) -> {
+            if (previous == ClientSessionState.AUTHENTICATED
+                    && current != ClientSessionState.AUTHENTICATED
+                    && invitationBridge != null) {
+                uiDispatcher.dispatch(invitationBridge::clearTransientState);
+            }
             if (previous == ClientSessionState.AUTHENTICATED
                     && current == ClientSessionState.DISCONNECTED) {
                 uiDispatcher.dispatch(() -> handleAuthenticationLost(failure));
@@ -183,6 +210,9 @@ public final class ScreenNavigator {
         if (logoutInProgress) {
             return;
         }
+        if (invitationBridge != null) {
+            invitationBridge.clearTransientState();
+        }
         logoutInProgress = true;
         accountSession.logout().whenComplete((ignored, failure) ->
                 uiDispatcher.dispatch(() -> finishRemoteLogout(failure)));
@@ -206,6 +236,9 @@ public final class ScreenNavigator {
     }
 
     public void completeRemoteLogin(AccountProfile profile) {
+        if (invitationBridge != null) {
+            invitationBridge.clearTransientState();
+        }
         app.setLoggedInUser(RemoteGameplayUserFactory.create(profile));
         history.clear();
         app.changeMenu(new MainMenu());
@@ -222,6 +255,9 @@ public final class ScreenNavigator {
     private void handleAuthenticationLost(Throwable failure) {
         if (disposed || app.getLoggedInUser() == null) {
             return;
+        }
+        if (invitationBridge != null) {
+            invitationBridge.clearTransientState();
         }
         history.clear();
         transientScreenVisible = false;
@@ -256,6 +292,46 @@ public final class ScreenNavigator {
 
     public void showAdventureScreen() {
         showTransient(new AdventureScreen(this));
+    }
+
+    /** Opens Stage 7 without replacing the existing single-player Play route. */
+    public void showMultiplayerIZombieMenu() {
+        showMultiplayerIZombieMenu(null);
+    }
+
+    public void showMultiplayerIZombieMenu(String status) {
+        if (accountSession.getState() != ClientSessionState.AUTHENTICATED
+                || accountSession.getMatchmakingClient() == null
+                || accountSession.getMultiplayerGameClient() == null) {
+            pendingAuthenticationNotice =
+                    "Multiplayer requires an authenticated remote account connection.";
+            returnToCurrentMenu();
+            return;
+        }
+        showTransient(new MultiplayerIZombieMenuScreen(this, status));
+    }
+
+    public void showMultiplayerPregame(MatchAssignment assignment) {
+        if (disposed || assignment == null || assignment.getMatchId() == null) {
+            return;
+        }
+        if (accountSession.getState() != ClientSessionState.AUTHENTICATED
+                || accountSession.getMultiplayerGameClient() == null) {
+            showMultiplayerIZombieMenu(
+                    "A match was found, but the remote account is no longer authenticated.");
+            return;
+        }
+        showTransient(new MultiplayerPregameScreen(this, assignment));
+    }
+
+    public void showMultiplayerIZombieGame(MatchAssignment assignment,
+            MatchStateSnapshot initialSnapshot) {
+        if (disposed || assignment == null
+                || accountSession.getState() != ClientSessionState.AUTHENTICATED) {
+            return;
+        }
+        showTransient(new MultiplayerIZombieGameScreen(
+                this, assignment, initialSnapshot));
     }
 
     /** Opens Adventure with the Travel Log already on its Minigames tab. */
@@ -420,15 +496,71 @@ public final class ScreenNavigator {
     }
 
     private void switchScreen(Screen next) {
+        dismissInvitationDialog();
         Screen previous = game.getScreen();
         game.setScreen(next);
         if (previous != null && previous != next) {
             previous.dispose();
         }
+        showCurrentInvitationOn(next);
+    }
+
+    private void handleInvitationChanged(
+            InvitationNotificationBridge.InvitationView invitation) {
+        if (disposed) return;
+        dismissInvitationDialog();
+        if (invitation != null) {
+            showCurrentInvitationOn(game.getScreen());
+        }
+    }
+
+    private void showCurrentInvitationOn(Screen current) {
+        if (disposed || invitationBridge == null
+                || accountSession.getState() != ClientSessionState.AUTHENTICATED
+                || !(current instanceof AbstractScreen host)
+                || current instanceof MultiplayerPregameScreen
+                || current instanceof MultiplayerIZombieGameScreen
+                || current instanceof LoginScreen || current instanceof SignUpScreen) {
+            return;
+        }
+        InvitationNotificationBridge.InvitationView invitation =
+                invitationBridge.getCurrentInvitation();
+        if (invitation == null) return;
+        long secondsLeft = Math.max(0L,
+                (invitation.expiresAtEpochMillis() - System.currentTimeMillis() + 999L) / 1000L);
+        Dialog dialog = new Dialog("Multiplayer invitation", skin) {
+            @Override protected void result(Object object) {
+                if (disposed || invitationBridge == null) return;
+                if (Boolean.TRUE.equals(object)) {
+                    invitationBridge.accept();
+                } else {
+                    invitationBridge.reject();
+                }
+            }
+        };
+        dialog.text(invitation.inviter() + " invited you to I, Zombie.\n"
+                + "Expires in about " + secondsLeft + "s.\n"
+                + invitation.status());
+        dialog.button("Accept", Boolean.TRUE);
+        dialog.button("Reject", Boolean.FALSE);
+        dialog.setModal(true);
+        invitationDialog = dialog;
+        dialog.show(host.stage);
+    }
+
+    private void dismissInvitationDialog() {
+        if (invitationDialog != null) {
+            invitationDialog.hide();
+            invitationDialog = null;
+        }
     }
 
     public void dispose() {
         disposed = true;
+        dismissInvitationDialog();
+        if (invitationBridge != null) {
+            invitationBridge.close();
+        }
         Screen current = game.getScreen();
         if (current != null) {
             current.dispose();

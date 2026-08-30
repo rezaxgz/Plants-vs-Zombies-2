@@ -154,5 +154,45 @@ each participant for a normal terminal result.
 `NetworkClient` reader thread, ignores older simulation snapshots, isolates
 listener exceptions, and supports removable listeners. Callbacks must never
 call LibGDX UI APIs directly; graphical code must dispatch to the render thread.
-Graphical multiplayer UI/interpolation, reactions, leaderboard support, and
-gameplay-progress persistence remain later-stage work.
+
+### Stage 7 graphical multiplayer flow
+
+The main menu keeps the existing single-player **Play** route and adds a separate
+**Multiplayer I, Zombie** entry. It uses the authenticated remote `AccountSession`
+and never authenticates or matchmakes through `UserManager`. A user can invite a
+specific username (and cancel/retry after recoverable errors) or join/leave the
+random queue. `RemoteAccountSession`'s existing `MatchmakingClient` and
+`MultiplayerGameClient` are adapted behind small controller interfaces, so no
+extra socket or client-to-client connection is opened.
+
+One application-scoped invitation bridge owns incoming invitation events across
+ordinary menu changes. It displays the inviter and expiration, accepts/rejects
+once, clears stale notifications on logout/disconnect, and routes `MATCH_FOUND`
+exactly once to the pre-game screen. The pre-game screen displays the server
+match ID, opponent and fixed `PLANTS`/`ZOMBIES` assignment, tracks both ready
+states, submits local ready once, and enters the live screen only on the
+authoritative `MATCH_STARTED` event.
+
+The live screen renders immutable `MatchStateSnapshot` data: board dimensions,
+red-line boundary, server resources, remaining time, brains, plants, zombies,
+projectiles and health. Stable server entity/projectile IDs key graphical actors.
+Older simulation ticks are ignored. Plant/zombie placement and plant removal use
+the newest server mutation revision and never create optimistic entities or
+spend resources locally. Controls are role-specific while the server continues
+to enforce every permission and placement rule.
+
+Normal `MATCH_FINISHED` results show the winner plus stable reasons such as
+`ALL_BRAINS_EATEN` or `TIME_EXPIRED` over the final snapshot. Leave, disconnect
+and shutdown cancellation are presented separately and declare no winner. Every
+screen/controller removes listeners during disposal and ignores late callbacks.
+Network events and future completions cross the injected `UiDispatcher`; the
+LibGDX implementation uses `Gdx.app.postRunnable(...)`, keeping Scene2D mutation
+and navigation on the render thread.
+
+Stage 7 controller tests are asset-independent. The graphical integration reuses
+the current skin/rendering primitives and adds no binary assets. A desktop smoke
+test still requires the complete `pvz-assets` bundle in its normal runtime
+location; a missing bundle is not replaced with committed placeholder assets.
+
+Reactions/messages, server-backed leaderboards, progress sync, Couch Play,
+persistent login tokens, automatic reconnect loops and TLS remain out of scope.
