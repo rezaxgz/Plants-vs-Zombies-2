@@ -199,7 +199,17 @@ public final class MainMenuScreen extends AbstractScreen {
                 navigator.showAdventureScreen();
             }
         });
-        center.add(playButton).width(260f).height(70f);
+        center.add(playButton).width(260f).height(70f).row();
+
+        TextButton multiplayerButton = new TextButton(
+                "Multiplayer I, Zombie", skin, "green");
+        multiplayerButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                navigator.showMultiplayerIZombieMenu();
+            }
+        });
+        center.add(multiplayerButton).width(310f).height(64f).padTop(12f);
 
         content.add(center).grow().top();
     }
