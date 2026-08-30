@@ -20,7 +20,7 @@ import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolException;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessages;
 
-/** Typed Stage 5 API that reuses an existing NetworkClient connection. */
+/** Typed headless multiplayer API that reuses an existing NetworkClient connection. */
 public final class MultiplayerGameClient implements AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(MultiplayerGameClient.class.getName());
 
@@ -32,6 +32,9 @@ public final class MultiplayerGameClient implements AutoCloseable {
         @Override public void onDisconnected(Throwable cause) { clearState(); }
     };
     private volatile MatchStateSnapshot currentSnapshot;
+    private volatile String terminalMatchId;
+    private volatile long newestSimulationTick = -1L;
+    private volatile long newestRevision = -1L;
 
     public MultiplayerGameClient(NetworkClient networkClient) {
         this.networkClient = Objects.requireNonNull(networkClient, "networkClient");
@@ -89,7 +92,7 @@ public final class MultiplayerGameClient implements AutoCloseable {
                 ProtocolMessages.newRequestId(), payload), responseType)
                 .thenApply(message -> read(message, ActionResult.class))
                 .thenApply(result -> {
-                    currentSnapshot = result.getSnapshot();
+                    remember(result.getSnapshot());
                     return result;
                 });
     }
@@ -104,7 +107,12 @@ public final class MultiplayerGameClient implements AutoCloseable {
 
     public MatchStateSnapshot getCurrentSnapshot() { return currentSnapshot; }
 
-    public void clearState() { currentSnapshot = null; }
+    public synchronized void clearState() {
+        currentSnapshot = null;
+        terminalMatchId = null;
+        newestSimulationTick = -1L;
+        newestRevision = -1L;
+    }
 
     @Override
     public void close() {
@@ -121,9 +129,27 @@ public final class MultiplayerGameClient implements AutoCloseable {
                     notifyListeners(listener -> listener.opponentReady(status));
                 }
                 case MATCH_STARTED -> {
-                    MatchStateSnapshot snapshot = remember(
-                            read(message, MatchStateSnapshot.class));
+                    MatchStateSnapshot incoming = read(message, MatchStateSnapshot.class);
+                    synchronized (this) {
+                        terminalMatchId = null;
+                        newestSimulationTick = -1L;
+                        newestRevision = -1L;
+                    }
+                    MatchStateSnapshot snapshot = remember(incoming);
                     notifyListeners(listener -> listener.matchStarted(snapshot));
+                }
+                case MATCH_STATE_UPDATED -> {
+                    MatchStateSnapshot incoming = read(message, MatchStateSnapshot.class);
+                    if (rememberIfNewer(incoming)) {
+                        notifyListeners(listener -> listener.matchStateUpdated(incoming));
+                    }
+                }
+                case MATCH_FINISHED -> {
+                    MatchStateSnapshot incoming = read(message, MatchStateSnapshot.class);
+                    if (rememberTerminal(incoming)) {
+                        notifyListeners(listener -> listener.matchFinished(incoming));
+                    }
+                    clearFinishedSnapshot(incoming.getMatchId());
                 }
                 case MATCH_CANCELLED -> {
                     MatchCancelled cancellation = read(message, MatchCancelled.class);
@@ -137,9 +163,47 @@ public final class MultiplayerGameClient implements AutoCloseable {
         }
     }
 
-    private MatchStateSnapshot remember(MatchStateSnapshot snapshot) {
+    private synchronized MatchStateSnapshot remember(MatchStateSnapshot snapshot) {
+        rememberIfNewer(snapshot);
+        return currentSnapshot == null ? snapshot : currentSnapshot;
+    }
+
+    private synchronized boolean rememberIfNewer(MatchStateSnapshot snapshot) {
+        if (snapshot == null) return false;
+        if (terminalMatchId != null
+                && terminalMatchId.equals(snapshot.getMatchId())) {
+            return false;
+        }
+        MatchStateSnapshot current = currentSnapshot;
+        if (current != null && current.getMatchId().equals(snapshot.getMatchId())) {
+            if (snapshot.getSimulationTick() < newestSimulationTick
+                    || snapshot.getSimulationTick() == newestSimulationTick
+                    && snapshot.getRevision() < newestRevision) {
+                return false;
+            }
+        }
         currentSnapshot = snapshot;
-        return snapshot;
+        newestSimulationTick = snapshot.getSimulationTick();
+        newestRevision = snapshot.getRevision();
+        return true;
+    }
+
+    private synchronized boolean rememberTerminal(MatchStateSnapshot snapshot) {
+        if (snapshot == null || snapshot.getMatchId().equals(terminalMatchId)) {
+            return false;
+        }
+        terminalMatchId = snapshot.getMatchId();
+        currentSnapshot = snapshot;
+        newestSimulationTick = snapshot.getSimulationTick();
+        newestRevision = snapshot.getRevision();
+        return true;
+    }
+
+    private synchronized void clearFinishedSnapshot(String matchId) {
+        if (currentSnapshot != null
+                && currentSnapshot.getMatchId().equals(matchId)) {
+            currentSnapshot = null;
+        }
     }
 
     private CompletableFuture<ProtocolMessage> exchange(
