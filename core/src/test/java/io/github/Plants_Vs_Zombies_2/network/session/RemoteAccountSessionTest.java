@@ -95,10 +95,14 @@ class RemoteAccountSessionTest {
                 "Plants_Vs_Zombies_2", "view", "screens");
         String login = Files.readString(screens.resolve("LoginScreen.java"));
         String signup = Files.readString(screens.resolve("SignUpScreen.java"));
+        String profile = Files.readString(screens.resolve("ProfileScreen.java"));
         assertFalse(login.contains("UserManager"));
         assertFalse(login.contains("LoginMenuController"));
         assertFalse(signup.contains("UserManager"));
         assertFalse(signup.contains("SignupMenuController"));
+        assertFalse(profile.contains("UserManager"));
+        assertFalse(profile.contains("ProfileMenuController"));
+        assertTrue(profile.contains("ProfileFlowController"));
     }
 
     private static final class FakeTransport implements RemoteAccountTransport {
