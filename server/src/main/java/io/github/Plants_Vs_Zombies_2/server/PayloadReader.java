@@ -3,12 +3,15 @@ package io.github.Plants_Vs_Zombies_2.server;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import io.github.Plants_Vs_Zombies_2.network.auth.LoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
 
 final class PayloadReader {
+    private static final Gson GSON = new Gson();
     private final JsonObject payload;
 
     private PayloadReader(ProtocolMessage message) throws AccountServiceException {
@@ -89,6 +92,21 @@ final class PayloadReader {
             return value.getAsBigDecimal().longValueExact();
         } catch (ArithmeticException | NumberFormatException exception) {
             throw malformed(field + " must be an integer");
+        }
+    }
+
+    <T> T requiredObject(String field, Class<T> type)
+            throws AccountServiceException {
+        JsonElement value = payload.get(field);
+        if (value == null || !value.isJsonObject()) {
+            throw malformed(field + " must be an object");
+        }
+        try {
+            T result = GSON.fromJson(value, type);
+            if (result == null) throw new JsonParseException("null object");
+            return result;
+        } catch (JsonParseException | IllegalStateException exception) {
+            throw malformed(field + " is malformed");
         }
     }
 

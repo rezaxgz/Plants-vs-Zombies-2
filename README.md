@@ -194,5 +194,39 @@ the current skin/rendering primitives and adds no binary assets. A desktop smoke
 test still requires the complete `pvz-assets` bundle in its normal runtime
 location; a missing bundle is not replaced with committed placeholder assets.
 
-Reactions/messages, server-backed leaderboards, progress sync, Couch Play,
+Reactions/messages, server-backed leaderboards, Couch Play,
 persistent login tokens, automatic reconnect loops and TLS remain out of scope.
+
+### Stage 8 server-backed gameplay progress
+
+Authenticated remote accounts now persist gameplay through the server users
+database. The synchronized state includes coins, diamonds, sprouts, plant food,
+pot inventory and greenhouse unlock count; chapter/level, minigame completion,
+high score and games-played statistics; adventure/minigame unlock records;
+plant and zombie collections, plant boosts, and daily-offer purchase state.
+Passwords, hashes, security answers, profile fields, and connection state are
+never part of gameplay responses or update requests.
+
+Each account stores a gameplay revision in the existing backward-compatible
+JSON record (legacy records begin at revision 0). A complete validated update is
+written atomically and increments that revision once. Stale updates are rejected
+without mutation. The client refreshes after a conflict but preserves its dirty
+local compatibility state; overwriting newer server data requires an explicit
+retry. Timeouts and server failures also remain dirty/recoverable and are not
+blindly retried.
+
+The application-scoped synchronizer shares `RemoteAccountSession`'s one socket.
+The render loop only observes whether the compatibility `User` changed; actual
+requests are asynchronous, serialized, and coalesced. Login/clean refresh
+hydrates the compatibility user, successful acknowledgements update the cached
+profile, and logout attempts an asynchronous flush. The compatibility user is
+never inserted into `UserManager`, so local `data/users.json` is not used for
+remote gameplay and another device receives the latest acknowledged server
+state on login.
+
+Full greenhouse planted-pot contents, active quest-instance progress/news, and
+saved in-progress adventure boards are not synchronized yet. Their resulting
+currency, collection, score, and completion changes are synchronized, but those
+three richer object graphs require dedicated conflict policies in a later stage.
+There is still no leaderboard, offline retry queue, automatic reconnect, or
+persistent login token support.

@@ -1,6 +1,7 @@
 package io.github.Plants_Vs_Zombies_2.server;
 
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.protocol.MessageType;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
@@ -55,6 +56,9 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             return error(message, exception.getErrorCode(), exception.getMessage());
         } catch (MultiplayerSessionException exception) {
             return error(message, exception.getErrorCode(), exception.getMessage());
+        } catch (RuntimeException exception) {
+            return error(message, ProtocolErrorCode.INTERNAL_SERVER_ERROR,
+                    "The server could not process this request");
         }
     }
 
@@ -107,6 +111,8 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             case LOGIN_REQUEST -> login(message, context);
             case LOGOUT_REQUEST -> logout(message, context);
             case GET_PROFILE_REQUEST -> getProfile(message, context);
+            case GET_GAMEPLAY_STATE_REQUEST -> getGameplayState(message, context);
+            case SYNC_GAMEPLAY_STATE_REQUEST -> synchronizeGameplayState(message, context);
             case SEND_INVITATION_REQUEST -> sendInvitation(message, context);
             case RESPOND_INVITATION_REQUEST -> respondInvitation(message, context);
             case CANCEL_INVITATION_REQUEST -> cancelInvitation(message, context);
@@ -293,6 +299,27 @@ public final class ServerMessageHandler implements ServerRequestHandler {
                 MessageType.GET_PROFILE_RESPONSE,
                 message.getRequestId(),
                 accountService.getProfile(context));
+    }
+
+    private ProtocolMessage getGameplayState(ProtocolMessage message,
+            ConnectionContext context) throws AccountServiceException {
+        PayloadReader.from(message);
+        return ProtocolMessages.withPayload(MessageType.GET_GAMEPLAY_STATE_RESPONSE,
+                message.getRequestId(), accountService.getGameplayState(context));
+    }
+
+    private ProtocolMessage synchronizeGameplayState(ProtocolMessage message,
+            ConnectionContext context) throws AccountServiceException {
+        String username = requireAuthentication(context);
+        if (!connectionDirectory.isCurrent(username, context.getConnection())) {
+            throw new AccountServiceException(ProtocolErrorCode.AUTH_REQUIRED,
+                    "This authenticated connection is no longer current");
+        }
+        PayloadReader payload = PayloadReader.from(message);
+        return ProtocolMessages.withPayload(MessageType.SYNC_GAMEPLAY_STATE_RESPONSE,
+                message.getRequestId(), accountService.synchronizeGameplayState(
+                        context, payload.requiredLong("expectedRevision"),
+                        payload.requiredObject("state", GameplayState.class)));
     }
 
     private static ProtocolMessage error(

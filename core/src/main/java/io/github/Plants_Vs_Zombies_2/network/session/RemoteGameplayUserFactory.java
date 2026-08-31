@@ -6,6 +6,7 @@ import io.github.Plants_Vs_Zombies_2.model.enums.Gender;
 import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
 
 /**
  * Creates a temporary gameplay snapshot for legacy App.getLoggedInUser() call
@@ -19,6 +20,11 @@ public final class RemoteGameplayUserFactory {
     }
 
     public static User create(AccountProfile profile) {
+        return create(profile, null);
+    }
+
+    public static User create(AccountProfile profile,
+            GameplayStateSnapshot gameplaySnapshot) {
         Gender gender = profile.getGender() == null
                 ? Gender.MALE : Gender.getByName(profile.getGender());
         if (gender == null) {
@@ -38,6 +44,10 @@ public final class RemoteGameplayUserFactory {
                 null, null, null, null, progress);
         user.setSprouts(profile.getSprouts());
         user.setPotCount(profile.getPotCount());
+        if (gameplaySnapshot != null && gameplaySnapshot.getState() != null) {
+            user.applyGameplayState(gameplaySnapshot.getState());
+            user.setGameplayRevisionForStorage(gameplaySnapshot.getRevision());
+        }
         return user;
     }
 }

@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+
 public final class JsonUserRepository implements UserRepository {
     private final Path databasePath;
     private final List<User> users;
@@ -43,6 +46,44 @@ public final class JsonUserRepository implements UserRepository {
             return true;
         } catch (RuntimeException exception) {
             users.remove(user);
+            throw exception;
+        }
+    }
+
+    @Override
+    public synchronized Optional<GameplayStateSnapshot> findGameplayState(String username) {
+        return findByUsername(username).map(user -> new GameplayStateSnapshot(
+                user.getGameplayRevision(), GameplayState.fromUser(user)));
+    }
+
+    @Override
+    public synchronized GameplayStateSnapshot updateGameplayState(String username,
+            long expectedRevision, GameplayState state)
+            throws GameplayUpdateException {
+        User user = findByUsername(username).orElseThrow(() ->
+                new GameplayUpdateException(GameplayUpdateFailure.USER_NOT_FOUND,
+                        "The authenticated account no longer exists"));
+        if (expectedRevision != user.getGameplayRevision()) {
+            throw new GameplayUpdateException(GameplayUpdateFailure.STALE_REVISION,
+                    "Expected gameplay revision " + user.getGameplayRevision()
+                            + " but received " + expectedRevision);
+        }
+        if (user.getGameplayRevision() == Long.MAX_VALUE) {
+            throw new GameplayUpdateException(GameplayUpdateFailure.VALIDATION_FAILED,
+                    "Gameplay revision limit reached");
+        }
+        GameplayState previous = GameplayState.fromUser(user);
+        GameplayStateValidator.validate(state, previous);
+        long previousRevision = user.getGameplayRevision();
+        try {
+            user.applyGameplayState(state);
+            user.setGameplayRevisionForStorage(previousRevision + 1);
+            UserJsonDatabase.save(databasePath, users);
+            return new GameplayStateSnapshot(user.getGameplayRevision(),
+                    GameplayState.fromUser(user));
+        } catch (RuntimeException exception) {
+            user.applyGameplayState(previous);
+            user.setGameplayRevisionForStorage(previousRevision);
             throw exception;
         }
     }

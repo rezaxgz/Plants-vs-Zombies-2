@@ -11,6 +11,8 @@ import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
 
 /**
  * One application-scoped remote account session. It never blocks its caller;
@@ -27,7 +29,9 @@ public final class RemoteAccountSession implements AccountSession {
     private final List<SessionStateListener> listeners = new CopyOnWriteArrayList<>();
     private volatile ClientSessionState state = ClientSessionState.DISCONNECTED;
     private volatile AccountProfile profile;
+    private volatile GameplayStateSnapshot gameplayStateSnapshot;
     private volatile Throwable lastFailure;
+    private long authenticationGeneration;
     private CompletableFuture<Void> connectionAttempt;
     private boolean closed;
 
@@ -96,15 +100,25 @@ public final class RemoteAccountSession implements AccountSession {
         return connect().thenCompose(ignored -> {
             transition(ClientSessionState.AUTHENTICATING, null);
             return transport.login(username, password);
-        }).whenComplete((result, failure) -> {
+        }).thenCompose(authenticatedProfile -> transport.getGameplayState()
+                .thenApply(gameplay -> new LoginResult(authenticatedProfile, gameplay)))
+        .whenComplete((result, failure) -> {
             if (failure == null) {
-                profile = result;
+                synchronized (lock) {
+                    authenticationGeneration++;
+                    gameplayStateSnapshot = result.gameplay();
+                    profile = result.profile().withGameplayState(
+                            result.gameplay().getState());
+                }
                 transition(ClientSessionState.AUTHENTICATED, null);
             } else {
                 profile = null;
+                gameplayStateSnapshot = null;
+                if (transport.isConnected()) transport.disconnect();
                 transitionAfterRequest(failure);
             }
-        });
+        }).thenApply(result -> result.profile().withGameplayState(
+                result.gameplay().getState()));
     }
 
     @Override
@@ -113,21 +127,61 @@ public final class RemoteAccountSession implements AccountSession {
             return CompletableFuture.failedFuture(
                     new IllegalStateException("No authenticated remote account"));
         }
+        long generation = currentGeneration();
         return connect().thenCompose(ignored -> transport.getProfile())
+                .thenCombine(transport.getGameplayState(), LoginResult::new)
                 .whenComplete((result, failure) -> {
                     if (failure == null) {
-                        profile = result;
+                        storeGameplaySnapshot(result.gameplay(), generation);
+                        if (currentGeneration() == generation && profile != null) {
+                            profile = result.profile().withGameplayState(
+                                    result.gameplay().getState());
+                        }
                         transition(ClientSessionState.AUTHENTICATED, null);
                     } else {
                         transitionAfterRequest(failure);
                     }
+                }).thenApply(result -> result.profile().withGameplayState(
+                        result.gameplay().getState()));
+    }
+
+    @Override
+    public GameplayStateSnapshot getGameplayStateSnapshot() {
+        return gameplayStateSnapshot;
+    }
+
+    @Override
+    public CompletableFuture<GameplayStateSnapshot> refreshGameplayState() {
+        if (profile == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("No authenticated remote account"));
+        }
+        long generation = currentGeneration();
+        return transport.getGameplayState().thenApply(snapshot -> {
+            storeGameplaySnapshot(snapshot, generation);
+            return snapshot;
+        });
+    }
+
+    @Override
+    public CompletableFuture<GameplayStateSnapshot> synchronizeGameplayState(
+            long expectedRevision, GameplayState state) {
+        if (profile == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("No authenticated remote account"));
+        }
+        long generation = currentGeneration();
+        return transport.synchronizeGameplayState(expectedRevision, state)
+                .thenApply(snapshot -> {
+                    storeGameplaySnapshot(snapshot, generation);
+                    return snapshot;
                 });
     }
 
     @Override
     public CompletableFuture<Void> logout() {
         AccountProfile previousProfile = profile;
-        profile = null;
+        clearAuthenticatedState();
         if (!transport.isConnected()) {
             clearMatchmakingState();
             transition(ClientSessionState.DISCONNECTED, null);
@@ -139,6 +193,7 @@ public final class RemoteAccountSession implements AccountSession {
                 : transport.logout();
         return request.whenComplete((ignored, failure) -> {
             profile = null;
+            gameplayStateSnapshot = null;
             clearMatchmakingState();
             if (failure != null && transport.isConnected()) {
                 // A timed-out logout has an unknown server outcome. Closing the
@@ -190,7 +245,7 @@ public final class RemoteAccountSession implements AccountSession {
 
     @Override
     public void disconnect() {
-        profile = null;
+        clearAuthenticatedState();
         clearMatchmakingState();
         transport.disconnect();
         transition(ClientSessionState.DISCONNECTED, null);
@@ -204,14 +259,14 @@ public final class RemoteAccountSession implements AccountSession {
             }
             closed = true;
         }
-        profile = null;
+        clearAuthenticatedState();
         clearMatchmakingState();
         transport.close();
         transition(ClientSessionState.CLOSED, null);
     }
 
     private void handleDisconnect(Throwable failure) {
-        profile = null;
+        clearAuthenticatedState();
         clearMatchmakingState();
         transition(closed ? ClientSessionState.CLOSED
                 : ClientSessionState.DISCONNECTED, failure);
@@ -238,6 +293,31 @@ public final class RemoteAccountSession implements AccountSession {
         }
     }
 
+    private long currentGeneration() {
+        synchronized (lock) { return authenticationGeneration; }
+    }
+
+    private void storeGameplaySnapshot(GameplayStateSnapshot snapshot,
+            long generation) {
+        synchronized (lock) {
+            if (closed || profile == null || authenticationGeneration != generation
+                    || snapshot == null || snapshot.getState() == null) return;
+            GameplayStateSnapshot current = gameplayStateSnapshot;
+            if (current == null || snapshot.getRevision() > current.getRevision()) {
+                gameplayStateSnapshot = snapshot;
+                profile = profile.withGameplayState(snapshot.getState());
+            }
+        }
+    }
+
+    private void clearAuthenticatedState() {
+        synchronized (lock) {
+            authenticationGeneration++;
+            profile = null;
+            gameplayStateSnapshot = null;
+        }
+    }
+
     private void transition(ClientSessionState next, Throwable failure) {
         ClientSessionState previous = state;
         state = next;
@@ -259,4 +339,7 @@ public final class RemoteAccountSession implements AccountSession {
         }
         return current;
     }
+
+    private record LoginResult(AccountProfile profile,
+            GameplayStateSnapshot gameplay) { }
 }

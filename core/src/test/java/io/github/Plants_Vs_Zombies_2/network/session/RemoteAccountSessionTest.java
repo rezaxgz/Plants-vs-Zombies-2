@@ -3,6 +3,7 @@ package io.github.Plants_Vs_Zombies_2.network.session;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +20,8 @@ import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
 
 class RemoteAccountSessionTest {
     private static final AccountProfile PROFILE = new AccountProfile(
@@ -47,9 +50,21 @@ class RemoteAccountSessionTest {
         RemoteAccountSession session = new RemoteAccountSession(transport);
 
         transport.loginFuture.complete(PROFILE);
-        assertSame(PROFILE, session.login("remote-only-user-for-test", "secret").join());
-        assertSame(PROFILE, session.getProfile());
+        AccountProfile loggedIn = session.login(
+                "remote-only-user-for-test", "secret").join();
+        assertEquals(PROFILE.getUsername(), loggedIn.getUsername());
+        assertEquals(PROFILE.getCoins(), session.getProfile().getCoins());
+        assertNotNull(session.getGameplayStateSnapshot());
         assertEquals(ClientSessionState.AUTHENTICATED, session.getState());
+
+        User compatibility = RemoteGameplayUserFactory.create(
+                session.getProfile(), session.getGameplayStateSnapshot());
+        compatibility.addCoins(10);
+        GameplayStateSnapshot synchronizedState = session.synchronizeGameplayState(
+                session.getGameplayStateSnapshot().getRevision(),
+                GameplayState.fromUser(compatibility)).join();
+        assertEquals(1L, synchronizedState.getRevision());
+        assertEquals(PROFILE.getCoins() + 10, session.getProfile().getCoins());
 
         transport.logoutFuture.completeExceptionally(
                 new IllegalStateException("Server disconnected"));
@@ -118,6 +133,19 @@ class RemoteAccountSessionTest {
         @Override
         public CompletableFuture<AccountProfile> getProfile() {
             return CompletableFuture.completedFuture(PROFILE);
+        }
+
+        @Override
+        public CompletableFuture<GameplayStateSnapshot> getGameplayState() {
+            return CompletableFuture.completedFuture(new GameplayStateSnapshot(0,
+                    GameplayState.fromUser(RemoteGameplayUserFactory.create(PROFILE))));
+        }
+
+        @Override
+        public CompletableFuture<GameplayStateSnapshot> synchronizeGameplayState(
+                long expectedRevision, GameplayState state) {
+            return CompletableFuture.completedFuture(
+                    new GameplayStateSnapshot(expectedRevision + 1, state));
         }
 
         @Override

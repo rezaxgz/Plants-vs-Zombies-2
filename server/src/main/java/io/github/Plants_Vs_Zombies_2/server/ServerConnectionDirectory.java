@@ -38,6 +38,11 @@ final class ServerConnectionDirectory {
         return connection != null && connection.isOpen();
     }
 
+    boolean isCurrent(String username, ClientConnection connection) {
+        return username != null && connection != null
+                && connections.get(username) == connection && connection.isOpen();
+    }
+
     void publish(List<MatchmakingEvent> events) {
         for (MatchmakingEvent event : events) {
             ClientConnection connection = connections.get(event.username());

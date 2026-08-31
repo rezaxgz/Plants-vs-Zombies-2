@@ -44,6 +44,7 @@ import io.github.Plants_Vs_Zombies_2.network.session.AccountSession;
 import io.github.Plants_Vs_Zombies_2.network.session.AuthenticationErrorMessages;
 import io.github.Plants_Vs_Zombies_2.network.session.ClientSessionState;
 import io.github.Plants_Vs_Zombies_2.network.session.RemoteGameplayUserFactory;
+import io.github.Plants_Vs_Zombies_2.network.session.RemoteGameplaySyncService;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMatchmakingTransport;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.InvitationNotificationBridge;
@@ -64,6 +65,7 @@ public final class ScreenNavigator {
     private final AccountSession accountSession;
     private final UiDispatcher uiDispatcher;
     private final InvitationNotificationBridge invitationBridge;
+    private final RemoteGameplaySyncService gameplaySync;
     private Dialog invitationDialog;
     private final Deque<Menu> history = new ArrayDeque<>();
 
@@ -71,6 +73,7 @@ public final class ScreenNavigator {
     private boolean transientScreenVisible;
     private boolean logoutInProgress;
     private boolean disposed;
+    private boolean exitInProgress;
     private String pendingAuthenticationNotice;
 
     public ScreenNavigator(Main game, Skin skin, TextureBank textureBank,
@@ -88,6 +91,7 @@ public final class ScreenNavigator {
         this.app = App.getInstance();
         this.accountSession = accountSession;
         this.uiDispatcher = UiDispatcher.libGdx();
+        this.gameplaySync = new RemoteGameplaySyncService(accountSession, uiDispatcher);
         MatchmakingClient matchmakingClient = accountSession.getMatchmakingClient();
         this.invitationBridge = matchmakingClient == null ? null
                 : new InvitationNotificationBridge(
@@ -107,6 +111,10 @@ public final class ScreenNavigator {
                     && current != ClientSessionState.AUTHENTICATED
                     && invitationBridge != null) {
                 uiDispatcher.dispatch(invitationBridge::clearTransientState);
+            }
+            if (previous == ClientSessionState.AUTHENTICATED
+                    && current != ClientSessionState.AUTHENTICATED) {
+                uiDispatcher.dispatch(gameplaySync::detach);
             }
             if (previous == ClientSessionState.AUTHENTICATED
                     && current == ClientSessionState.DISCONNECTED) {
@@ -134,6 +142,8 @@ public final class ScreenNavigator {
     public UiDispatcher getUiDispatcher() {
         return uiDispatcher;
     }
+
+    public RemoteGameplaySyncService getGameplaySync() { return gameplaySync; }
 
     public String consumeAuthenticationNotice() {
         String notice = pendingAuthenticationNotice;
@@ -214,8 +224,10 @@ public final class ScreenNavigator {
             invitationBridge.clearTransientState();
         }
         logoutInProgress = true;
-        accountSession.logout().whenComplete((ignored, failure) ->
-                uiDispatcher.dispatch(() -> finishRemoteLogout(failure)));
+        flushGameplay().whenComplete((snapshot, syncFailure) ->
+                accountSession.logout().whenComplete((ignored, logoutFailure) ->
+                        uiDispatcher.dispatch(() -> finishRemoteLogout(
+                                syncFailure != null ? syncFailure : logoutFailure))));
     }
 
     private void finishRemoteLogout(Throwable failure) {
@@ -239,7 +251,16 @@ public final class ScreenNavigator {
         if (invitationBridge != null) {
             invitationBridge.clearTransientState();
         }
-        app.setLoggedInUser(RemoteGameplayUserFactory.create(profile));
+        io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot snapshot =
+                accountSession.getGameplayStateSnapshot();
+        User compatibilityUser = RemoteGameplayUserFactory.create(profile, snapshot);
+        if (snapshot == null) {
+            snapshot = new io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot(
+                    0L, io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState
+                            .fromUser(compatibilityUser));
+        }
+        app.setLoggedInUser(compatibilityUser);
+        gameplaySync.attach(compatibilityUser, snapshot);
         history.clear();
         app.changeMenu(new MainMenu());
         showCurrentMenu();
@@ -271,9 +292,19 @@ public final class ScreenNavigator {
     }
 
     public void exitApplication() {
-        UserManager.saveAllUsers();
-        app.stop();
-        Gdx.app.exit();
+        if (exitInProgress) return;
+        exitInProgress = true;
+        flushGameplay().whenComplete((snapshot, failure) ->
+                uiDispatcher.dispatch(() -> {
+                    if (failure != null) {
+                        pendingAuthenticationNotice =
+                                "Gameplay changes could not be synchronized: "
+                                        + AuthenticationErrorMessages.forFailure(failure);
+                    }
+                    UserManager.saveAllUsers();
+                    app.stop();
+                    Gdx.app.exit();
+                }));
     }
 
     /**
@@ -433,6 +464,7 @@ public final class ScreenNavigator {
      * render automatically notices that and displays the corresponding GUI.
      */
     public void synchronizeWithModel() {
+        gameplaySync.observeAndSynchronize();
         if (transientScreenVisible) {
             return;
         }
@@ -510,7 +542,7 @@ public final class ScreenNavigator {
         if (disposed) return;
         dismissInvitationDialog();
         if (invitation != null) {
-            showCurrentInvitationOn(game.getScreen());
+            showInvitationOn(game.getScreen(), invitation);
         }
     }
 
@@ -526,6 +558,17 @@ public final class ScreenNavigator {
         InvitationNotificationBridge.InvitationView invitation =
                 invitationBridge.getCurrentInvitation();
         if (invitation == null) return;
+        showInvitationOn(current, invitation);
+    }
+
+    private void showInvitationOn(Screen current,
+            InvitationNotificationBridge.InvitationView invitation) {
+        if (invitation == null || disposed
+                || accountSession.getState() != ClientSessionState.AUTHENTICATED
+                || !(current instanceof AbstractScreen host)
+                || current instanceof MultiplayerPregameScreen
+                || current instanceof MultiplayerIZombieGameScreen
+                || current instanceof LoginScreen || current instanceof SignUpScreen) return;
         long secondsLeft = Math.max(0L,
                 (invitation.expiresAtEpochMillis() - System.currentTimeMillis() + 999L) / 1000L);
         Dialog dialog = new Dialog("Multiplayer invitation", skin) {
@@ -557,6 +600,7 @@ public final class ScreenNavigator {
 
     public void dispose() {
         disposed = true;
+        gameplaySync.close();
         dismissInvitationDialog();
         if (invitationBridge != null) {
             invitationBridge.close();
@@ -565,5 +609,14 @@ public final class ScreenNavigator {
         if (current != null) {
             current.dispose();
         }
+    }
+
+    private java.util.concurrent.CompletableFuture<io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot>
+            flushGameplay() {
+        if (!gameplaySync.getStatus().attached()) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    accountSession.getGameplayStateSnapshot());
+        }
+        return gameplaySync.flush();
     }
 }

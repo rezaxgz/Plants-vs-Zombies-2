@@ -29,6 +29,7 @@ public final class InvitationNotificationBridge implements AutoCloseable {
     private boolean responding;
     private boolean closed;
     private String deliveredMatchId;
+    private String responseError;
 
     private final MatchmakingListener listener = new MatchmakingListener() {
         @Override public void invitationReceived(Invitation invitation) {
@@ -54,7 +55,8 @@ public final class InvitationNotificationBridge implements AutoCloseable {
         if (pending == null) return null;
         return new InvitationView(pending.getInvitationId(),
                 pending.getInviterUsername(), pending.getExpirationTimeEpochMillis(),
-                responding, responding ? "Sending response..." : "Invitation pending");
+                responding, responding ? "Sending response..."
+                        : responseError == null ? "Invitation pending" : responseError);
     }
 
     public void accept() { respond(true); }
@@ -65,6 +67,7 @@ public final class InvitationNotificationBridge implements AutoCloseable {
                 || pending.getStatus() != InvitationStatus.PENDING) return;
         String id = pending.getInvitationId();
         responding = true;
+        responseError = null;
         publishInvitation();
         transport.respondToInvitation(id, accept).whenComplete((ignored, failure) ->
                 ui.dispatch(() -> {
@@ -72,10 +75,8 @@ public final class InvitationNotificationBridge implements AutoCloseable {
                             || !id.equals(pending.getInvitationId())) return;
                     responding = false;
                     if (failure != null) {
-                        String message = deepestMessage(failure);
-                        observer.invitationChanged(new InvitationView(id,
-                                pending.getInviterUsername(),
-                                pending.getExpirationTimeEpochMillis(), false, message));
+                        responseError = deepestMessage(failure);
+                        publishInvitation();
                     } else if (!accept) {
                         pending = null;
                         observer.invitationChanged(null);
@@ -93,6 +94,7 @@ public final class InvitationNotificationBridge implements AutoCloseable {
                 || invitation.getStatus() != InvitationStatus.PENDING) return;
         pending = invitation;
         responding = false;
+        responseError = null;
         publishInvitation();
     }
 
@@ -106,6 +108,7 @@ public final class InvitationNotificationBridge implements AutoCloseable {
         }
         pending = null;
         responding = false;
+        responseError = null;
         observer.invitationChanged(null);
     }
 
@@ -115,6 +118,7 @@ public final class InvitationNotificationBridge implements AutoCloseable {
         deliveredMatchId = assignment.getMatchId();
         pending = null;
         responding = false;
+        responseError = null;
         observer.invitationChanged(null);
         observer.matchFound(assignment);
     }
@@ -124,6 +128,7 @@ public final class InvitationNotificationBridge implements AutoCloseable {
         pending = null;
         responding = false;
         deliveredMatchId = null;
+        responseError = null;
         observer.invitationChanged(null);
     }
 

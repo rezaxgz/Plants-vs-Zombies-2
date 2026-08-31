@@ -2,6 +2,7 @@ package io.github.Plants_Vs_Zombies_2.network.auth;
 
 import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 
 public final class AccountProfile {
     private final String username;
@@ -67,6 +68,15 @@ public final class AccountProfile {
                 progress.getCompletedMinigames(),
                 progress.getHighestScore(),
                 progress.getGamesPlayed());
+    }
+
+    public AccountProfile withGameplayState(GameplayState state) {
+        return new AccountProfile(username, nickname, email, gender,
+                state.getCoins(), state.getDiamonds(), state.getSprouts(),
+                state.getPlantFoodCount(), state.getPotCount(),
+                state.getLastCompletedChapter(), state.getLastCompletedLevel(),
+                state.getCompletedMinigames(), state.getHighestScore(),
+                state.getGamesPlayed());
     }
 
     public String getUsername() {

@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -160,6 +162,50 @@ class MultiplayerStage7ControllerTest {
             assertNull(current.get());
             assertTrue(dispatches.get() >= 2);
         }
+    }
+
+    @Test
+    void invitationResponseErrorRemainsVisibleAndRecoverableForRetry() {
+        FakeMatchmaking transport = new FakeMatchmaking();
+        AtomicReference<InvitationNotificationBridge.InvitationView> current =
+                new AtomicReference<>();
+        try (InvitationNotificationBridge bridge = new InvitationNotificationBridge(
+                transport, UiDispatcher.direct(), new InvitationNotificationBridge.Observer() {
+                    @Override public void invitationChanged(
+                            InvitationNotificationBridge.InvitationView invitation) {
+                        current.set(invitation);
+                    }
+                    @Override public void matchFound(MatchAssignment assignment) { }
+                })) {
+            transport.fireInvitationReceived(invitation("retry", InvitationStatus.PENDING));
+            bridge.accept();
+            transport.responseFuture.completeExceptionally(
+                    new IllegalStateException("Server rejected this invitation"));
+            assertTrue(current.get().status().contains("Server rejected"));
+            assertEquals(current.get(), bridge.getCurrentInvitation(),
+                    "the navigator's current-view path must retain the real error");
+            assertFalse(current.get().responding());
+
+            transport.responseFuture = new CompletableFuture<>();
+            bridge.accept();
+            assertEquals(2, transport.responseCalls);
+            assertTrue(current.get().responding());
+            transport.fireInvitationResult(invitation("retry", InvitationStatus.EXPIRED));
+            assertNull(current.get());
+        }
+    }
+
+    @Test
+    void navigatorUsesTheErrorSpecificInvitationViewInsteadOfRefetching()
+            throws Exception {
+        Path navigator = Path.of("src", "main", "java", "io", "github",
+                "Plants_Vs_Zombies_2", "view", "screens", "ScreenNavigator.java");
+        String source = Files.readString(navigator);
+        int start = source.indexOf("private void handleInvitationChanged");
+        int end = source.indexOf("private void showCurrentInvitationOn", start);
+        String handler = source.substring(start, end);
+        assertTrue(handler.contains("showInvitationOn(game.getScreen(), invitation)"));
+        assertFalse(handler.contains("getCurrentInvitation()"));
     }
 
     @Test
