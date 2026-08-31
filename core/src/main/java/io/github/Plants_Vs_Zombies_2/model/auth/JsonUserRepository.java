@@ -8,6 +8,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardEntry;
+
 public final class JsonUserRepository implements UserRepository {
     private final Path databasePath;
     private final List<User> users;
@@ -32,6 +36,21 @@ public final class JsonUserRepository implements UserRepository {
     }
 
     @Override
+    public synchronized List<LeaderboardEntry> snapshotLeaderboardEntries() {
+        List<LeaderboardEntry> snapshot = new ArrayList<>(users.size());
+        for (User user : users) {
+            snapshot.add(new LeaderboardEntry(0, user.getUsername(),
+                    user.getGameProgerss().getLastCompletedChapter(),
+                    user.getGameProgerss().getLastCompletedLevel(),
+                    user.getGameProgerss().getCompletedMinigames(),
+                    user.getQuestProgress().getCompletedDailyQuests(),
+                    user.getQuestProgress().getCompletedNonDailyQuests(),
+                    user.getGameProgerss().getHighestScore()));
+        }
+        return List.copyOf(snapshot);
+    }
+
+    @Override
     public synchronized boolean addIfUsernameAvailable(User user) {
         Objects.requireNonNull(user, "user");
         if (findByUsername(user.getUsername()).isPresent()) {
@@ -43,6 +62,50 @@ public final class JsonUserRepository implements UserRepository {
             return true;
         } catch (RuntimeException exception) {
             users.remove(user);
+            throw exception;
+        }
+    }
+
+    @Override
+    public synchronized Optional<GameplayStateSnapshot> findGameplayState(String username) {
+        return findByUsername(username).map(user -> {
+            user.getQuestProgress().ensureInitialized(user);
+            return new GameplayStateSnapshot(user.getGameplayRevision(),
+                    GameplayState.fromUser(user));
+        });
+    }
+
+    @Override
+    public synchronized GameplayStateSnapshot updateGameplayState(String username,
+            long expectedRevision, GameplayState state)
+            throws GameplayUpdateException {
+        User user = findByUsername(username).orElseThrow(() ->
+                new GameplayUpdateException(GameplayUpdateFailure.USER_NOT_FOUND,
+                        "The authenticated account no longer exists"));
+        if (expectedRevision != user.getGameplayRevision()) {
+            throw new GameplayUpdateException(GameplayUpdateFailure.STALE_REVISION,
+                    "Expected gameplay revision " + user.getGameplayRevision()
+                            + " but received " + expectedRevision);
+        }
+        if (user.getGameplayRevision() == Long.MAX_VALUE) {
+            throw new GameplayUpdateException(GameplayUpdateFailure.VALIDATION_FAILED,
+                    "Gameplay revision limit reached");
+        }
+        user.getQuestProgress().ensureInitialized(user);
+        GameplayState previous = GameplayState.fromUser(user);
+        GameplayState normalized = state == null ? null
+                : state.withRichStateFrom(previous);
+        GameplayStateValidator.validate(normalized, previous);
+        long previousRevision = user.getGameplayRevision();
+        try {
+            user.applyGameplayState(normalized);
+            user.setGameplayRevisionForStorage(previousRevision + 1);
+            UserJsonDatabase.save(databasePath, users);
+            return new GameplayStateSnapshot(user.getGameplayRevision(),
+                    GameplayState.fromUser(user));
+        } catch (RuntimeException exception) {
+            user.applyGameplayState(previous);
+            user.setGameplayRevisionForStorage(previousRevision);
             throw exception;
         }
     }

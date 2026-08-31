@@ -168,6 +168,11 @@ final class UserJsonDatabase {
         int greenhousePotsUnlocked = getInt(storedUser, "greenhousePotsUnlocked", 0);
         int potCount = getInt(storedUser, "potCount", 0);
         int plantFoodCount = getInt(storedUser, "plantFoodCount", 0);
+        long gameplayRevision = getLong(storedUser, "gameplayRevision", 0L);
+        if (gameplayRevision < 0) {
+            throw new IllegalArgumentException(prefix
+                    + ".gameplayRevision cannot be negative");
+        }
 
         Object ghObj = storedUser.get("greenHouse");
         GreenHouse greenHouse = ghObj != null ? readGreenHouse((Map<String, Object>) ghObj, prefix + ".greenHouse")
@@ -225,6 +230,7 @@ final class UserJsonDatabase {
         user.setDailyOfferPlant(dailyOfferPlant);
         user.setDailyOfferPurchased(dailyOfferPurchased);
         user.setPotCount(potCount);
+        user.setGameplayRevisionForStorage(gameplayRevision);
 
         return user;
     }
@@ -527,6 +533,8 @@ final class UserJsonDatabase {
         appendNumberProperty(json, indent, "greenhousePotsUnlocked", user.getGreenhousePotsUnlocked(), true);
         appendNumberProperty(json, indent, "potCount", user.getPotCount(), true);
         appendNumberProperty(json, indent, "plantFoodCount", user.getPlantFoodCount(), true);
+        appendLongProperty(json, indent, "gameplayRevision",
+                user.getGameplayRevision(), true);
         appendSettings(json, user.getSettings(), indent);
         appendAdventureProgress(json, user.getAdventureProgress(), indent);
         appendGameProgress(json, user.getGameProgerss(), indent);

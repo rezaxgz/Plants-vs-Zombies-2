@@ -1,6 +1,8 @@
 package io.github.Plants_Vs_Zombies_2.server;
 
 import io.github.Plants_Vs_Zombies_2.model.auth.UserRepository;
+import io.github.Plants_Vs_Zombies_2.model.auth.GameplayUpdateException;
+import io.github.Plants_Vs_Zombies_2.model.auth.GameplayUpdateFailure;
 import io.github.Plants_Vs_Zombies_2.model.enums.Gender;
 import io.github.Plants_Vs_Zombies_2.model.security.Question;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
@@ -9,15 +11,21 @@ import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.LoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardPage;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardQuery;
 
 import java.util.List;
 import java.util.Locale;
 
 final class ServerAccountService {
     private final UserRepository repository;
+    private final LeaderboardService leaderboardService;
 
     ServerAccountService(UserRepository repository) {
         this.repository = repository;
+        this.leaderboardService = new LeaderboardService(repository);
     }
 
     void register(RegistrationDetails details) throws AccountServiceException {
@@ -81,6 +89,50 @@ final class ServerAccountService {
         User user = repository.findByUsername(username).orElseThrow(() ->
                 new IllegalStateException("Authenticated account is missing from repository"));
         return AccountProfile.fromUser(user);
+    }
+
+    GameplayStateSnapshot getGameplayState(ConnectionContext context)
+            throws AccountServiceException {
+        String username = requireAuthentication(context);
+        return repository.findGameplayState(username).orElseThrow(() ->
+                new AccountServiceException(ProtocolErrorCode.USER_NOT_FOUND,
+                        "The authenticated account no longer exists"));
+    }
+
+    GameplayStateSnapshot synchronizeGameplayState(ConnectionContext context,
+            long expectedRevision, GameplayState state)
+            throws AccountServiceException {
+        String username = requireAuthentication(context);
+        if (expectedRevision < 0) {
+            throw new AccountServiceException(ProtocolErrorCode.VALIDATION_FAILED,
+                    "expectedRevision cannot be negative");
+        }
+        try {
+            return repository.updateGameplayState(username, expectedRevision, state);
+        } catch (GameplayUpdateException exception) {
+            ProtocolErrorCode code = exception.getFailure()
+                    == GameplayUpdateFailure.STALE_REVISION
+                            ? ProtocolErrorCode.STALE_ACCOUNT_REVISION
+                            : exception.getFailure() == GameplayUpdateFailure.USER_NOT_FOUND
+                                    ? ProtocolErrorCode.USER_NOT_FOUND
+                                    : ProtocolErrorCode.VALIDATION_FAILED;
+            throw new AccountServiceException(code, exception.getMessage());
+        }
+    }
+
+    LeaderboardPage getLeaderboard(String authenticatedUsername,
+            LeaderboardQuery query) throws AccountServiceException {
+        return leaderboardService.getPage(authenticatedUsername, query);
+    }
+
+    private static String requireAuthentication(ConnectionContext context)
+            throws AccountServiceException {
+        String username = context.getAuthenticatedUsername();
+        if (username == null) {
+            throw new AccountServiceException(ProtocolErrorCode.AUTH_REQUIRED,
+                    "Authentication is required");
+        }
+        return username;
     }
 
     String connectionClosed(ConnectionContext context) {

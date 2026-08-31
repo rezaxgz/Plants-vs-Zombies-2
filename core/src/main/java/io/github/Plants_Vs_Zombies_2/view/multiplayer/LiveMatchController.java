@@ -1,7 +1,10 @@
 package io.github.Plants_Vs_Zombies_2.view.multiplayer;
 
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
@@ -9,6 +12,9 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchCancelled;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ActionResult;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionEvent;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionReceipt;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionType;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameException;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameListener;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
@@ -19,11 +25,19 @@ import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
  * combat, resources, time, brains and the winner all come from server snapshots.
  */
 public final class LiveMatchController implements AutoCloseable {
+    static final int MAX_RECENT_REACTIONS = 5;
     public enum TerminalKind { NONE, VICTORY, CANCELLATION }
 
     public record State(MatchStateSnapshot snapshot, MatchRole localRole,
             String opponent, boolean commandInFlight, String status,
-            TerminalKind terminalKind, String cancellationReason) { }
+            TerminalKind terminalKind, String cancellationReason,
+            boolean reactionInFlight, List<MatchReactionEvent> recentReactions,
+            String reactionStatus) {
+        public State {
+            recentReactions = recentReactions == null
+                    ? List.of() : List.copyOf(recentReactions);
+        }
+    }
 
     private final MultiplayerTransport transport;
     private final UiDispatcher ui;
@@ -38,6 +52,10 @@ public final class LiveMatchController implements AutoCloseable {
     private String status = "Waiting for authoritative server state...";
     private TerminalKind terminalKind = TerminalKind.NONE;
     private String cancellationReason;
+    private boolean reactionInFlight;
+    private final List<MatchReactionEvent> recentReactions = new ArrayList<>();
+    private long newestReactionSequence;
+    private String reactionStatus = "Choose a predefined reaction.";
 
     private final MultiplayerGameListener listener = new MultiplayerGameListener() {
         @Override public void matchStarted(MatchStateSnapshot incoming) {
@@ -51,6 +69,12 @@ public final class LiveMatchController implements AutoCloseable {
         }
         @Override public void matchCancelled(MatchCancelled cancellation) {
             ui.dispatch(() -> cancel(cancellation));
+        }
+        @Override public void reactionReceived(MatchReactionEvent reaction) {
+            ui.dispatch(() -> acceptReaction(reaction));
+        }
+        @Override public void connectionLost(Throwable cause) {
+            ui.dispatch(() -> cancel(null));
         }
     };
 
@@ -69,7 +93,8 @@ public final class LiveMatchController implements AutoCloseable {
 
     public State getState() {
         return new State(snapshot, assignment.getRole(), assignment.getOpponentUsername(),
-                commandInFlight, status, terminalKind, cancellationReason);
+                commandInFlight, status, terminalKind, cancellationReason,
+                reactionInFlight, recentReactions, reactionStatus);
     }
 
     public void refresh() {
@@ -113,6 +138,34 @@ public final class LiveMatchController implements AutoCloseable {
                 currentRevision()));
     }
 
+    public void sendReaction(MatchReactionType reactionType) {
+        if (disposed || reactionInFlight
+                || terminalKind != TerminalKind.NONE || reactionType == null) return;
+        reactionInFlight = true;
+        reactionStatus = "Sending " + reactionType.getDisplayText() + "...";
+        publish();
+        CompletableFuture<MatchReactionReceipt> request;
+        try {
+            request = transport.sendReaction(assignment.getMatchId(), reactionType);
+        } catch (RuntimeException failure) {
+            reactionInFlight = false;
+            reactionStatus = readableReactionFailure(failure);
+            publish();
+            return;
+        }
+        request.whenComplete((receipt, failure) -> ui.dispatch(() -> {
+            if (disposed) return;
+            reactionInFlight = false;
+            reactionStatus = failure == null
+                    ? receipt != null
+                            && newestReactionSequence >= receipt.getSequence()
+                                    ? "Reaction delivered."
+                                    : "Reaction confirmed; waiting for the server event."
+                    : readableReactionFailure(failure);
+            publish();
+        }));
+    }
+
     public void leave() {
         if (disposed || commandInFlight || terminalKind != TerminalKind.NONE) return;
         commandInFlight = true;
@@ -129,6 +182,7 @@ public final class LiveMatchController implements AutoCloseable {
                         terminalKind = TerminalKind.CANCELLATION;
                         cancellationReason = "You left the match.";
                         terminalDelivered = true;
+                        clearReactions();
                         publish();
                     }
                 }));
@@ -201,6 +255,19 @@ public final class LiveMatchController implements AutoCloseable {
         publish();
     }
 
+    private void acceptReaction(MatchReactionEvent reaction) {
+        if (disposed || terminalKind != TerminalKind.NONE || reaction == null
+                || !assignment.getMatchId().equals(reaction.getMatchId())
+                || reaction.getSequence() <= newestReactionSequence) return;
+        newestReactionSequence = reaction.getSequence();
+        recentReactions.add(reaction);
+        while (recentReactions.size() > MAX_RECENT_REACTIONS) {
+            recentReactions.remove(0);
+        }
+        reactionStatus = "Server-confirmed reaction #" + reaction.getSequence();
+        publish();
+    }
+
     private void finish(MatchStateSnapshot finalSnapshot) {
         if (disposed || terminalDelivered || finalSnapshot == null
                 || !assignment.getMatchId().equals(finalSnapshot.getMatchId())) return;
@@ -210,6 +277,7 @@ public final class LiveMatchController implements AutoCloseable {
         newestRevision = Math.max(newestRevision, finalSnapshot.getRevision());
         terminalDelivered = true;
         terminalKind = TerminalKind.VICTORY;
+        clearReactions();
         status = "Match finished: " + finalSnapshot.getFinishReason();
         publish();
     }
@@ -223,7 +291,15 @@ public final class LiveMatchController implements AutoCloseable {
         cancellationReason = cancellation == null ? "Connection lost."
                 : cancellation.getReason();
         status = "Match cancelled: " + cancellationReason;
+        clearReactions();
         publish();
+    }
+
+    private void clearReactions() {
+        reactionInFlight = false;
+        recentReactions.clear();
+        newestReactionSequence = 0L;
+        reactionStatus = "Reaction state cleared.";
     }
 
     private static Throwable unwrap(Throwable failure) {
@@ -237,6 +313,33 @@ public final class LiveMatchController implements AutoCloseable {
         return cause.getMessage() == null ? "Multiplayer request failed." : cause.getMessage();
     }
 
+    private static String readableReactionFailure(Throwable failure) {
+        Throwable cause = unwrap(failure);
+        if (cause instanceof MultiplayerGameException gameFailure) {
+            return switch (gameFailure.getErrorCode()) {
+                case REACTION_RATE_LIMITED ->
+                        "Reaction cooldown active. Try again shortly.";
+                case MATCH_NOT_FOUND, MATCH_NOT_ACTIVE,
+                        NOT_MATCH_PARTICIPANT ->
+                        "This match no longer accepts reactions.";
+                case AUTH_REQUIRED ->
+                        "Authentication was lost; reactions are unavailable.";
+                case INTERNAL_SERVER_ERROR ->
+                        "The server could not send the reaction. Try again.";
+                default -> "Reaction rejected: " + gameFailure.getMessage();
+            };
+        }
+        if (cause instanceof TimeoutException) {
+            return "Reaction timed out; it was not retried automatically.";
+        }
+        String message = cause.getMessage();
+        if (message != null && (message.toLowerCase().contains("disconnect")
+                || message.toLowerCase().contains("not connected"))) {
+            return "Connection lost; the reaction was not sent.";
+        }
+        return "Reaction failed. Try again later.";
+    }
+
     private void publish() {
         if (!disposed) observer.changed(getState());
     }
@@ -245,5 +348,6 @@ public final class LiveMatchController implements AutoCloseable {
         if (disposed) return;
         disposed = true;
         transport.removeListener(listener);
+        clearReactions();
     }
 }

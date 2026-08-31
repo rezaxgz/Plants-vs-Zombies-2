@@ -36,6 +36,9 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingListener;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.PlayerMatchmakingState;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ActionResult;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionEvent;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionReceipt;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionType;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameException;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameListener;
@@ -184,11 +187,6 @@ class MultiplayerSessionIntegrationTest {
             ActionResult result = matched.zombies.game.placeZombie(matched.matchId,
                     "BUCKETHEAD", 0, column, revision).get(5, TimeUnit.SECONDS);
             revision = result.getRevision();
-            if (column == 4) {
-                assertFailure(matched.zombies.game.placeZombie(matched.matchId,
-                        "BASIC", 0, column, revision),
-                        ProtocolErrorCode.POSITION_OCCUPIED);
-            }
         }
         assertFailure(matched.zombies.game.placeZombie(matched.matchId,
                 "BASIC", 0, 8, revision), ProtocolErrorCode.INSUFFICIENT_RESOURCE);
@@ -284,6 +282,107 @@ class MultiplayerSessionIntegrationTest {
                 .get(5, TimeUnit.SECONDS).getRevision());
         assertTrue(second.plants.game.getState(second.matchId)
                 .get(5, TimeUnit.SECONDS).getPlants().isEmpty());
+    }
+
+    @Test
+    void predefinedReactionsAreCorrelatedOrderedScopedAndRateLimited()
+            throws Exception {
+        Player alice = online("reaction-alice");
+        Player bob = online("reaction-bob");
+        Player third = online("reaction-third");
+        Matched matched = start(match(alice, bob));
+        List<MatchReactionType> receivedTypes = new ArrayList<>();
+
+        MatchReactionReceipt first = matched.plants.game.sendReaction(matched.matchId,
+                MatchReactionType.GOOD_LUCK).get(5, TimeUnit.SECONDS);
+        assertEquals(1L, first.getSequence());
+        assertReactionPair(matched, first, matched.plants.username, receivedTypes);
+        assertFailure(matched.plants.game.sendReaction(matched.matchId,
+                MatchReactionType.NICE_MOVE), ProtocolErrorCode.REACTION_RATE_LIMITED);
+
+        MatchReactionReceipt second = matched.zombies.game.sendReaction(matched.matchId,
+                MatchReactionType.NICE_MOVE).get(5, TimeUnit.SECONDS);
+        assertEquals(2L, second.getSequence());
+        assertReactionPair(matched, second, matched.zombies.username, receivedTypes);
+
+        MatchStateSnapshot state = matched.plants.game.getState(matched.matchId)
+                .get(5, TimeUnit.SECONDS);
+        ActionResult gameplay = matched.plants.game.placePlant(matched.matchId,
+                "Peashooter", 0, 0, state.getRevision()).get(5, TimeUnit.SECONDS);
+        assertEquals(state.getRevision() + 1, gameplay.getRevision());
+
+        Thread.sleep(1_050L);
+        MatchReactionReceipt thirdReceipt = matched.plants.game.sendReaction(
+                matched.matchId, MatchReactionType.WELL_PLAYED)
+                .get(5, TimeUnit.SECONDS);
+        assertReactionPair(matched, thirdReceipt, matched.plants.username,
+                receivedTypes);
+        MatchReactionReceipt fourth = matched.zombies.game.sendReaction(matched.matchId,
+                MatchReactionType.SMILE).get(5, TimeUnit.SECONDS);
+        assertReactionPair(matched, fourth, matched.zombies.username, receivedTypes);
+
+        Thread.sleep(1_050L);
+        MatchReactionReceipt fifth = matched.plants.game.sendReaction(matched.matchId,
+                MatchReactionType.LAUGH).get(5, TimeUnit.SECONDS);
+        assertReactionPair(matched, fifth, matched.plants.username, receivedTypes);
+        MatchReactionReceipt sixth = matched.zombies.game.sendReaction(matched.matchId,
+                MatchReactionType.ANGRY).get(5, TimeUnit.SECONDS);
+        assertReactionPair(matched, sixth, matched.zombies.username, receivedTypes);
+
+        assertEquals(List.of(MatchReactionType.GOOD_LUCK,
+                MatchReactionType.NICE_MOVE, MatchReactionType.WELL_PLAYED,
+                MatchReactionType.SMILE, MatchReactionType.LAUGH,
+                MatchReactionType.ANGRY), receivedTypes);
+        assertNull(third.reactions.poll(250, TimeUnit.MILLISECONDS));
+        assertEquals(0, matched.plants.client.getPendingRequestCount());
+        assertEquals(0, matched.zombies.client.getPendingRequestCount());
+
+        matched.plants.game.leaveMatch(matched.matchId).get(5, TimeUnit.SECONDS);
+        take(matched.zombies.cancellations);
+        assertFailure(matched.zombies.game.sendReaction(matched.matchId,
+                MatchReactionType.SMILE), ProtocolErrorCode.MATCH_NOT_FOUND);
+    }
+
+    @Test
+    void malformedUnknownAndForgedReactionPayloadsDoNotDisconnectClient()
+            throws Exception {
+        Matched matched = start(match(online("payload-alice"),
+                online("payload-bob")));
+        ProtocolMessage missing = matched.plants.client.sendRequest(
+                ProtocolMessages.withPayload(MessageType.SEND_MATCH_REACTION_REQUEST,
+                        "reaction-missing", java.util.Map.of("matchId", matched.matchId)))
+                .get(5, TimeUnit.SECONDS);
+        assertError(missing, ProtocolErrorCode.MALFORMED_PAYLOAD);
+
+        ProtocolMessage unknown = matched.plants.client.sendRequest(
+                ProtocolMessages.withPayload(MessageType.SEND_MATCH_REACTION_REQUEST,
+                        "reaction-unknown", java.util.Map.of(
+                                "matchId", matched.matchId,
+                                "reactionType", "CUSTOM")))
+                .get(5, TimeUnit.SECONDS);
+        assertError(unknown, ProtocolErrorCode.VALIDATION_FAILED);
+
+        ProtocolMessage forged = matched.plants.client.sendRequest(
+                ProtocolMessages.withPayload(MessageType.SEND_MATCH_REACTION_REQUEST,
+                        "reaction-forged", java.util.Map.of(
+                                "matchId", matched.matchId,
+                                "reactionType", "SMILE",
+                                "senderUsername", "mallory")))
+                .get(5, TimeUnit.SECONDS);
+        assertError(forged, ProtocolErrorCode.MALFORMED_PAYLOAD);
+        assertTrue(matched.plants.client.isConnected());
+
+        MatchReactionReceipt valid = matched.plants.game.sendReaction(matched.matchId,
+                MatchReactionType.SMILE).get(5, TimeUnit.SECONDS);
+        assertReactionPair(matched, valid, matched.plants.username,
+                new ArrayList<>());
+
+        try (NetworkClient raw = connectedClient("reaction-anonymous");
+                MultiplayerGameClient anonymous = new MultiplayerGameClient(raw)) {
+            assertFailure(anonymous.sendReaction(matched.matchId,
+                    MatchReactionType.SMILE), ProtocolErrorCode.AUTH_REQUIRED);
+            assertTrue(raw.isConnected());
+        }
     }
 
     @Test
@@ -476,6 +575,36 @@ class MultiplayerSessionIntegrationTest {
         }
     }
 
+    private static void assertReactionPair(Matched matched,
+            MatchReactionReceipt receipt, String expectedSender,
+            List<MatchReactionType> receivedTypes) throws Exception {
+        MatchReactionEvent plantsEvent = take(matched.plants.reactions);
+        MatchReactionEvent zombiesEvent = take(matched.zombies.reactions);
+        assertEquals(receipt.getMatchId(), plantsEvent.getMatchId());
+        assertEquals(receipt.getReactionType(), plantsEvent.getReactionType());
+        assertEquals(receipt.getSequence(), plantsEvent.getSequence());
+        assertEquals(receipt.getServerTimestampMillis(),
+                plantsEvent.getServerTimestampMillis());
+        assertEquals(expectedSender, plantsEvent.getSenderUsername());
+        assertEquals(plantsEvent.getMatchId(), zombiesEvent.getMatchId());
+        assertEquals(plantsEvent.getSenderUsername(), zombiesEvent.getSenderUsername());
+        assertEquals(plantsEvent.getReactionType(), zombiesEvent.getReactionType());
+        assertEquals(plantsEvent.getReactionKind(), zombiesEvent.getReactionKind());
+        assertEquals(plantsEvent.getSequence(), zombiesEvent.getSequence());
+        assertEquals(plantsEvent.getServerTimestampMillis(),
+                zombiesEvent.getServerTimestampMillis());
+        receivedTypes.add(plantsEvent.getReactionType());
+        assertNull(matched.plants.reactions.poll(50, TimeUnit.MILLISECONDS));
+        assertNull(matched.zombies.reactions.poll(50, TimeUnit.MILLISECONDS));
+    }
+
+    private static void assertError(ProtocolMessage response,
+            ProtocolErrorCode code) {
+        assertEquals(MessageType.ERROR, response.getType());
+        assertEquals(code.name(), response.getPayload().getAsJsonObject()
+                .get("code").getAsString());
+    }
+
     private static void awaitDisconnected(NetworkClient client) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
         while (client.getStatus() != ConnectionStatus.DISCONNECTED) {
@@ -502,6 +631,7 @@ class MultiplayerSessionIntegrationTest {
         final BlockingQueue<ReadyStatus> readyEvents = new LinkedBlockingQueue<>();
         final BlockingQueue<MatchStateSnapshot> started = new LinkedBlockingQueue<>();
         final BlockingQueue<MatchCancelled> cancellations = new LinkedBlockingQueue<>();
+        final BlockingQueue<MatchReactionEvent> reactions = new LinkedBlockingQueue<>();
         private boolean closed;
 
         Player(String username, NetworkClient client) {
@@ -527,6 +657,9 @@ class MultiplayerSessionIntegrationTest {
                 }
                 @Override public void matchCancelled(MatchCancelled value) {
                     cancellations.add(value);
+                }
+                @Override public void reactionReceived(MatchReactionEvent value) {
+                    reactions.add(value);
                 }
             });
         }

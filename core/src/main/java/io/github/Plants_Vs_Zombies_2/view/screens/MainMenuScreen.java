@@ -348,7 +348,7 @@ public final class MainMenuScreen extends AbstractScreen {
         stage.addActor(profileModal);
 
         if (refresh) {
-            navigator.getAccountSession().refreshProfile().whenComplete(
+            navigator.getGameplaySync().refresh().whenComplete(
                     (updated, failure) -> navigator.getUiDispatcher().dispatch(() -> {
                         if (!active || profileModal == null) {
                             return;
@@ -360,7 +360,8 @@ public final class MainMenuScreen extends AbstractScreen {
                             return;
                         }
                         closeProfileModal();
-                        renderProfileModal(updated, false);
+                        renderProfileModal(
+                                navigator.getAccountSession().getProfile(), false);
                     }));
         }
     }

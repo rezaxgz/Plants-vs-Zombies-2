@@ -20,6 +20,12 @@ import io.github.Plants_Vs_Zombies_2.model.security.SecurityQuestion;
 import io.github.Plants_Vs_Zombies_2.model.security.Sha256;
 import io.github.Plants_Vs_Zombies_2.model.shop.item.ItemPrice;
 import io.github.Plants_Vs_Zombies_2.model.shop.item.ShopItem;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GreenhousePotGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.NewsGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.PlantGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.QuestGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.ZombieGameplayState;
 
 public class User {
     // profile info
@@ -57,6 +63,7 @@ public class User {
     private GameProgerss gameProgerss;
     private AllQuestsProgress questProgress;
     private NewsPanel newsPanel;
+    private long gameplayRevision;
 
     public User(String username, String password, String nickname,
             String email, Gender gender) {
@@ -202,6 +209,95 @@ public class User {
 
     public int getCoins() {
         return coins;
+    }
+
+    public long getGameplayRevision() {
+        return gameplayRevision;
+    }
+
+    /** Persistence/repository hook; clients cannot set this through gameplay DTOs. */
+    public void setGameplayRevisionForStorage(long gameplayRevision) {
+        if (gameplayRevision < 0) {
+            throw new IllegalArgumentException("gameplayRevision cannot be negative");
+        }
+        this.gameplayRevision = gameplayRevision;
+    }
+
+    /** Applies only credential-free gameplay fields after repository validation. */
+    public void applyGameplayState(GameplayState state) {
+        if (state == null) {
+            throw new IllegalArgumentException("gameplay state cannot be null");
+        }
+        coins = state.getCoins();
+        diamonds = state.getDiamonds();
+        sprouts = state.getSprouts();
+        plantFoodCount = state.getPlantFoodCount();
+        potCount = state.getPotCount();
+        greenhousePotsUnlocked = state.getGreenhousePotsUnlocked();
+        int potIndex = 0;
+        for (io.github.Plants_Vs_Zombies_2.model.greenHouse.Pot[] row
+                : greenHouse.getBoard().getPots()) {
+            for (io.github.Plants_Vs_Zombies_2.model.greenHouse.Pot pot : row) {
+                pot.setLocked(potIndex++ >= greenhousePotsUnlocked);
+            }
+        }
+        if (state.hasCompleteRichState()) {
+            for (GreenhousePotGameplayState potState : state.getGreenhousePots()) {
+                io.github.Plants_Vs_Zombies_2.model.greenHouse.Pot pot =
+                        greenHouse.getBoard().getPotAt(
+                                potState.getColumn(), potState.getRow());
+                pot.setLocked(potState.isLocked());
+                pot.setPlant(potState.isEmpty() ? null
+                        : new io.github.Plants_Vs_Zombies_2.model.greenHouse.PlantedPlant(
+                                potState.getPlantName(), potState.isMarigold(),
+                                potState.getPlantedTimeMillis(),
+                                potState.getDurationMillis()));
+            }
+        }
+        adventureProgress = AdventureProgress.fromStoredData(
+                state.getAdventureUnlockedLevels(),
+                new java.util.HashSet<>(state.getCompletedAdventureLevels()));
+        gameProgerss = GameProgerss.fromStoredData(
+                state.getLastCompletedChapter(), state.getLastCompletedLevel(),
+                state.getCompletedMinigames(), state.getHighestScore(),
+                state.getGamesPlayed(), state.getMinigameUnlockedLevels(),
+                state.getCompletedMinigameLevels());
+        questProgress.restoreCompletedCountsForStorage(
+                state.getCompletedDailyQuests(),
+                state.getCompletedNonDailyQuests());
+
+        PlantCollection restoredPlants = new PlantCollection();
+        for (PlantGameplayState plant : state.getPlants()) {
+            restoredPlants.restorePlantState(plant.getName(), plant.isUnlocked(),
+                    plant.getLevel(), plant.getCards());
+        }
+        plantCollection = restoredPlants;
+        ZombieCollection restoredZombies = new ZombieCollection();
+        for (ZombieGameplayState zombie : state.getZombies()) {
+            restoredZombies.restoreZombieState(zombie.getName(), zombie.isUnlocked());
+        }
+        zombieCollection = restoredZombies;
+        if (state.hasCompleteRichState()) {
+            java.util.List<io.github.Plants_Vs_Zombies_2.model.quest.Quest> quests =
+                    new java.util.ArrayList<>();
+            for (QuestGameplayState quest : state.getActiveQuests()) {
+                quests.add(quest.toQuest());
+            }
+            questProgress = AllQuestsProgress.restore(
+                    state.getCompletedDailyQuests(),
+                    state.getCompletedNonDailyQuests(),
+                    state.getMaximumDifficultyWinStreak(),
+                    state.getLastDailyQuestRefresh(), quests);
+            newsPanel = new NewsPanel();
+            for (NewsGameplayState news : state.getNews()) {
+                newsPanel.addNews(new News(news.getTimestampMillis(),
+                        news.getTitle(), news.getDescription(), news.isRead()));
+            }
+        }
+        plantBoosts = new HashMap<>(state.getPlantBoosts());
+        dailyOfferDate = state.getDailyOfferDate();
+        dailyOfferPlant = state.getDailyOfferPlant();
+        dailyOfferPurchased = state.isDailyOfferPurchased();
     }
 
     public void addCoins(int amount) {

@@ -7,6 +7,9 @@ import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardClient;
 
 interface RemoteAccountTransport extends AutoCloseable {
     CompletableFuture<Void> connect();
@@ -19,6 +22,11 @@ interface RemoteAccountTransport extends AutoCloseable {
 
     CompletableFuture<AccountProfile> getProfile();
 
+    CompletableFuture<GameplayStateSnapshot> getGameplayState();
+
+    CompletableFuture<GameplayStateSnapshot> synchronizeGameplayState(
+            long expectedRevision, GameplayState state);
+
     CompletableFuture<Void> logout();
 
     void setDisconnectListener(Consumer<Throwable> listener);
@@ -26,6 +34,8 @@ interface RemoteAccountTransport extends AutoCloseable {
     default MatchmakingClient getMatchmakingClient() { return null; }
 
     default MultiplayerGameClient getMultiplayerGameClient() { return null; }
+
+    default LeaderboardClient getLeaderboardClient() { return null; }
 
     void disconnect();
 

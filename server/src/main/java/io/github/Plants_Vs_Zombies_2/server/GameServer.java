@@ -32,6 +32,7 @@ public final class GameServer implements AutoCloseable {
 
     private final String host;
     private final int requestedPort;
+    private final Path databasePath;
     private final AtomicBoolean running = new AtomicBoolean();
     private final Set<ClientConnection> connections = ConcurrentHashMap.newKeySet();
     private final ServerRequestHandler messageHandler;
@@ -61,10 +62,15 @@ public final class GameServer implements AutoCloseable {
 
     public GameServer(String host, int port, Path databasePath,
             Duration invitationDuration) {
-        this(host, port, createHandler(databasePath, invitationDuration));
+        this(host, port, createHandler(databasePath, invitationDuration), databasePath);
     }
 
     GameServer(String host, int port, ServerRequestHandler messageHandler) {
+        this(host, port, messageHandler, null);
+    }
+
+    private GameServer(String host, int port, ServerRequestHandler messageHandler,
+            Path databasePath) {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("host must not be blank");
         }
@@ -73,6 +79,8 @@ public final class GameServer implements AutoCloseable {
         }
         this.host = host;
         this.requestedPort = port;
+        this.databasePath = databasePath == null ? null
+                : databasePath.toAbsolutePath().normalize();
         this.messageHandler = Objects.requireNonNull(messageHandler, "messageHandler");
     }
 
@@ -89,7 +97,9 @@ public final class GameServer implements AutoCloseable {
             thread.setDaemon(true);
             acceptThread = thread;
             thread.start();
-            LOGGER.info(() -> "Server listening on " + host + ":" + getPort());
+            LOGGER.info(() -> "Server listening on " + host + ":" + getPort()
+                    + (databasePath == null ? ""
+                            : "; users database " + databasePath));
         } catch (IOException | RuntimeException exception) {
             running.set(false);
             messageHandler.close();

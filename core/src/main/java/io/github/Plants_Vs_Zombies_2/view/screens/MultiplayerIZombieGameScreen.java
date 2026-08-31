@@ -2,19 +2,28 @@ package io.github.Plants_Vs_Zombies_2.view.screens;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import com.badlogic.gdx.scenes.scene2d.Group;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
+import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.SelectBox;
 import com.badlogic.gdx.scenes.scene2d.ui.Stack;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
@@ -22,6 +31,8 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchEntitySnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchProjectileSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionEvent;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionType;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMultiplayerTransport;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.LiveMatchController;
 
@@ -46,6 +57,11 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
     private final Label boardInfoLabel;
     private final SelectBox<String> cardSelect;
     private final TextButton leaveButton;
+    private final Table reactionHistoryTable = new Table();
+    private final Label reactionStatusLabel;
+    private final List<TextButton> reactionButtons = new ArrayList<>();
+    private final Map<MatchReactionType, Texture> reactionIconTextures =
+            new EnumMap<>(MatchReactionType.class);
     private final Table grid = new Table();
     private final Group overlay = new Group();
     private final Stack boardStack = new Stack();
@@ -84,6 +100,10 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         cardSelect.setItems(assignment.getRole() == MatchRole.PLANTS
                 ? PLANT_TYPES : ZOMBIE_TYPES);
         leaveButton = new TextButton("Leave Match", skin, "brown");
+        reactionHistoryTable.top().left();
+        reactionStatusLabel = new Label("Choose a predefined reaction.", skin,
+                "secondary");
+        reactionStatusLabel.setWrap(true);
 
         Table top = new Table();
         top.defaults().pad(5f);
@@ -101,7 +121,11 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         boardStack.add(grid);
         boardStack.add(overlay);
         overlay.addActor(redLineActor);
-        content.add(boardStack).width(930f).height(430f).padTop(8f).row();
+        Table matchBody = new Table();
+        matchBody.add(boardStack).width(930f).height(430f).padTop(8f);
+        matchBody.add(createReactionPanel()).width(255f).height(430f)
+                .padLeft(10f).padTop(8f);
+        content.add(matchBody).growX().row();
 
         Table controls = new Table();
         controls.defaults().pad(7f);
@@ -145,6 +169,13 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         }
         setCellsDisabled(state.commandInFlight()
                 || state.terminalKind() != LiveMatchController.TerminalKind.NONE);
+        reactionStatusLabel.setText(state.reactionStatus());
+        renderReactions(state.recentReactions());
+        for (TextButton button : reactionButtons) {
+            button.setDisabled(state.reactionInFlight()
+                    || state.terminalKind()
+                            != LiveMatchController.TerminalKind.NONE);
+        }
         if (state.terminalKind() != LiveMatchController.TerminalKind.NONE && !finishShown) {
             finishShown = true;
             showTerminalDialog(state);
@@ -157,6 +188,103 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
             result.append(Boolean.TRUE.equals(available) ? "[B] " : "[eaten] ");
         }
         return result.toString();
+    }
+
+    private Table createReactionPanel() {
+        Table panel = new Table();
+        panel.setBackground(skin.get("brown",
+                TextButton.TextButtonStyle.class).up);
+        panel.pad(8f);
+        panel.add(new Label("Match Reactions", skin, "medium_outline"))
+                .colspan(2).padBottom(5f).row();
+        MatchReactionType[] types = MatchReactionType.values();
+        for (int index = 0; index < types.length; index++) {
+            MatchReactionType type = types[index];
+            TextButton button = new TextButton(type.getDisplayText(), skin,
+                    type.getKind()
+                            == io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionKind.TEXT
+                                    ? "green" : "brown");
+            if (type.getKind()
+                    == io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionKind.EMOJI) {
+                button.add(new Image(reactionIcon(type))).size(25f).padRight(4f);
+            }
+            button.addListener(new ClickListener() {
+                @Override public void clicked(InputEvent event, float x, float y) {
+                    if (!disposed) controller.sendReaction(type);
+                }
+            });
+            reactionButtons.add(button);
+            panel.add(button).width(112f).height(40f).pad(3f);
+            if (index % 2 == 1) panel.row();
+        }
+        panel.add(reactionStatusLabel).colspan(2).width(225f)
+                .left().padTop(5f).row();
+        panel.add(reactionHistoryTable).colspan(2).width(225f)
+                .height(150f).left().top().padTop(5f);
+        return panel;
+    }
+
+    private void renderReactions(List<MatchReactionEvent> reactions) {
+        reactionHistoryTable.clearChildren();
+        reactionHistoryTable.defaults().left().padBottom(2f);
+        if (reactions == null || reactions.isEmpty()) {
+            reactionHistoryTable.add(new Label("No reactions yet.", skin,
+                    "secondary")).left();
+            return;
+        }
+        String localUsername = navigator.getAccountSession().getProfile() == null
+                ? "" : navigator.getAccountSession().getProfile().getUsername();
+        for (MatchReactionEvent reaction : reactions) {
+            boolean local = reaction.getSenderUsername().equals(localUsername);
+            MatchReactionType type = reaction.getReactionType();
+            if (type.getKind()
+                    == io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionKind.EMOJI) {
+                reactionHistoryTable.add(new Image(reactionIcon(type)))
+                        .size(24f).padRight(5f);
+            } else {
+                reactionHistoryTable.add().width(29f);
+            }
+            reactionHistoryTable.add(new Label(
+                    (local ? "You" : reaction.getSenderUsername()) + ": "
+                            + type.getDisplayText(), skin, "secondary"))
+                    .width(190f).left().row();
+        }
+    }
+
+    private TextureRegionDrawable reactionIcon(MatchReactionType type) {
+        Texture texture = reactionIconTextures.computeIfAbsent(type,
+                MultiplayerIZombieGameScreen::createReactionIconTexture);
+        return new TextureRegionDrawable(new TextureRegion(texture));
+    }
+
+    private static Texture createReactionIconTexture(MatchReactionType type) {
+        Pixmap pixmap = new Pixmap(32, 32, Pixmap.Format.RGBA8888);
+        pixmap.setColor(Color.CLEAR);
+        pixmap.fill();
+        pixmap.setColor(type == MatchReactionType.ANGRY
+                ? new Color(0.95f, 0.34f, 0.20f, 1f)
+                : new Color(1f, 0.82f, 0.12f, 1f));
+        pixmap.fillCircle(16, 16, 14);
+        pixmap.setColor(Color.BLACK);
+        pixmap.fillCircle(11, 12, 2);
+        pixmap.fillCircle(21, 12, 2);
+        if (type == MatchReactionType.LAUGH) {
+            pixmap.fillRectangle(10, 19, 13, 6);
+            pixmap.setColor(Color.WHITE);
+            pixmap.fillRectangle(12, 19, 9, 2);
+        } else if (type == MatchReactionType.ANGRY) {
+            pixmap.drawLine(7, 8, 14, 11);
+            pixmap.drawLine(18, 11, 25, 8);
+            pixmap.drawLine(10, 24, 16, 20);
+            pixmap.drawLine(16, 20, 22, 24);
+        } else {
+            pixmap.drawLine(9, 20, 13, 24);
+            pixmap.drawLine(13, 24, 19, 24);
+            pixmap.drawLine(19, 24, 23, 20);
+        }
+        Texture texture = new Texture(pixmap);
+        pixmap.dispose();
+        return texture;
     }
 
     private void rebuildGridIfNeeded(MatchStateSnapshot snapshot) {
@@ -347,6 +475,8 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         if (disposed) return;
         disposed = true;
         controller.close();
+        for (Texture texture : reactionIconTextures.values()) texture.dispose();
+        reactionIconTextures.clear();
         entityActors.clear();
         projectileActors.clear();
         super.dispose();

@@ -9,7 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -26,6 +29,10 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.PlayerMatchmakingState;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.QueueStatus;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ActionResult;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchFinishReason;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionEvent;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionKind;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionReceipt;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionType;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchPlayerSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameException;
@@ -160,6 +167,50 @@ class MultiplayerStage7ControllerTest {
             assertNull(current.get());
             assertTrue(dispatches.get() >= 2);
         }
+    }
+
+    @Test
+    void invitationResponseErrorRemainsVisibleAndRecoverableForRetry() {
+        FakeMatchmaking transport = new FakeMatchmaking();
+        AtomicReference<InvitationNotificationBridge.InvitationView> current =
+                new AtomicReference<>();
+        try (InvitationNotificationBridge bridge = new InvitationNotificationBridge(
+                transport, UiDispatcher.direct(), new InvitationNotificationBridge.Observer() {
+                    @Override public void invitationChanged(
+                            InvitationNotificationBridge.InvitationView invitation) {
+                        current.set(invitation);
+                    }
+                    @Override public void matchFound(MatchAssignment assignment) { }
+                })) {
+            transport.fireInvitationReceived(invitation("retry", InvitationStatus.PENDING));
+            bridge.accept();
+            transport.responseFuture.completeExceptionally(
+                    new IllegalStateException("Server rejected this invitation"));
+            assertTrue(current.get().status().contains("Server rejected"));
+            assertEquals(current.get(), bridge.getCurrentInvitation(),
+                    "the navigator's current-view path must retain the real error");
+            assertFalse(current.get().responding());
+
+            transport.responseFuture = new CompletableFuture<>();
+            bridge.accept();
+            assertEquals(2, transport.responseCalls);
+            assertTrue(current.get().responding());
+            transport.fireInvitationResult(invitation("retry", InvitationStatus.EXPIRED));
+            assertNull(current.get());
+        }
+    }
+
+    @Test
+    void navigatorUsesTheErrorSpecificInvitationViewInsteadOfRefetching()
+            throws Exception {
+        Path navigator = Path.of("src", "main", "java", "io", "github",
+                "Plants_Vs_Zombies_2", "view", "screens", "ScreenNavigator.java");
+        String source = Files.readString(navigator);
+        int start = source.indexOf("private void handleInvitationChanged");
+        int end = source.indexOf("private void showCurrentInvitationOn", start);
+        String handler = source.substring(start, end);
+        assertTrue(handler.contains("showInvitationOn(game.getScreen(), invitation)"));
+        assertFalse(handler.contains("getCurrentInvitation()"));
     }
 
     @Test
@@ -360,6 +411,120 @@ class MultiplayerStage7ControllerTest {
         }
     }
 
+    @Test
+    void reactionAndGameplayRequestsUseIndependentInFlightStates() {
+        FakeMultiplayer transport = new FakeMultiplayer();
+        MatchStateSnapshot initial = snapshot(1, 2, MatchStatus.ACTIVE, null, null);
+        transport.stateFuture.complete(initial);
+        AtomicReference<LiveMatchController.State> state = new AtomicReference<>();
+        try (LiveMatchController controller = new LiveMatchController(transport,
+                UiDispatcher.direct(), assignment(MatchRole.PLANTS), initial, state::set)) {
+            controller.sendReaction(MatchReactionType.GOOD_LUCK);
+            controller.sendReaction(MatchReactionType.GOOD_LUCK);
+            assertEquals(1, transport.reactionCalls);
+            assertTrue(state.get().reactionInFlight());
+
+            controller.placePlant("Peashooter", 0, 0);
+            assertEquals(1, transport.placePlantCalls);
+            assertTrue(state.get().commandInFlight());
+
+            transport.fireReaction(reaction(1, "alice", MatchReactionType.GOOD_LUCK));
+            transport.reactionFuture.complete(new MatchReactionReceipt(
+                    "m1", MatchReactionType.GOOD_LUCK, 1L, 1_000L));
+            assertFalse(state.get().reactionInFlight());
+            assertTrue(state.get().commandInFlight());
+            transport.placePlantFuture.complete(new ActionResult(
+                    "m1", 3L, "plant-1",
+                    snapshot(1, 3, MatchStatus.ACTIVE, null, null)));
+            assertFalse(state.get().commandInFlight());
+        }
+    }
+
+    @Test
+    void reactionEventsUseDispatcherFilterOrderAndBoundRecentHistory() {
+        FakeMultiplayer transport = new FakeMultiplayer();
+        MatchStateSnapshot initial = snapshot(1, 2, MatchStatus.ACTIVE, null, null);
+        transport.stateFuture.complete(initial);
+        List<Runnable> dispatched = new ArrayList<>();
+        AtomicReference<LiveMatchController.State> state = new AtomicReference<>();
+        try (LiveMatchController controller = new LiveMatchController(transport,
+                dispatched::add, assignment(MatchRole.PLANTS), initial, state::set)) {
+            transport.fireReaction(reaction(1, "bob", MatchReactionType.SMILE));
+            assertTrue(state.get().recentReactions().isEmpty(),
+                    "network callback must wait for UiDispatcher");
+            dispatched.remove(0).run();
+            transport.fireReaction(new MatchReactionEvent("other", "carol",
+                    MatchReactionType.LAUGH, MatchReactionKind.EMOJI, 2L, 1_001L));
+            transport.fireReaction(reaction(1, "bob", MatchReactionType.SMILE));
+            for (long sequence = 2; sequence <= 7; sequence++) {
+                transport.fireReaction(reaction(sequence, "bob", MatchReactionType.NICE_MOVE));
+            }
+            while (!dispatched.isEmpty()) dispatched.remove(0).run();
+
+            assertEquals(5, state.get().recentReactions().size());
+            assertEquals(List.of(3L, 4L, 5L, 6L, 7L),
+                    state.get().recentReactions().stream()
+                            .map(MatchReactionEvent::getSequence).toList());
+            transport.fireConnectionLost(new IllegalStateException("disconnected"));
+            while (!dispatched.isEmpty()) dispatched.remove(0).run();
+            assertEquals(LiveMatchController.TerminalKind.CANCELLATION,
+                    state.get().terminalKind());
+            assertTrue(state.get().recentReactions().isEmpty());
+        }
+    }
+
+    @Test
+    void reactionFailuresAreRecoverableNotRetriedAndLateCompletionIsIgnored() {
+        FakeMultiplayer transport = new FakeMultiplayer();
+        MatchStateSnapshot initial = snapshot(1, 2, MatchStatus.ACTIVE, null, null);
+        transport.stateFuture.complete(initial);
+        AtomicReference<LiveMatchController.State> state = new AtomicReference<>();
+        AtomicInteger publications = new AtomicInteger();
+        LiveMatchController controller = new LiveMatchController(transport,
+                UiDispatcher.direct(), assignment(MatchRole.PLANTS), initial, value -> {
+                    state.set(value);
+                    publications.incrementAndGet();
+                });
+        controller.sendReaction(MatchReactionType.ANGRY);
+        transport.reactionFuture.completeExceptionally(new TimeoutException("late"));
+        assertEquals(1, transport.reactionCalls);
+        assertTrue(state.get().reactionStatus().contains("not retried"));
+        assertFalse(state.get().reactionInFlight());
+
+        transport.reactionFuture = new CompletableFuture<>();
+        controller.sendReaction(MatchReactionType.ANGRY);
+        assertEquals(2, transport.reactionCalls);
+        transport.reactionFuture.completeExceptionally(new MultiplayerGameException(
+                ProtocolErrorCode.REACTION_RATE_LIMITED, "cooldown"));
+        assertTrue(state.get().reactionStatus().contains("cooldown"));
+        assertFalse(state.get().reactionInFlight());
+
+        transport.reactionFuture = new CompletableFuture<>();
+        controller.sendReaction(MatchReactionType.ANGRY);
+        assertEquals(3, transport.reactionCalls);
+        controller.close();
+        int afterClose = publications.get();
+        assertEquals(0, transport.listeners.size());
+        transport.reactionFuture.complete(new MatchReactionReceipt(
+                "m1", MatchReactionType.ANGRY, 3L, 1_003L));
+        assertEquals(afterClose, publications.get());
+        assertTrue(controller.getState().recentReactions().isEmpty());
+    }
+
+    @Test
+    void liveScreenReactionBoundaryHasSixCatalogControlsAndNoFreeFormChat() throws Exception {
+        Path screen = Path.of("src", "main", "java", "io", "github",
+                "Plants_Vs_Zombies_2", "view", "screens",
+                "MultiplayerIZombieGameScreen.java");
+        String source = Files.readString(screen);
+        assertEquals(6, MatchReactionType.values().length);
+        assertTrue(source.contains("MatchReactionType.values()"));
+        assertTrue(source.contains("controller.sendReaction(type)"));
+        assertFalse(source.contains("TextField"));
+        assertFalse(source.contains("UserManager"));
+        assertFalse(source.contains("NetworkClient"));
+    }
+
     private static Invitation invitation(String id, InvitationStatus status) {
         return new Invitation(id, "alice", "bob", 1L, 10_000L, status);
     }
@@ -378,6 +543,12 @@ class MultiplayerStage7ControllerTest {
                         new MatchPlayerSnapshot("bob", MatchRole.ZOMBIES, true)),
                 500, 300, List.of(), List.of(), List.of(),
                 List.of(true, true, true, true, true), winner, reason);
+    }
+
+    private static MatchReactionEvent reaction(long sequence, String sender,
+            MatchReactionType type) {
+        return new MatchReactionEvent("m1", sender, type, type.getKind(),
+                sequence, 1_000L + sequence);
     }
 
     private static final class FakeMatchmaking implements MatchmakingTransport {
@@ -432,11 +603,13 @@ class MultiplayerStage7ControllerTest {
         CompletableFuture<ActionResult> placeZombieFuture = new CompletableFuture<>();
         CompletableFuture<ActionResult> removeFuture = new CompletableFuture<>();
         CompletableFuture<Void> leaveFuture = new CompletableFuture<>();
+        CompletableFuture<MatchReactionReceipt> reactionFuture = new CompletableFuture<>();
         int readyCalls;
         int getStateCalls;
         int placePlantCalls;
         int placeZombieCalls;
         int leaveCalls;
+        int reactionCalls;
         long lastExpectedRevision;
 
         @Override public CompletableFuture<ReadyStatus> markReady(String matchId) {
@@ -468,6 +641,11 @@ class MultiplayerStage7ControllerTest {
             leaveCalls++;
             return leaveFuture;
         }
+        @Override public CompletableFuture<MatchReactionReceipt> sendReaction(
+                String matchId, MatchReactionType reactionType) {
+            reactionCalls++;
+            return reactionFuture;
+        }
         @Override public void addListener(MultiplayerGameListener listener) { listeners.add(listener); }
         @Override public void removeListener(MultiplayerGameListener listener) { listeners.remove(listener); }
         void fireOpponentReady(ReadyStatus status) {
@@ -484,6 +662,12 @@ class MultiplayerStage7ControllerTest {
         }
         void fireCancelled(MatchCancelled cancellation) {
             List.copyOf(listeners).forEach(l -> l.matchCancelled(cancellation));
+        }
+        void fireReaction(MatchReactionEvent reaction) {
+            List.copyOf(listeners).forEach(l -> l.reactionReceived(reaction));
+        }
+        void fireConnectionLost(Throwable cause) {
+            List.copyOf(listeners).forEach(l -> l.connectionLost(cause));
         }
     }
 }

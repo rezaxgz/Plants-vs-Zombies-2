@@ -168,11 +168,11 @@ class AuthoritativeMultiplayerSimulationTest {
         service = service(20, 120.0);
         start("match", "plants", "zombies");
         ActionResult first = service.placePlant("plants", "match",
-                "Peashooter", 0, 3, 2);
+                "Peashooter", 0, 0, 2);
         ActionResult removed = service.removePlant("plants", "match",
                 first.getEntityId(), first.getRevision());
         ActionResult second = service.placePlant("plants", "match",
-                "Peashooter", 0, 3, removed.getRevision());
+                "Peashooter", 0, 0, removed.getRevision());
         assertNotEquals(first.getEntityId(), second.getEntityId());
         service.placeZombie("zombies", "match", "BASIC", 0, 4,
                 second.getRevision());
