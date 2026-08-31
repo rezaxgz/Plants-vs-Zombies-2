@@ -8,6 +8,9 @@ import java.util.Objects;
 
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
 import io.github.Plants_Vs_Zombies_2.model.collections.zombies.ZombieCollectionItem;
+import io.github.Plants_Vs_Zombies_2.model.greenHouse.Pot;
+import io.github.Plants_Vs_Zombies_2.model.news.News;
+import io.github.Plants_Vs_Zombies_2.model.quest.Quest;
 import io.github.Plants_Vs_Zombies_2.model.user.GameProgerss;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 
@@ -36,6 +39,11 @@ public final class GameplayState {
     private final String dailyOfferDate;
     private final String dailyOfferPlant;
     private final boolean dailyOfferPurchased;
+    private final List<GreenhousePotGameplayState> greenhousePots;
+    private final int maximumDifficultyWinStreak;
+    private final String lastDailyQuestRefresh;
+    private final List<QuestGameplayState> activeQuests;
+    private final List<NewsGameplayState> news;
 
     public GameplayState(int coins, int diamonds, int sprouts,
             int plantFoodCount, int potCount, int greenhousePotsUnlocked,
@@ -56,7 +64,8 @@ public final class GameplayState {
                 gamesPlayed, adventureUnlockedLevels,
                 completedAdventureLevels, minigameUnlockedLevels,
                 completedMinigameLevels, plants, zombies, plantBoosts,
-                dailyOfferDate, dailyOfferPlant, dailyOfferPurchased, 0, 0);
+                dailyOfferDate, dailyOfferPlant, dailyOfferPurchased, 0, 0,
+                null, 0, null, null, null);
     }
 
     public GameplayState(int coins, int diamonds, int sprouts,
@@ -73,6 +82,35 @@ public final class GameplayState {
             String dailyOfferDate, String dailyOfferPlant,
             boolean dailyOfferPurchased, int completedDailyQuests,
             int completedNonDailyQuests) {
+        this(coins, diamonds, sprouts, plantFoodCount, potCount,
+                greenhousePotsUnlocked, lastCompletedChapter,
+                lastCompletedLevel, completedMinigames, highestScore,
+                gamesPlayed, adventureUnlockedLevels,
+                completedAdventureLevels, minigameUnlockedLevels,
+                completedMinigameLevels, plants, zombies, plantBoosts,
+                dailyOfferDate, dailyOfferPlant, dailyOfferPurchased,
+                completedDailyQuests, completedNonDailyQuests,
+                null, 0, null, null, null);
+    }
+
+    public GameplayState(int coins, int diamonds, int sprouts,
+            int plantFoodCount, int potCount, int greenhousePotsUnlocked,
+            int lastCompletedChapter, int lastCompletedLevel,
+            int completedMinigames, int highestScore, int gamesPlayed,
+            Map<String, Integer> adventureUnlockedLevels,
+            List<String> completedAdventureLevels,
+            Map<String, Integer> minigameUnlockedLevels,
+            List<String> completedMinigameLevels,
+            List<PlantGameplayState> plants,
+            List<ZombieGameplayState> zombies,
+            Map<String, Integer> plantBoosts,
+            String dailyOfferDate, String dailyOfferPlant,
+            boolean dailyOfferPurchased, int completedDailyQuests,
+            int completedNonDailyQuests,
+            List<GreenhousePotGameplayState> greenhousePots,
+            int maximumDifficultyWinStreak, String lastDailyQuestRefresh,
+            List<QuestGameplayState> activeQuests,
+            List<NewsGameplayState> news) {
         this.coins = coins;
         this.diamonds = diamonds;
         this.sprouts = sprouts;
@@ -96,6 +134,11 @@ public final class GameplayState {
         this.dailyOfferDate = dailyOfferDate == null ? "" : dailyOfferDate;
         this.dailyOfferPlant = dailyOfferPlant == null ? "" : dailyOfferPlant;
         this.dailyOfferPurchased = dailyOfferPurchased;
+        this.greenhousePots = greenhousePots == null ? null : copyList(greenhousePots);
+        this.maximumDifficultyWinStreak = maximumDifficultyWinStreak;
+        this.lastDailyQuestRefresh = lastDailyQuestRefresh;
+        this.activeQuests = activeQuests == null ? null : copyList(activeQuests);
+        this.news = news == null ? null : copyList(news);
     }
 
     public static GameplayState fromUser(User user) {
@@ -110,6 +153,30 @@ public final class GameplayState {
         for (ZombieCollectionItem zombie : user.getZombieCollection().getAllZombies()) {
             zombies.add(new ZombieGameplayState(zombie.getName(), zombie.isUnlocked()));
         }
+        List<GreenhousePotGameplayState> greenhousePots = new ArrayList<>();
+        Pot[][] pots = user.getGreenHouse().getBoard().getPots();
+        for (int row = 0; row < pots.length; row++) {
+            for (int column = 0; column < pots[row].length; column++) {
+                Pot pot = pots[row][column];
+                io.github.Plants_Vs_Zombies_2.model.greenHouse.PlantedPlant planted =
+                        pot.getPlant();
+                greenhousePots.add(new GreenhousePotGameplayState(row + 1,
+                        column + 1, pot.isLocked(),
+                        planted == null ? "" : planted.getPlantName(),
+                        planted != null && planted.isMarigold(),
+                        planted == null ? 0L : planted.getPlantedTimeMillis(),
+                        planted == null ? 0L : planted.getDurationMillis()));
+            }
+        }
+        List<QuestGameplayState> quests = new ArrayList<>();
+        for (Quest quest : user.getQuestProgress().getActiveQuests()) {
+            quests.add(QuestGameplayState.fromQuest(quest));
+        }
+        List<NewsGameplayState> news = new ArrayList<>();
+        for (News item : user.getNewsPanel().getAllNews()) {
+            news.add(new NewsGameplayState(item.getTimestampMillis(),
+                    item.getTitle(), item.getDescription(), item.isHasRead()));
+        }
         return new GameplayState(user.getCoins(), user.getDiamonds(), user.getSprouts(),
                 user.getPlantFoodCount(), user.getPotCount(),
                 user.getGreenhousePotsUnlocked(), progress.getLastCompletedChapter(),
@@ -122,7 +189,10 @@ public final class GameplayState {
                 user.getPlantBoosts(), user.getDailyOfferDate(),
                 user.getDailyOfferPlant(), user.isDailyOfferPurchased(),
                 user.getQuestProgress().getCompletedDailyQuests(),
-                user.getQuestProgress().getCompletedNonDailyQuests());
+                user.getQuestProgress().getCompletedNonDailyQuests(),
+                greenhousePots,
+                user.getQuestProgress().getMaximumDifficultyWinStreak(),
+                user.getQuestProgress().getLastDailyRefresh(), quests, news);
     }
 
     private static <T> List<T> copyList(List<T> values) {
@@ -165,6 +235,35 @@ public final class GameplayState {
     public String getDailyOfferDate() { return dailyOfferDate; }
     public String getDailyOfferPlant() { return dailyOfferPlant; }
     public boolean isDailyOfferPurchased() { return dailyOfferPurchased; }
+    public List<GreenhousePotGameplayState> getGreenhousePots() {
+        return copyList(greenhousePots);
+    }
+    public int getMaximumDifficultyWinStreak() { return maximumDifficultyWinStreak; }
+    public String getLastDailyQuestRefresh() {
+        return lastDailyQuestRefresh == null ? "" : lastDailyQuestRefresh;
+    }
+    public List<QuestGameplayState> getActiveQuests() { return copyList(activeQuests); }
+    public List<NewsGameplayState> getNews() { return copyList(news); }
+    public boolean hasCompleteRichState() {
+        return greenhousePots != null && lastDailyQuestRefresh != null
+                && activeQuests != null && news != null;
+    }
+
+    /** Preserves server-owned rich fields for legacy clients that omit them. */
+    public GameplayState withRichStateFrom(GameplayState current) {
+        if (hasCompleteRichState() || current == null) return this;
+        return new GameplayState(coins, diamonds, sprouts, plantFoodCount,
+                potCount, greenhousePotsUnlocked, lastCompletedChapter,
+                lastCompletedLevel, completedMinigames, highestScore,
+                gamesPlayed, adventureUnlockedLevels, completedAdventureLevels,
+                minigameUnlockedLevels, completedMinigameLevels, plants, zombies,
+                plantBoosts, dailyOfferDate, dailyOfferPlant,
+                dailyOfferPurchased, completedDailyQuests,
+                completedNonDailyQuests, current.getGreenhousePots(),
+                current.getMaximumDifficultyWinStreak(),
+                current.getLastDailyQuestRefresh(), current.getActiveQuests(),
+                current.getNews());
+    }
 
     @Override public boolean equals(Object other) {
         if (!(other instanceof GameplayState value)) return false;
@@ -186,7 +285,12 @@ public final class GameplayState {
                 && Objects.equals(plants, value.plants) && Objects.equals(zombies, value.zombies)
                 && Objects.equals(plantBoosts, value.plantBoosts)
                 && Objects.equals(dailyOfferDate, value.dailyOfferDate)
-                && Objects.equals(dailyOfferPlant, value.dailyOfferPlant);
+                && Objects.equals(dailyOfferPlant, value.dailyOfferPlant)
+                && Objects.equals(greenhousePots, value.greenhousePots)
+                && maximumDifficultyWinStreak == value.maximumDifficultyWinStreak
+                && Objects.equals(lastDailyQuestRefresh, value.lastDailyQuestRefresh)
+                && Objects.equals(activeQuests, value.activeQuests)
+                && Objects.equals(news, value.news);
     }
 
     @Override public int hashCode() {
@@ -196,6 +300,8 @@ public final class GameplayState {
                 completedNonDailyQuests, highestScore, gamesPlayed,
                 adventureUnlockedLevels, completedAdventureLevels,
                 minigameUnlockedLevels, completedMinigameLevels, plants, zombies,
-                plantBoosts, dailyOfferDate, dailyOfferPlant, dailyOfferPurchased);
+                plantBoosts, dailyOfferDate, dailyOfferPlant, dailyOfferPurchased,
+                greenhousePots, maximumDifficultyWinStreak,
+                lastDailyQuestRefresh, activeQuests, news);
     }
 }

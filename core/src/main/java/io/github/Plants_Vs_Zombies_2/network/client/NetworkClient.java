@@ -269,6 +269,8 @@ public final class NetworkClient implements AutoCloseable {
             thread.setDaemon(true);
             thread.start();
         } catch (IOException exception) {
+            LOGGER.log(Level.WARNING,
+                    "Could not connect to " + host + ":" + port, exception);
             throw new IllegalStateException("Could not connect to " + host + ":" + port, exception);
         } finally {
             if (!published && newSocket != null) {

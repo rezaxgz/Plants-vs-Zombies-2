@@ -15,9 +15,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -168,12 +172,135 @@ class MatchReactionServiceTest {
         drainReactionPair();
     }
 
+    @Test
+    void acceptedReactionIsRegisteredBeforeLeaveCanCancelTheMatch() throws Exception {
+        RegistrationBarrierExecutor executor = replaceServiceWithBarrier(
+                20, 120.0, 0L);
+        start("leave-race", "alice", "bob");
+
+        CompletableFuture<MatchReactionReceipt> send = CompletableFuture.supplyAsync(
+                () -> sendUnchecked("alice", "leave-race",
+                        MatchReactionType.GOOD_LUCK));
+        executor.awaitRegistration();
+        CompletableFuture<Void> leave = CompletableFuture.runAsync(() -> {
+            try {
+                service.leave("bob", "leave-race");
+            } catch (MultiplayerSessionException exception) {
+                throw new IllegalStateException(exception);
+            }
+        });
+
+        executor.allowRegistration();
+        MatchReactionReceipt receipt = send.get(5, TimeUnit.SECONDS);
+        leave.get(5, TimeUnit.SECONDS);
+        assertRegisteredPair(receipt);
+    }
+
+    @Test
+    void acceptedReactionIsRegisteredBeforeDisconnectCleanup() throws Exception {
+        RegistrationBarrierExecutor executor = replaceServiceWithBarrier(
+                20, 120.0, 0L);
+        start("disconnect-race", "alice", "bob");
+
+        CompletableFuture<MatchReactionReceipt> send = CompletableFuture.supplyAsync(
+                () -> sendUnchecked("bob", "disconnect-race",
+                        MatchReactionType.SMILE));
+        executor.awaitRegistration();
+        CompletableFuture<Void> disconnect = CompletableFuture.runAsync(
+                () -> service.playerDisconnected("alice"));
+
+        executor.allowRegistration();
+        MatchReactionReceipt receipt = send.get(5, TimeUnit.SECONDS);
+        disconnect.get(5, TimeUnit.SECONDS);
+        assertRegisteredPair(receipt);
+    }
+
+    @Test
+    void acceptedReactionIsRegisteredBeforeNormalFinish() throws Exception {
+        RegistrationBarrierExecutor executor = replaceServiceWithBarrier(
+                20, 0.05, 0L);
+        start("finish-race", "alice", "bob");
+
+        CompletableFuture<MatchReactionReceipt> send = CompletableFuture.supplyAsync(
+                () -> sendUnchecked("alice", "finish-race",
+                        MatchReactionType.WELL_PLAYED));
+        executor.awaitRegistration();
+        CompletableFuture<Void> finish = CompletableFuture.runAsync(
+                service::tickOnceForTesting);
+
+        executor.allowRegistration();
+        MatchReactionReceipt receipt = send.get(5, TimeUnit.SECONDS);
+        finish.get(5, TimeUnit.SECONDS);
+        assertRegisteredPair(receipt);
+    }
+
+    @Test
+    void shutdownDrainsEveryAcceptedReactionRegistration() throws Exception {
+        RegistrationBarrierExecutor executor = replaceServiceWithBarrier(
+                20, 120.0, 0L);
+        start("shutdown-race", "alice", "bob");
+
+        CompletableFuture<MatchReactionReceipt> send = CompletableFuture.supplyAsync(
+                () -> sendUnchecked("bob", "shutdown-race",
+                        MatchReactionType.LAUGH));
+        executor.awaitRegistration();
+        CompletableFuture<Void> shutdown = CompletableFuture.runAsync(service::close);
+
+        executor.allowRegistration();
+        MatchReactionReceipt receipt = send.get(5, TimeUnit.SECONDS);
+        shutdown.get(5, TimeUnit.SECONDS);
+        assertRegisteredPair(receipt);
+        service = null;
+    }
+
+    @Test
+    void publicationCallbackRunsAfterTheSessionLockIsReleased() throws Exception {
+        service.close();
+        events.clear();
+        AtomicReference<MultiplayerSessionService> serviceReference =
+                new AtomicReference<>();
+        AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
+        AtomicBoolean stateWasReadable = new AtomicBoolean();
+        service = new MultiplayerSessionService(published -> {
+            if (published.stream().anyMatch(event ->
+                    event.type() == MessageType.MATCH_REACTION_RECEIVED)) {
+                try {
+                    serviceReference.get().getState("alice", "outside-lock");
+                    stateWasReadable.set(true);
+                } catch (Throwable failure) {
+                    callbackFailure.set(failure);
+                }
+            }
+            events.addAll(published);
+        }, MultiplayerIZombieConfig.firstBiteDefaults(), clock, () -> 42L,
+                20, 120.0, 0L);
+        serviceReference.set(service);
+        start("outside-lock", "alice", "bob");
+
+        service.sendReaction("alice", "outside-lock", MatchReactionType.SMILE);
+        drainReactionPair();
+        assertEquals(null, callbackFailure.get());
+        assertTrue(stateWasReadable.get(),
+                "The routing callback must execute after releasing the session monitor");
+    }
+
     private void replaceService(int tickRate, double duration, long cooldown) {
         service.close();
         events.clear();
         service = new MultiplayerSessionService(events::addAll,
                 MultiplayerIZombieConfig.firstBiteDefaults(), clock, () -> 42L,
                 tickRate, duration, cooldown);
+    }
+
+    private RegistrationBarrierExecutor replaceServiceWithBarrier(int tickRate,
+            double duration, long cooldown) {
+        service.close();
+        events.clear();
+        RegistrationBarrierExecutor executor = new RegistrationBarrierExecutor();
+        service = new MultiplayerSessionService(events::addAll,
+                MultiplayerIZombieConfig.firstBiteDefaults(), clock, () -> 42L,
+                tickRate, duration, cooldown, executor);
+        return executor;
     }
 
     private void create(String id, String plants, String zombies) throws Exception {
@@ -209,6 +336,24 @@ class MatchReactionServiceTest {
         takeReaction();
     }
 
+    private void assertRegisteredPair(MatchReactionReceipt receipt) throws Exception {
+        List<MatchReactionEvent> matching = new ArrayList<>();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (matching.size() < 2 && System.nanoTime() < deadline) {
+            MatchmakingEvent event = events.poll(100, TimeUnit.MILLISECONDS);
+            if (event != null && event.type() == MessageType.MATCH_REACTION_RECEIVED) {
+                MatchReactionEvent reaction = (MatchReactionEvent) event.payload();
+                if (reaction.getSequence() == receipt.getSequence()) {
+                    matching.add(reaction);
+                }
+            }
+        }
+        assertEquals(2, matching.size(),
+                "A successful receipt must have one registered push per participant");
+        assertTrue(matching.stream().allMatch(event ->
+                event.getReactionType() == receipt.getReactionType()));
+    }
+
     private static void assertFailure(ProtocolErrorCode code, ThrowingAction action) {
         MultiplayerSessionException exception = assertThrows(
                 MultiplayerSessionException.class, action::run);
@@ -227,5 +372,37 @@ class MatchReactionServiceTest {
         @Override public Clock withZone(ZoneId zone) { return this; }
         @Override public Instant instant() { return Instant.ofEpochMilli(millis()); }
         @Override public long millis() { return millis.get(); }
+    }
+
+    private static final class RegistrationBarrierExecutor
+            extends ThreadPoolExecutor {
+        private final CountDownLatch registrationEntered = new CountDownLatch(1);
+        private final CountDownLatch registrationAllowed = new CountDownLatch(1);
+
+        private RegistrationBarrierExecutor() {
+            super(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            registrationEntered.countDown();
+            try {
+                assertTrue(registrationAllowed.await(5, TimeUnit.SECONDS),
+                        "Timed out waiting to release reaction registration");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+            super.execute(command);
+        }
+
+        private void awaitRegistration() throws InterruptedException {
+            assertTrue(registrationEntered.await(5, TimeUnit.SECONDS),
+                    "Reaction never reached atomic publication registration");
+        }
+
+        private void allowRegistration() {
+            registrationAllowed.countDown();
+        }
     }
 }

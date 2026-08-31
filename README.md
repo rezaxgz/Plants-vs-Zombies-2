@@ -241,8 +241,10 @@ database. The synchronized state includes coins, diamonds, sprouts, plant food,
 pot inventory and greenhouse unlock count; chapter/level, minigame completion,
 high score and games-played statistics; adventure/minigame unlock records;
 plant and zombie collections, plant boosts, and daily-offer purchase state.
-Daily and non-daily completed-quest counters are also synchronized; their total
-is always derived and active quest definitions are not transported.
+Daily and non-daily completed-quest counters, fixed greenhouse pot contents and
+growth timers, active quest-instance progress, and bounded account news are also
+synchronized. Quest definitions remain catalog-owned and are validated against
+the server copy; their total completion count is always derived.
 Passwords, hashes, security answers, profile fields, and connection state are
 never part of gameplay responses or update requests.
 
@@ -263,10 +265,10 @@ never inserted into `UserManager`, so local `data/users.json` is not used for
 remote gameplay and another device receives the latest acknowledged server
 state on login.
 
-Full greenhouse planted-pot contents, active quest-instance progress/news, and
-saved in-progress adventure boards are not synchronized yet. Their resulting
-currency, collection, score, and completion changes are synchronized, but those
-three richer object graphs require dedicated conflict policies in a later stage.
+Saved in-progress adventure boards remain local checkpoints. The Phase 3 PDF
+does not require cross-device resume for those transient battle snapshots, and
+their legacy format uses Java object serialization, so they are deliberately not
+accepted by the network gameplay endpoint.
 There is still no offline retry queue, automatic reconnect, or persistent login
 token support.
 

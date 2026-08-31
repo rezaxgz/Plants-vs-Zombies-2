@@ -22,6 +22,9 @@ import io.github.Plants_Vs_Zombies_2.model.enums.Gender;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GreenhousePotGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.NewsGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.QuestGameplayState;
 
 class JsonUserRepositoryGameplayTest {
     @TempDir Path temporaryDirectory;
@@ -166,6 +169,90 @@ class JsonUserRepositoryGameplayTest {
                 restored.getQuestProgress().getCompletedNonDailyQuests());
     }
 
+    @Test
+    void richGameplayGraphPersistsAcrossRevisionAndServerRestart() throws Exception {
+        Path database = temporaryDirectory.resolve("rich-users.json");
+        JsonUserRepository repository = repository(database);
+        GameplayState initial = repository.findGameplayState("alice")
+                .orElseThrow().getState();
+
+        List<GreenhousePotGameplayState> pots = new ArrayList<>(
+                initial.getGreenhousePots());
+        pots.set(0, new GreenhousePotGameplayState(1, 1, false,
+                "Peashooter", false, 1_000L, 8L * 60 * 60 * 1_000));
+        List<QuestGameplayState> quests = new ArrayList<>(initial.getActiveQuests());
+        QuestGameplayState oldQuest = quests.get(0);
+        quests.set(0, new QuestGameplayState(oldQuest.getId(), oldQuest.getName(),
+                oldQuest.getInstructions(), oldQuest.getType(),
+                oldQuest.getPriority(), oldQuest.getCondition(),
+                oldQuest.getParameter(), oldQuest.getTarget(),
+                oldQuest.getRewardType(), oldQuest.getRewardAmount(), 1,
+                false, false));
+        List<NewsGameplayState> news = new ArrayList<>(initial.getNews());
+        news.add(new NewsGameplayState(2_000L, "Quest Progress",
+                "Progress is synchronized between devices.", false));
+        GameplayState rich = withRich(initial, pots, 1,
+                initial.getLastDailyQuestRefresh(), quests, news);
+
+        GameplayStateSnapshot saved = repository.updateGameplayState(
+                "alice", 0L, rich);
+        assertEquals(rich, saved.getState());
+        GameplayStateSnapshot restored = new JsonUserRepository(database)
+                .findGameplayState("alice").orElseThrow();
+        assertEquals(1L, restored.getRevision());
+        assertEquals(rich, restored.getState());
+    }
+
+    @Test
+    void malformedRichGraphsAreRejectedWithoutMutation() throws Exception {
+        JsonUserRepository repository = repository(
+                temporaryDirectory.resolve("invalid-rich.json"));
+        GameplayState initial = repository.findGameplayState("alice")
+                .orElseThrow().getState();
+
+        List<GreenhousePotGameplayState> invalidPots = new ArrayList<>(
+                initial.getGreenhousePots());
+        GreenhousePotGameplayState first = invalidPots.get(0);
+        invalidPots.set(0, new GreenhousePotGameplayState(99, first.getColumn(),
+                first.isLocked(), first.getPlantName(), first.isMarigold(),
+                first.getPlantedTimeMillis(), first.getDurationMillis()));
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 0L, withRich(initial,
+                        invalidPots, initial.getMaximumDifficultyWinStreak(),
+                        initial.getLastDailyQuestRefresh(),
+                        initial.getActiveQuests(), initial.getNews())));
+
+        List<QuestGameplayState> invalidQuests = new ArrayList<>(
+                initial.getActiveQuests());
+        QuestGameplayState quest = invalidQuests.get(0);
+        invalidQuests.set(0, new QuestGameplayState(quest.getId(), "Forged name",
+                quest.getInstructions(), quest.getType(), quest.getPriority(),
+                quest.getCondition(), quest.getParameter(), quest.getTarget(),
+                quest.getRewardType(), quest.getRewardAmount(), quest.getProgress(),
+                quest.isCompleted(), quest.isRewardGranted()));
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 0L, withRich(initial,
+                        initial.getGreenhousePots(),
+                        initial.getMaximumDifficultyWinStreak(),
+                        initial.getLastDailyQuestRefresh(), invalidQuests,
+                        initial.getNews())));
+
+        List<NewsGameplayState> oversizedNews = new ArrayList<>();
+        for (int index = 0; index < 257; index++) {
+            oversizedNews.add(new NewsGameplayState(index, "Title " + index,
+                    "Bounded description", false));
+        }
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 0L, withRich(initial,
+                        initial.getGreenhousePots(),
+                        initial.getMaximumDifficultyWinStreak(),
+                        initial.getLastDailyQuestRefresh(),
+                        initial.getActiveQuests(), oversizedNews)));
+
+        assertEquals(initial, repository.findGameplayState("alice")
+                .orElseThrow().getState());
+    }
+
     private static JsonUserRepository repository(Path database) {
         JsonUserRepository repository = new JsonUserRepository(database);
         User user = new User("alice", "GoodPass1!", "Alice",
@@ -200,7 +287,11 @@ class JsonUserRepositoryGameplayTest {
                 source.getDailyOfferDate(), source.getDailyOfferPlant(),
                 source.isDailyOfferPurchased(),
                 source.getCompletedDailyQuests(),
-                source.getCompletedNonDailyQuests());
+                source.getCompletedNonDailyQuests(),
+                source.getGreenhousePots(),
+                source.getMaximumDifficultyWinStreak(),
+                source.getLastDailyQuestRefresh(), source.getActiveQuests(),
+                source.getNews());
     }
 
     private static GameplayState withQuests(GameplayState source,
@@ -216,6 +307,31 @@ class JsonUserRepositoryGameplayTest {
                 source.getCompletedMinigameLevels(), source.getPlants(),
                 source.getZombies(), source.getPlantBoosts(),
                 source.getDailyOfferDate(), source.getDailyOfferPlant(),
-                source.isDailyOfferPurchased(), daily, nonDaily);
+                source.isDailyOfferPurchased(), daily, nonDaily,
+                source.getGreenhousePots(),
+                source.getMaximumDifficultyWinStreak(),
+                source.getLastDailyQuestRefresh(), source.getActiveQuests(),
+                source.getNews());
+    }
+
+    private static GameplayState withRich(GameplayState source,
+            List<GreenhousePotGameplayState> pots, int maximumStreak,
+            String lastDailyRefresh, List<QuestGameplayState> quests,
+            List<NewsGameplayState> news) {
+        return new GameplayState(source.getCoins(), source.getDiamonds(),
+                source.getSprouts(), source.getPlantFoodCount(),
+                source.getPotCount(), source.getGreenhousePotsUnlocked(),
+                source.getLastCompletedChapter(), source.getLastCompletedLevel(),
+                source.getCompletedMinigames(), source.getHighestScore(),
+                source.getGamesPlayed(), source.getAdventureUnlockedLevels(),
+                source.getCompletedAdventureLevels(),
+                source.getMinigameUnlockedLevels(),
+                source.getCompletedMinigameLevels(), source.getPlants(),
+                source.getZombies(), source.getPlantBoosts(),
+                source.getDailyOfferDate(), source.getDailyOfferPlant(),
+                source.isDailyOfferPurchased(),
+                source.getCompletedDailyQuests(),
+                source.getCompletedNonDailyQuests(), pots, maximumStreak,
+                lastDailyRefresh, quests, news);
     }
 }

@@ -7,8 +7,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -98,11 +100,31 @@ final class MultiplayerSessionService implements AutoCloseable {
                 matchDurationSeconds, reactionCooldownMillis, null, false);
     }
 
+    MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher,
+            MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier,
+            int tickRate, double matchDurationSeconds,
+            long reactionCooldownMillis, ExecutorService reactionPublisher) {
+        this(publisher, config, clock, seedSupplier, tickRate,
+                matchDurationSeconds, reactionCooldownMillis, null, false,
+                reactionPublisher);
+    }
+
     private MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher,
             MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier,
             int tickRate, double matchDurationSeconds,
             long reactionCooldownMillis,
             ScheduledExecutorService simulationScheduler, boolean autoSchedule) {
+        this(publisher, config, clock, seedSupplier, tickRate,
+                matchDurationSeconds, reactionCooldownMillis,
+                simulationScheduler, autoSchedule, null);
+    }
+
+    private MultiplayerSessionService(Consumer<List<MatchmakingEvent>> publisher,
+            MultiplayerIZombieConfig config, Clock clock, LongSupplier seedSupplier,
+            int tickRate, double matchDurationSeconds,
+            long reactionCooldownMillis,
+            ScheduledExecutorService simulationScheduler, boolean autoSchedule,
+            ExecutorService reactionPublisher) {
         if (tickRate <= 0 || !Double.isFinite(matchDurationSeconds)
                 || matchDurationSeconds <= 0.0 || reactionCooldownMillis < 0) {
             throw new IllegalArgumentException(
@@ -118,7 +140,8 @@ final class MultiplayerSessionService implements AutoCloseable {
         this.broadcastEveryTicks = Math.max(1,
                 tickRate / SNAPSHOT_BROADCASTS_PER_SECOND);
         this.simulationScheduler = simulationScheduler;
-        this.reactionPublisher = createReactionPublisher();
+        this.reactionPublisher = reactionPublisher == null
+                ? createReactionPublisher() : reactionPublisher;
         if (autoSchedule) {
             long periodNanos = Math.max(1L,
                     Math.round(1_000_000_000.0 / tickRate));
@@ -201,10 +224,10 @@ final class MultiplayerSessionService implements AutoCloseable {
             MatchReactionType reactionType) throws MultiplayerSessionException {
         Session session = requireSession(matchId);
         ReactionOutcome outcome = session.createReaction(username, reactionType);
-        // Queue publication tasks in authoritative sequence. The single event
-        // worker performs actual routing after every session lock is released.
-        session.enqueueReactionPublication(outcome.event(),
-                this::scheduleReactionPublication);
+        // Registration happens atomically with acceptance while the session owns
+        // its lifecycle lock. Opening the gate here guarantees that the worker
+        // cannot route events until that lock has been released.
+        outcome.publication().release();
         return outcome.receipt();
     }
 
@@ -341,7 +364,18 @@ final class MultiplayerSessionService implements AutoCloseable {
         }
         if (simulationTask != null) simulationTask.cancel(false);
         if (simulationScheduler != null) simulationScheduler.shutdownNow();
-        reactionPublisher.shutdownNow();
+        reactionPublisher.shutdown();
+        boolean interrupted = false;
+        while (!reactionPublisher.isTerminated()) {
+            try {
+                reactionPublisher.awaitTermination(1, TimeUnit.DAYS);
+            } catch (InterruptedException exception) {
+                // Accepted reactions are never discarded during shutdown. Finish
+                // draining outside all gameplay locks, then restore interruption.
+                interrupted = true;
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
         publish(cancellationEvents);
     }
 
@@ -401,15 +435,25 @@ final class MultiplayerSessionService implements AutoCloseable {
         });
     }
 
-    private void scheduleReactionPublication(List<MatchmakingEvent> events) {
-        if (events == null || events.isEmpty() || reactionPublisher.isShutdown()) {
-            return;
-        }
+    private ReactionPublication registerReactionPublication(
+            MatchReactionEvent event, String plantsUsername,
+            String zombiesUsername) throws MultiplayerSessionException {
+        CompletableFuture<Void> releaseGate = new CompletableFuture<>();
+        List<MatchmakingEvent> events = List.of(
+                new MatchmakingEvent(plantsUsername,
+                        MessageType.MATCH_REACTION_RECEIVED, event),
+                new MatchmakingEvent(zombiesUsername,
+                        MessageType.MATCH_REACTION_RECEIVED, event));
         try {
-            reactionPublisher.execute(() -> publish(events));
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            // Shutdown owns reaction cleanup; no task may survive service close.
+            reactionPublisher.execute(() -> {
+                releaseGate.join();
+                publish(events);
+            });
+        } catch (RejectedExecutionException exception) {
+            throw failure(ProtocolErrorCode.MATCH_NOT_ACTIVE,
+                    "The match is no longer accepting reactions");
         }
+        return new ReactionPublication(releaseGate);
     }
 
     private static LongSupplier secureSeedSupplier() {
@@ -444,12 +488,7 @@ final class MultiplayerSessionService implements AutoCloseable {
         private MatchFinishReason finishReason;
         private MatchStateSnapshot snapshot;
         private final Map<String, Long> lastReactionAt = new HashMap<>();
-        private final Object reactionPublicationLock = new Object();
-        private final Map<Long, List<MatchmakingEvent>> pendingReactionPublications =
-                new HashMap<>();
         private long reactionSequence;
-        private long nextReactionPublicationSequence = 1L;
-        private boolean reactionPublicationsClosed;
 
         private Session(String matchId, String plantsUsername,
                 String zombiesUsername, long createdAt,
@@ -576,33 +615,16 @@ final class MultiplayerSessionService implements AutoCloseable {
                 throw failure(ProtocolErrorCode.ACTION_NOT_ALLOWED,
                         "The match reaction sequence is exhausted");
             }
-            long sequence = ++reactionSequence;
-            lastReactionAt.put(username, now);
+            long sequence = reactionSequence + 1L;
             MatchReactionEvent event = new MatchReactionEvent(matchId, username,
                     reactionType, reactionType.getKind(), sequence, now);
             MatchReactionReceipt receipt = new MatchReactionReceipt(matchId,
                     reactionType, sequence, now);
-            return new ReactionOutcome(receipt, event);
-        }
-
-        void enqueueReactionPublication(MatchReactionEvent event,
-                Consumer<List<MatchmakingEvent>> scheduler) {
-            synchronized (reactionPublicationLock) {
-                if (reactionPublicationsClosed || event == null) return;
-                pendingReactionPublications.put(event.getSequence(), List.of(
-                        new MatchmakingEvent(plantsUsername,
-                                MessageType.MATCH_REACTION_RECEIVED, event),
-                        new MatchmakingEvent(zombiesUsername,
-                                MessageType.MATCH_REACTION_RECEIVED, event)));
-                List<MatchmakingEvent> ready = new ArrayList<>();
-                List<MatchmakingEvent> batch;
-                while ((batch = pendingReactionPublications.remove(
-                        nextReactionPublicationSequence)) != null) {
-                    ready.addAll(batch);
-                    nextReactionPublicationSequence++;
-                }
-                if (!ready.isEmpty()) scheduler.accept(List.copyOf(ready));
-            }
+            ReactionPublication publication = registerReactionPublication(event,
+                    plantsUsername, zombiesUsername);
+            reactionSequence = sequence;
+            lastReactionAt.put(username, now);
+            return new ReactionOutcome(receipt, publication);
         }
 
         private ActionResult accepted(String entityId) {
@@ -720,10 +742,6 @@ final class MultiplayerSessionService implements AutoCloseable {
 
         private void clearReactionState() {
             lastReactionAt.clear();
-            synchronized (reactionPublicationLock) {
-                reactionPublicationsClosed = true;
-                pendingReactionPublications.clear();
-            }
         }
 
         private ReadyStatus readyStatus() {
@@ -768,7 +786,12 @@ final class MultiplayerSessionService implements AutoCloseable {
 
     private record SessionOutcome<T>(T value, List<MatchmakingEvent> events) { }
     private record ReactionOutcome(MatchReactionReceipt receipt,
-            MatchReactionEvent event) { }
+            ReactionPublication publication) { }
+    private record ReactionPublication(CompletableFuture<Void> releaseGate) {
+        void release() {
+            releaseGate.complete(null);
+        }
+    }
     private record Cancellation(String remainingUsername) { }
     private record TickOutcome(boolean finished, List<MatchmakingEvent> events) {
         private static final TickOutcome EMPTY = new TickOutcome(false, List.of());

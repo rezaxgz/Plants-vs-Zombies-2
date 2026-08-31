@@ -14,7 +14,10 @@ import io.github.Plants_Vs_Zombies_2.model.greenHouse.GreenhouseBoard;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.GreenhousePotGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.NewsGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.PlantGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.QuestGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.ZombieGameplayState;
 
 /** Complete pre-mutation validation for the server's gameplay sync endpoint. */
@@ -23,6 +26,10 @@ final class GameplayStateValidator {
     private static final int MAX_PROGRESS = 100_000;
     private static final int MAX_COLLECTION_ENTRIES = 512;
     private static final int MAX_TEXT_LENGTH = 120;
+    private static final int MAX_NEWS_ENTRIES = 256;
+    private static final int MAX_NEWS_DESCRIPTION_LENGTH = 1_000;
+    private static final long MARIGOLD_DURATION_MILLIS = 2L * 60 * 60 * 1_000;
+    private static final long PLANT_DURATION_MILLIS = 8L * 60 * 60 * 1_000;
 
     private GameplayStateValidator() { }
 
@@ -73,7 +80,147 @@ final class GameplayStateValidator {
         validateZombies(incoming.getZombies(), current.getZombies());
         validateBoosts(incoming.getPlantBoosts(), incoming.getPlants());
         validateDailyOffer(incoming);
+        validateGreenhouse(incoming);
+        validateQuests(incoming, current);
+        validateNews(incoming);
         validateMonotonicProgress(incoming, current);
+    }
+
+    private static void validateGreenhouse(GameplayState state)
+            throws GameplayUpdateException {
+        List<GreenhousePotGameplayState> pots = state.getGreenhousePots();
+        int capacity = GreenhouseBoard.ROWS * GreenhouseBoard.COLUMNS;
+        if (pots.size() != capacity) fail("greenhouse must contain its fixed 3x4 pots");
+        Set<String> positions = new HashSet<>();
+        Set<String> plantCatalog = new HashSet<>();
+        for (PlantGameplayState plant : state.getPlants()) {
+            plantCatalog.add(normalize(plant.getName()));
+        }
+        int unlocked = 0;
+        for (GreenhousePotGameplayState pot : pots) {
+            if (pot == null || pot.getRow() < 1 || pot.getRow() > GreenhouseBoard.ROWS
+                    || pot.getColumn() < 1
+                    || pot.getColumn() > GreenhouseBoard.COLUMNS
+                    || !positions.add(pot.getRow() + ":" + pot.getColumn())) {
+                fail("greenhouse contains an invalid or duplicate pot position");
+            }
+            if (!pot.isLocked()) unlocked++;
+            if (pot.isEmpty()) {
+                if (pot.isMarigold() || pot.getPlantedTimeMillis() != 0L
+                        || pot.getDurationMillis() != 0L) {
+                    fail("empty greenhouse pots cannot contain timer state");
+                }
+                continue;
+            }
+            if (pot.isLocked() || !validText(pot.getPlantName())
+                    || pot.getPlantedTimeMillis() < 0L) {
+                fail("planted greenhouse pot state is invalid");
+            }
+            if (pot.isMarigold()) {
+                if (!"marigold".equals(normalize(pot.getPlantName()))
+                        || pot.getDurationMillis() != MARIGOLD_DURATION_MILLIS) {
+                    fail("marigold greenhouse timer is invalid");
+                }
+            } else if (!plantCatalog.contains(normalize(pot.getPlantName()))
+                    || pot.getDurationMillis() != PLANT_DURATION_MILLIS) {
+                fail("greenhouse plant or timer is invalid");
+            }
+        }
+        if (unlocked != state.getGreenhousePotsUnlocked()) {
+            fail("greenhouse unlock count does not match pot state");
+        }
+    }
+
+    private static void validateQuests(GameplayState incoming,
+            GameplayState current) throws GameplayUpdateException {
+        requireCounter(incoming.getMaximumDifficultyWinStreak(),
+                "maximumDifficultyWinStreak");
+        String refresh = incoming.getLastDailyQuestRefresh();
+        if (refresh == null || refresh.length() > MAX_TEXT_LENGTH) {
+            fail("lastDailyQuestRefresh is invalid");
+        }
+        if (!refresh.isBlank()) {
+            try {
+                LocalDate.parse(refresh);
+            } catch (DateTimeParseException exception) {
+                fail("lastDailyQuestRefresh must be an ISO date");
+            }
+        }
+        Map<String, QuestGameplayState> oldById = questMap(current.getActiveQuests());
+        Map<String, QuestGameplayState> newById = questMap(incoming.getActiveQuests());
+        if (!newById.keySet().equals(oldById.keySet())) {
+            fail("active quests must contain the server quest instances exactly once");
+        }
+        for (Map.Entry<String, QuestGameplayState> entry : newById.entrySet()) {
+            QuestGameplayState quest = entry.getValue();
+            QuestGameplayState old = oldById.get(entry.getKey());
+            if (!sameQuestDefinition(quest, old)) {
+                fail("quest definitions are server-owned");
+            }
+            if (quest.getProgress() < old.getProgress()
+                    || (old.isCompleted() && !quest.isCompleted())
+                    || (old.isRewardGranted() && !quest.isRewardGranted())) {
+                fail("quest progress cannot move backward");
+            }
+        }
+    }
+
+    private static Map<String, QuestGameplayState> questMap(
+            List<QuestGameplayState> quests) throws GameplayUpdateException {
+        if (quests == null || quests.size() > 64) fail("active quests are invalid");
+        Map<String, QuestGameplayState> result = new HashMap<>();
+        for (QuestGameplayState quest : quests) {
+            if (quest == null || !validText(quest.getId())
+                    || !validText(quest.getName())
+                    || quest.getInstructions() == null
+                    || quest.getInstructions().isBlank()
+                    || quest.getInstructions().length() > 500
+                    || quest.getType() == null || quest.getPriority() == null
+                    || quest.getCondition() == null || quest.getRewardType() == null
+                    || quest.getParameter() == null
+                    || quest.getParameter().length() > MAX_TEXT_LENGTH
+                    || quest.getTarget() <= 0 || quest.getTarget() > MAX_PROGRESS
+                    || quest.getRewardAmount() < 0
+                    || quest.getRewardAmount() > MAX_COUNTER
+                    || quest.getProgress() < 0
+                    || quest.getProgress() > quest.getTarget()
+                    || quest.isRewardGranted() && !quest.isCompleted()
+                    || result.put(quest.getId(), quest) != null) {
+                fail("active quests contain an invalid entry");
+            }
+        }
+        return result;
+    }
+
+    private static boolean sameQuestDefinition(QuestGameplayState first,
+            QuestGameplayState second) {
+        return second != null && first.getId().equals(second.getId())
+                && first.getName().equals(second.getName())
+                && first.getInstructions().equals(second.getInstructions())
+                && first.getType() == second.getType()
+                && first.getPriority() == second.getPriority()
+                && first.getCondition() == second.getCondition()
+                && first.getParameter().equals(second.getParameter())
+                && first.getTarget() == second.getTarget()
+                && first.getRewardType() == second.getRewardType()
+                && first.getRewardAmount() == second.getRewardAmount();
+    }
+
+    private static void validateNews(GameplayState state)
+            throws GameplayUpdateException {
+        List<NewsGameplayState> news = state.getNews();
+        if (news == null || news.size() > MAX_NEWS_ENTRIES) {
+            fail("news state is structurally invalid");
+        }
+        for (NewsGameplayState item : news) {
+            if (item == null || item.getTimestampMillis() < 0L
+                    || !validText(item.getTitle())
+                    || item.getDescription() == null
+                    || item.getDescription().isBlank()
+                    || item.getDescription().length() > MAX_NEWS_DESCRIPTION_LENGTH) {
+                fail("news state contains an invalid entry");
+            }
+        }
     }
 
     private static void validateLastCompletedPosition(GameplayState state)

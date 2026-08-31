@@ -68,8 +68,11 @@ public final class JsonUserRepository implements UserRepository {
 
     @Override
     public synchronized Optional<GameplayStateSnapshot> findGameplayState(String username) {
-        return findByUsername(username).map(user -> new GameplayStateSnapshot(
-                user.getGameplayRevision(), GameplayState.fromUser(user)));
+        return findByUsername(username).map(user -> {
+            user.getQuestProgress().ensureInitialized(user);
+            return new GameplayStateSnapshot(user.getGameplayRevision(),
+                    GameplayState.fromUser(user));
+        });
     }
 
     @Override
@@ -88,11 +91,14 @@ public final class JsonUserRepository implements UserRepository {
             throw new GameplayUpdateException(GameplayUpdateFailure.VALIDATION_FAILED,
                     "Gameplay revision limit reached");
         }
+        user.getQuestProgress().ensureInitialized(user);
         GameplayState previous = GameplayState.fromUser(user);
-        GameplayStateValidator.validate(state, previous);
+        GameplayState normalized = state == null ? null
+                : state.withRichStateFrom(previous);
+        GameplayStateValidator.validate(normalized, previous);
         long previousRevision = user.getGameplayRevision();
         try {
-            user.applyGameplayState(state);
+            user.applyGameplayState(normalized);
             user.setGameplayRevisionForStorage(previousRevision + 1);
             UserJsonDatabase.save(databasePath, users);
             return new GameplayStateSnapshot(user.getGameplayRevision(),

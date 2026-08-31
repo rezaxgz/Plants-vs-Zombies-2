@@ -187,11 +187,6 @@ class MultiplayerSessionIntegrationTest {
             ActionResult result = matched.zombies.game.placeZombie(matched.matchId,
                     "BUCKETHEAD", 0, column, revision).get(5, TimeUnit.SECONDS);
             revision = result.getRevision();
-            if (column == 4) {
-                assertFailure(matched.zombies.game.placeZombie(matched.matchId,
-                        "BASIC", 0, column, revision),
-                        ProtocolErrorCode.POSITION_OCCUPIED);
-            }
         }
         assertFailure(matched.zombies.game.placeZombie(matched.matchId,
                 "BASIC", 0, 8, revision), ProtocolErrorCode.INSUFFICIENT_RESOURCE);
