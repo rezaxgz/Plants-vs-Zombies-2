@@ -43,6 +43,10 @@ final class GameplayStateValidator {
         requireProgress(incoming.getLastCompletedChapter(), "lastCompletedChapter");
         requireProgress(incoming.getLastCompletedLevel(), "lastCompletedLevel");
         requireCounter(incoming.getCompletedMinigames(), "completedMinigames");
+        requireCounter(incoming.getCompletedDailyQuests(),
+                "completedDailyQuests");
+        requireCounter(incoming.getCompletedNonDailyQuests(),
+                "completedNonDailyQuests");
         requireCounter(incoming.getHighestScore(), "highestScore");
         requireCounter(incoming.getGamesPlayed(), "gamesPlayed");
         if (incoming.getLastCompletedChapter() == 0
@@ -136,6 +140,12 @@ final class GameplayStateValidator {
             fail("gamesPlayed cannot decrease");
         if (incoming.getCompletedMinigames() < current.getCompletedMinigames())
             fail("completedMinigames cannot decrease");
+        if (incoming.getCompletedDailyQuests()
+                < current.getCompletedDailyQuests())
+            fail("completedDailyQuests cannot decrease");
+        if (incoming.getCompletedNonDailyQuests()
+                < current.getCompletedNonDailyQuests())
+            fail("completedNonDailyQuests cannot decrease");
         if (compareProgress(incoming, current) < 0)
             fail("completed chapter and level cannot move backward");
         requireSuperset(incoming.getCompletedAdventureLevels(),

@@ -13,15 +13,19 @@ import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardPage;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardQuery;
 
 import java.util.List;
 import java.util.Locale;
 
 final class ServerAccountService {
     private final UserRepository repository;
+    private final LeaderboardService leaderboardService;
 
     ServerAccountService(UserRepository repository) {
         this.repository = repository;
+        this.leaderboardService = new LeaderboardService(repository);
     }
 
     void register(RegistrationDetails details) throws AccountServiceException {
@@ -114,6 +118,11 @@ final class ServerAccountService {
                                     : ProtocolErrorCode.VALIDATION_FAILED;
             throw new AccountServiceException(code, exception.getMessage());
         }
+    }
+
+    LeaderboardPage getLeaderboard(String authenticatedUsername,
+            LeaderboardQuery query) throws AccountServiceException {
+        return leaderboardService.getPage(authenticatedUsername, query);
     }
 
     private static String requireAuthentication(ConnectionContext context)

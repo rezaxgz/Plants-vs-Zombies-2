@@ -121,6 +121,23 @@ class RemoteGameplaySyncServiceTest {
         assertFalse(service.getStatus().attached());
     }
 
+    @Test
+    void forcedShutdownStartsDirtyFlushWithoutWaiting() {
+        FakeSession session = new FakeSession();
+        RemoteGameplaySyncService service = new RemoteGameplaySyncService(
+                session, UiDispatcher.direct());
+        User user = user();
+        service.attach(user, snapshot(0, user));
+        user.addCoins(12);
+
+        service.flushBestEffortOnShutdown();
+
+        assertEquals(1, session.syncCalls);
+        assertEquals(12, session.sentStates.getFirst().getCoins());
+        assertFalse(session.syncFutures.getFirst().isDone(),
+                "shutdown flush must not block waiting for acknowledgement");
+    }
+
     private static User user() {
         return new User("alice", "GoodPass1!", "Alice",
                 "alice@example.com", Gender.FEMALE);

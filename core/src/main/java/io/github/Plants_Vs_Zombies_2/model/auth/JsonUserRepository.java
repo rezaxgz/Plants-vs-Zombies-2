@@ -10,6 +10,7 @@ import java.util.Optional;
 
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardEntry;
 
 public final class JsonUserRepository implements UserRepository {
     private final Path databasePath;
@@ -32,6 +33,21 @@ public final class JsonUserRepository implements UserRepository {
     @Override
     public synchronized List<User> findAll() {
         return List.copyOf(users);
+    }
+
+    @Override
+    public synchronized List<LeaderboardEntry> snapshotLeaderboardEntries() {
+        List<LeaderboardEntry> snapshot = new ArrayList<>(users.size());
+        for (User user : users) {
+            snapshot.add(new LeaderboardEntry(0, user.getUsername(),
+                    user.getGameProgerss().getLastCompletedChapter(),
+                    user.getGameProgerss().getLastCompletedLevel(),
+                    user.getGameProgerss().getCompletedMinigames(),
+                    user.getQuestProgress().getCompletedDailyQuests(),
+                    user.getQuestProgress().getCompletedNonDailyQuests(),
+                    user.getGameProgerss().getHighestScore()));
+        }
+        return List.copyOf(snapshot);
     }
 
     @Override

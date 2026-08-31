@@ -9,6 +9,9 @@ import io.github.Plants_Vs_Zombies_2.network.auth.LoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardQuery;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardSortColumn;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardSortDirection;
 
 final class PayloadReader {
     private static final Gson GSON = new Gson();
@@ -41,6 +44,21 @@ final class PayloadReader {
 
     LoginCredentials login() throws AccountServiceException {
         return new LoginCredentials(requiredString("username"), requiredString("password"));
+    }
+
+    LeaderboardQuery leaderboardQuery() throws AccountServiceException {
+        final LeaderboardSortColumn column;
+        final LeaderboardSortDirection direction;
+        try {
+            column = LeaderboardSortColumn.valueOf(requiredString("sortColumn"));
+            direction = LeaderboardSortDirection.valueOf(
+                    requiredString("sortDirection"));
+        } catch (IllegalArgumentException exception) {
+            throw new AccountServiceException(ProtocolErrorCode.VALIDATION_FAILED,
+                    "Unknown leaderboard sort column or direction");
+        }
+        return new LeaderboardQuery(column, direction,
+                requiredInteger("offset"), requiredInteger("limit"));
     }
 
     String requiredString(String field) throws AccountServiceException {

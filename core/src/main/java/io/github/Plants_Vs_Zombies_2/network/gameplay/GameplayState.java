@@ -22,6 +22,8 @@ public final class GameplayState {
     private final int lastCompletedChapter;
     private final int lastCompletedLevel;
     private final int completedMinigames;
+    private final int completedDailyQuests;
+    private final int completedNonDailyQuests;
     private final int highestScore;
     private final int gamesPlayed;
     private final Map<String, Integer> adventureUnlockedLevels;
@@ -48,6 +50,29 @@ public final class GameplayState {
             Map<String, Integer> plantBoosts,
             String dailyOfferDate, String dailyOfferPlant,
             boolean dailyOfferPurchased) {
+        this(coins, diamonds, sprouts, plantFoodCount, potCount,
+                greenhousePotsUnlocked, lastCompletedChapter,
+                lastCompletedLevel, completedMinigames, highestScore,
+                gamesPlayed, adventureUnlockedLevels,
+                completedAdventureLevels, minigameUnlockedLevels,
+                completedMinigameLevels, plants, zombies, plantBoosts,
+                dailyOfferDate, dailyOfferPlant, dailyOfferPurchased, 0, 0);
+    }
+
+    public GameplayState(int coins, int diamonds, int sprouts,
+            int plantFoodCount, int potCount, int greenhousePotsUnlocked,
+            int lastCompletedChapter, int lastCompletedLevel,
+            int completedMinigames, int highestScore, int gamesPlayed,
+            Map<String, Integer> adventureUnlockedLevels,
+            List<String> completedAdventureLevels,
+            Map<String, Integer> minigameUnlockedLevels,
+            List<String> completedMinigameLevels,
+            List<PlantGameplayState> plants,
+            List<ZombieGameplayState> zombies,
+            Map<String, Integer> plantBoosts,
+            String dailyOfferDate, String dailyOfferPlant,
+            boolean dailyOfferPurchased, int completedDailyQuests,
+            int completedNonDailyQuests) {
         this.coins = coins;
         this.diamonds = diamonds;
         this.sprouts = sprouts;
@@ -57,6 +82,8 @@ public final class GameplayState {
         this.lastCompletedChapter = lastCompletedChapter;
         this.lastCompletedLevel = lastCompletedLevel;
         this.completedMinigames = completedMinigames;
+        this.completedDailyQuests = completedDailyQuests;
+        this.completedNonDailyQuests = completedNonDailyQuests;
         this.highestScore = highestScore;
         this.gamesPlayed = gamesPlayed;
         this.adventureUnlockedLevels = copyMap(adventureUnlockedLevels);
@@ -93,7 +120,9 @@ public final class GameplayState {
                 progress.getHighestUnlockedMinigameLevelsForStorage(),
                 progress.getCompletedMinigameLevelsForStorage(), plants, zombies,
                 user.getPlantBoosts(), user.getDailyOfferDate(),
-                user.getDailyOfferPlant(), user.isDailyOfferPurchased());
+                user.getDailyOfferPlant(), user.isDailyOfferPurchased(),
+                user.getQuestProgress().getCompletedDailyQuests(),
+                user.getQuestProgress().getCompletedNonDailyQuests());
     }
 
     private static <T> List<T> copyList(List<T> values) {
@@ -114,6 +143,8 @@ public final class GameplayState {
     public int getLastCompletedChapter() { return lastCompletedChapter; }
     public int getLastCompletedLevel() { return lastCompletedLevel; }
     public int getCompletedMinigames() { return completedMinigames; }
+    public int getCompletedDailyQuests() { return completedDailyQuests; }
+    public int getCompletedNonDailyQuests() { return completedNonDailyQuests; }
     public int getHighestScore() { return highestScore; }
     public int getGamesPlayed() { return gamesPlayed; }
     public Map<String, Integer> getAdventureUnlockedLevels() {
@@ -144,6 +175,8 @@ public final class GameplayState {
                 && lastCompletedChapter == value.lastCompletedChapter
                 && lastCompletedLevel == value.lastCompletedLevel
                 && completedMinigames == value.completedMinigames
+                && completedDailyQuests == value.completedDailyQuests
+                && completedNonDailyQuests == value.completedNonDailyQuests
                 && highestScore == value.highestScore && gamesPlayed == value.gamesPlayed
                 && dailyOfferPurchased == value.dailyOfferPurchased
                 && Objects.equals(adventureUnlockedLevels, value.adventureUnlockedLevels)
@@ -159,7 +192,8 @@ public final class GameplayState {
     @Override public int hashCode() {
         return Objects.hash(coins, diamonds, sprouts, plantFoodCount, potCount,
                 greenhousePotsUnlocked, lastCompletedChapter, lastCompletedLevel,
-                completedMinigames, highestScore, gamesPlayed,
+                completedMinigames, completedDailyQuests,
+                completedNonDailyQuests, highestScore, gamesPlayed,
                 adventureUnlockedLevels, completedAdventureLevels,
                 minigameUnlockedLevels, completedMinigameLevels, plants, zombies,
                 plantBoosts, dailyOfferDate, dailyOfferPlant, dailyOfferPurchased);

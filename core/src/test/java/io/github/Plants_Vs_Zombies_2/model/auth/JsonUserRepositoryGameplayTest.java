@@ -7,11 +7,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import io.github.Plants_Vs_Zombies_2.model.enums.Gender;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
@@ -109,6 +114,58 @@ class JsonUserRepositoryGameplayTest {
         assertTrue(Files.isDirectory(database));
     }
 
+    @Test
+    void questCountersPersistAreBoundedMonotonicAndDerived() throws Exception {
+        Path database = temporaryDirectory.resolve("quests.json");
+        JsonUserRepository repository = repository(database);
+        GameplayState initial = repository.findGameplayState("alice")
+                .orElseThrow().getState();
+        GameplayState accepted = withQuests(initial, 3, 7);
+        GameplayStateSnapshot saved = repository.updateGameplayState(
+                "alice", 0, accepted);
+        assertEquals(3, saved.getState().getCompletedDailyQuests());
+        assertEquals(7, saved.getState().getCompletedNonDailyQuests());
+        assertEquals(10, repository.snapshotLeaderboardEntries().get(0)
+                .getTotalCompletedQuests());
+
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 1,
+                        withQuests(accepted, 2, 7)));
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 1,
+                        withQuests(accepted, -1, 7)));
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 1,
+                        withQuests(accepted, 3, 1_000_000_001)));
+        assertThrows(GameplayUpdateException.class, () ->
+                repository.updateGameplayState("alice", 0,
+                        withQuests(accepted, 4, 8)));
+
+        GameplayStateSnapshot unchanged = new JsonUserRepository(database)
+                .findGameplayState("alice").orElseThrow();
+        assertEquals(1L, unchanged.getRevision());
+        assertEquals(3, unchanged.getState().getCompletedDailyQuests());
+        assertEquals(7, unchanged.getState().getCompletedNonDailyQuests());
+    }
+
+    @Test
+    void legacyJsonWithoutQuestProgressDefaultsCountersSafely() throws Exception {
+        Path database = temporaryDirectory.resolve("legacy.json");
+        User user = new User("legacy", "GoodPass1!", "Legacy",
+                "legacy@example.com", Gender.MALE);
+        UserJsonDatabase.save(database, List.of(user));
+        JsonObject root = JsonParser.parseString(Files.readString(database))
+                .getAsJsonObject();
+        root.getAsJsonArray("users").get(0).getAsJsonObject()
+                .remove("questProgress");
+        Files.writeString(database, new Gson().toJson(root));
+
+        User restored = UserJsonDatabase.load(database).get(0);
+        assertEquals(0, restored.getQuestProgress().getCompletedDailyQuests());
+        assertEquals(0,
+                restored.getQuestProgress().getCompletedNonDailyQuests());
+    }
+
     private static JsonUserRepository repository(Path database) {
         JsonUserRepository repository = new JsonUserRepository(database);
         User user = new User("alice", "GoodPass1!", "Alice",
@@ -141,6 +198,24 @@ class JsonUserRepositoryGameplayTest {
                 source.getCompletedMinigameLevels(), source.getPlants(),
                 source.getZombies(), source.getPlantBoosts(),
                 source.getDailyOfferDate(), source.getDailyOfferPlant(),
-                source.isDailyOfferPurchased());
+                source.isDailyOfferPurchased(),
+                source.getCompletedDailyQuests(),
+                source.getCompletedNonDailyQuests());
+    }
+
+    private static GameplayState withQuests(GameplayState source,
+            int daily, int nonDaily) {
+        return new GameplayState(source.getCoins(), source.getDiamonds(),
+                source.getSprouts(), source.getPlantFoodCount(),
+                source.getPotCount(), source.getGreenhousePotsUnlocked(),
+                source.getLastCompletedChapter(), source.getLastCompletedLevel(),
+                source.getCompletedMinigames(), source.getHighestScore(),
+                source.getGamesPlayed(), source.getAdventureUnlockedLevels(),
+                source.getCompletedAdventureLevels(),
+                source.getMinigameUnlockedLevels(),
+                source.getCompletedMinigameLevels(), source.getPlants(),
+                source.getZombies(), source.getPlantBoosts(),
+                source.getDailyOfferDate(), source.getDailyOfferPlant(),
+                source.isDailyOfferPurchased(), daily, nonDaily);
     }
 }

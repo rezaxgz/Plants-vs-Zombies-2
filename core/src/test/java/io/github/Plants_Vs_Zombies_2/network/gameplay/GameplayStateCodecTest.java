@@ -22,6 +22,7 @@ class GameplayStateCodecTest {
         user.addDiamonds(7);
         user.addSprouts(3);
         user.getGameProgerss().setHighestScore(900);
+        user.getQuestProgress().restoreCompletedCountsForStorage(4, 6);
         GameplayState state = GameplayState.fromUser(user);
         ProtocolMessage message = ProtocolMessages.withPayload(
                 MessageType.GET_GAMEPLAY_STATE_RESPONSE, "gameplay-codec",
@@ -35,6 +36,8 @@ class GameplayStateCodecTest {
 
         assertEquals(4L, snapshot.getRevision());
         assertEquals(state, snapshot.getState());
+        assertEquals(4, snapshot.getState().getCompletedDailyQuests());
+        assertEquals(6, snapshot.getState().getCompletedNonDailyQuests());
         assertFalse(json.contains("password"));
         assertFalse(json.contains("security"));
         assertFalse(json.contains("private answer"));

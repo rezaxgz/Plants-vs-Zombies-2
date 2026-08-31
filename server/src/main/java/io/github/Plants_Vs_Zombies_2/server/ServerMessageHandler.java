@@ -113,6 +113,7 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             case GET_PROFILE_REQUEST -> getProfile(message, context);
             case GET_GAMEPLAY_STATE_REQUEST -> getGameplayState(message, context);
             case SYNC_GAMEPLAY_STATE_REQUEST -> synchronizeGameplayState(message, context);
+            case GET_LEADERBOARD_REQUEST -> getLeaderboard(message, context);
             case SEND_INVITATION_REQUEST -> sendInvitation(message, context);
             case RESPOND_INVITATION_REQUEST -> respondInvitation(message, context);
             case CANCEL_INVITATION_REQUEST -> cancelInvitation(message, context);
@@ -320,6 +321,18 @@ public final class ServerMessageHandler implements ServerRequestHandler {
                 message.getRequestId(), accountService.synchronizeGameplayState(
                         context, payload.requiredLong("expectedRevision"),
                         payload.requiredObject("state", GameplayState.class)));
+    }
+
+    private ProtocolMessage getLeaderboard(ProtocolMessage message,
+            ConnectionContext context) throws AccountServiceException {
+        String username = requireAuthentication(context);
+        if (!connectionDirectory.isCurrent(username, context.getConnection())) {
+            throw new AccountServiceException(ProtocolErrorCode.AUTH_REQUIRED,
+                    "This authenticated connection is no longer current");
+        }
+        return ProtocolMessages.withPayload(MessageType.GET_LEADERBOARD_RESPONSE,
+                message.getRequestId(), accountService.getLeaderboard(
+                        username, PayloadReader.from(message).leaderboardQuery()));
     }
 
     private static ProtocolMessage error(

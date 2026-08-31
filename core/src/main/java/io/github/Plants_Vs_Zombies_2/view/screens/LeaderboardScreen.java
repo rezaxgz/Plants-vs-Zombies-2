@@ -1,7 +1,5 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
-import java.util.List;
-
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
@@ -17,37 +15,53 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
 
-import io.github.Plants_Vs_Zombies_2.model.App;
-import io.github.Plants_Vs_Zombies_2.model.leaderboard.LeaderBoard;
-import io.github.Plants_Vs_Zombies_2.model.user.User;
+import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardClient;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardEntry;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardFlowController;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardSortColumn;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardSortDirection;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardTransport;
+import io.github.Plants_Vs_Zombies_2.network.session.ClientSessionState;
+import io.github.Plants_Vs_Zombies_2.network.session.SessionStateListener;
 
-/** Graphical leaderboard backed by the phase-one leaderboard model. */
+/** Graphical leaderboard backed exclusively by the authenticated server. */
 public final class LeaderboardScreen extends AbstractScreen {
-    private static final String SORT_UP =
-            "IMAGE_UI_ALMANAC_SORT_BUTTON_UP";
-    private static final String SORT_DOWN =
-            "IMAGE_UI_ALMANAC_SORT_BUTTON_DOWN";
-    private static final String ASCENDING_UP =
-            "IMAGE_UI_ALMANAC_SORT_ASCENDING_UP";
-    private static final String ASCENDING_DOWN =
-            "IMAGE_UI_ALMANAC_SORT_ASCENDING_DOWN";
-    private static final String DESCENDING_UP =
-            "IMAGE_UI_ALMANAC_SORT_DESCENDING_UP";
-    private static final String DESCENDING_DOWN =
-            "IMAGE_UI_ALMANAC_SORT_DESCENDING_DOWN";
+    private static final String SORT_UP = "IMAGE_UI_ALMANAC_SORT_BUTTON_UP";
+    private static final String SORT_DOWN = "IMAGE_UI_ALMANAC_SORT_BUTTON_DOWN";
+    private static final String ASCENDING_UP = "IMAGE_UI_ALMANAC_SORT_ASCENDING_UP";
+    private static final String ASCENDING_DOWN = "IMAGE_UI_ALMANAC_SORT_ASCENDING_DOWN";
+    private static final String DESCENDING_UP = "IMAGE_UI_ALMANAC_SORT_DESCENDING_UP";
+    private static final String DESCENDING_DOWN = "IMAGE_UI_ALMANAC_SORT_DESCENDING_DOWN";
 
-    private LeaderBoard.SortColumn sortColumn = LeaderBoard.SortColumn.HIGH_SCORE;
-    private boolean ascending;
+    private final LeaderboardFlowController controller;
+    private final SessionStateListener sessionListener;
     private Table sortModal;
-    private Label sortSummary;
 
     public LeaderboardScreen(ScreenNavigator navigator) {
         super(navigator, "Leaderboard");
         addBackButton();
-        rebuildLeaderboard();
+        LeaderboardClient client = navigator.getAccountSession()
+                .getLeaderboardClient();
+        LeaderboardTransport transport = client == null
+                ? query -> java.util.concurrent.CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                                "Leaderboard service is unavailable"))
+                : client;
+        controller = new LeaderboardFlowController(transport,
+                navigator.getUiDispatcher(), this::rebuildLeaderboard);
+        sessionListener = (previous, current, failure) -> {
+            if (previous == ClientSessionState.AUTHENTICATED
+                    && current != ClientSessionState.AUTHENTICATED) {
+                controller.connectionLost(failure);
+            }
+        };
+        navigator.getAccountSession().addStateListener(sessionListener);
+        controller.load();
+        rebuildLeaderboard(controller.getState());
     }
 
-    private void rebuildLeaderboard() {
+    private void rebuildLeaderboard(LeaderboardFlowController.State state) {
         content.clearChildren();
 
         Table panel = new Table();
@@ -55,17 +69,14 @@ public final class LeaderboardScreen extends AbstractScreen {
         panel.pad(18f);
 
         Table toolbar = new Table();
-        Label heading = new Label("Global Leaderboard", skin, "big");
-        toolbar.add(heading).left().expandX();
-
-        sortSummary = new Label(buildSortSummary(), skin, "secondary");
-        toolbar.add(sortSummary).right().padRight(10f);
-
+        toolbar.add(new Label("Global Leaderboard", skin, "big"))
+                .left().expandX();
+        toolbar.add(new Label(buildSortSummary(state), skin, "secondary"))
+                .right().padRight(10f);
         ImageButton sortButton = assetImageButton(
                 SORT_UP, SORT_DOWN, "Sort leaderboard");
         sortButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 showSortModal();
             }
         });
@@ -75,15 +86,21 @@ public final class LeaderboardScreen extends AbstractScreen {
         Table table = new Table();
         table.top();
         addHeaderRow(table);
-
-        List<User> users = LeaderBoard.getSortedLeaderboard(sortColumn, ascending);
-        if (users.isEmpty()) {
-            Label empty = new Label("No registered users were found.", skin,
-                    "medium_outline");
-            table.add(empty).colspan(8).pad(40f);
+        if (state.entries().isEmpty()) {
+            String text = state.loading() ? "Loading leaderboard..."
+                    : state.message() != null ? state.message()
+                    : "No players are registered on the server.";
+            table.add(new Label(text, skin, "medium_outline"))
+                    .colspan(8).pad(40f).row();
         } else {
-            for (int index = 0; index < users.size(); index++) {
-                addUserRow(table, index + 1, users.get(index));
+            for (LeaderboardEntry entry : state.entries()) addUserRow(table, entry);
+            if (state.loading()) {
+                table.add(new Label("Refreshing leaderboard...", skin,
+                        "secondary")).colspan(8).pad(8f).row();
+            }
+            if (state.message() != null) {
+                table.add(new Label(state.message(), skin, "secondary"))
+                        .colspan(8).pad(8f).row();
             }
         }
 
@@ -91,25 +108,43 @@ public final class LeaderboardScreen extends AbstractScreen {
         scroll.setFadeScrollBars(false);
         scroll.setScrollingDisabled(true, false);
         scroll.setScrollbarsOnTop(false);
-        panel.add(scroll).width(1135f).height(455f).row();
+        panel.add(scroll).width(1135f).height(420f).row();
 
-        Label footer = new Label(users.size() + " registered player"
-                + (users.size() == 1 ? "" : "s"), skin, "secondary");
-        panel.add(footer).right().padTop(8f);
-
+        Table footer = new Table();
+        String count = state.totalPlayers() + " server player"
+                + (state.totalPlayers() == 1 ? "" : "s");
+        if (state.totalPlayers() > state.entries().size()) {
+            count += " (showing first " + state.entries().size() + ")";
+        }
+        footer.add(new Label(count, skin, "secondary")).left().expandX();
+        if (state.authenticatedUserRank() != null) {
+            footer.add(new Label("Your rank: #"
+                    + state.authenticatedUserRank(), skin, "secondary"))
+                    .padRight(12f);
+        }
+        if (state.retryAvailable()) {
+            TextButton retry = new TextButton("Retry", skin, "green");
+            retry.addListener(new ClickListener() {
+                @Override public void clicked(InputEvent event, float x, float y) {
+                    controller.retry();
+                }
+            });
+            footer.add(retry).width(120f).height(42f);
+        }
+        panel.add(footer).growX().padTop(8f);
         content.add(panel).expand().center().width(1185f).height(555f);
     }
 
     private void addHeaderRow(Table table) {
-        TextButtonStyle headerStyle = skin.get("green", TextButtonStyle.class);
-        addHeaderCell(table, "#", 52f, headerStyle);
-        addHeaderCell(table, "Username", 190f, headerStyle);
-        addHeaderCell(table, "Last Level", 125f, headerStyle);
-        addHeaderCell(table, "Minigames", 120f, headerStyle);
-        addHeaderCell(table, "Daily", 110f, headerStyle);
-        addHeaderCell(table, "Non-Daily", 125f, headerStyle);
-        addHeaderCell(table, "Quests", 105f, headerStyle);
-        addHeaderCell(table, "High Score", 130f, headerStyle);
+        TextButtonStyle style = skin.get("green", TextButtonStyle.class);
+        addHeaderCell(table, "#", 52f, style);
+        addHeaderCell(table, "Username", 190f, style);
+        addHeaderCell(table, "Last Level", 125f, style);
+        addHeaderCell(table, "Minigames", 120f, style);
+        addHeaderCell(table, "Daily", 110f, style);
+        addHeaderCell(table, "Non-Daily", 125f, style);
+        addHeaderCell(table, "Quests", 105f, style);
+        addHeaderCell(table, "High Score", 130f, style);
         table.row();
     }
 
@@ -123,174 +158,137 @@ public final class LeaderboardScreen extends AbstractScreen {
         table.add(cell).width(width).height(48f).pad(2f);
     }
 
-    private void addUserRow(Table table, int rank, User user) {
-        boolean currentUser = App.getInstance().getLoggedInUser() == user
-                || App.getInstance().getLoggedInUser() != null
-                && App.getInstance().getLoggedInUser().getUsername()
-                        .equals(user.getUsername());
-
-        TextButtonStyle rowStyle = skin.get(
-                currentUser ? "green" : "brown", TextButtonStyle.class);
-        Color textColor = currentUser ? Color.WHITE : Color.LIGHT_GRAY;
-
-        addValueCell(table, Integer.toString(rank), 52f, rowStyle, textColor);
-        addValueCell(table, user.getUsername(), 190f, rowStyle, textColor);
-        addValueCell(table,
-                user.getGameProgerss().getLastCompletedChapter() + "-"
-                        + user.getGameProgerss().getLastCompletedLevel(),
-                125f, rowStyle, textColor);
-        addValueCell(table,
-                Integer.toString(user.getGameProgerss().getCompletedMinigames()),
-                120f, rowStyle, textColor);
-        addValueCell(table,
-                Integer.toString(user.getQuestProgress().getCompletedDailyQuests()),
-                110f, rowStyle, textColor);
-        addValueCell(table,
-                Integer.toString(user.getQuestProgress().getCompletedNonDailyQuests()),
-                125f, rowStyle, textColor);
-        addValueCell(table,
-                Integer.toString(user.getQuestProgress().getTotalCompletedQuests()),
-                105f, rowStyle, textColor);
-        addValueCell(table,
-                Integer.toString(user.getGameProgerss().getHighestScore()),
-                130f, rowStyle, textColor);
+    private void addUserRow(Table table, LeaderboardEntry entry) {
+        AccountProfile profile = navigator.getAccountSession().getProfile();
+        boolean currentUser = profile != null
+                && profile.getUsername().equals(entry.getUsername());
+        TextButtonStyle style = skin.get(currentUser ? "green" : "brown",
+                TextButtonStyle.class);
+        Color color = currentUser ? Color.WHITE : Color.LIGHT_GRAY;
+        addValueCell(table, Integer.toString(entry.getRank()), 52f, style, color);
+        addValueCell(table, entry.getUsername(), 190f, style, color);
+        addValueCell(table, entry.getLastCompletedChapter() + "-"
+                + entry.getLastCompletedLevel(), 125f, style, color);
+        addValueCell(table, Integer.toString(entry.getCompletedMinigames()),
+                120f, style, color);
+        addValueCell(table, Integer.toString(entry.getCompletedDailyQuests()),
+                110f, style, color);
+        addValueCell(table, Integer.toString(entry.getCompletedNonDailyQuests()),
+                125f, style, color);
+        addValueCell(table, Integer.toString(entry.getTotalCompletedQuests()),
+                105f, style, color);
+        addValueCell(table, Integer.toString(entry.getHighestScore()),
+                130f, style, color);
         table.row();
     }
 
     private void addValueCell(Table table, String text, float width,
-            TextButtonStyle style, Color textColor) {
+            TextButtonStyle style, Color color) {
         Table cell = new Table();
         cell.setBackground(style.up);
         Label label = new Label(text, skin, "secondary");
-        label.setColor(textColor);
+        label.setColor(color);
         label.setAlignment(Align.center);
         cell.add(label).growX().pad(4f);
         table.add(cell).width(width).height(46f).pad(2f);
     }
 
     private void showSortModal() {
-        if (sortModal != null) {
-            return;
-        }
-
+        if (sortModal != null) return;
+        LeaderboardFlowController.State state = controller.getState();
         sortModal = new Table();
         sortModal.setFillParent(true);
         sortModal.setTouchable(Touchable.enabled);
-
         Table panel = new Table();
         panel.setBackground(skin.get("brown", TextButtonStyle.class).up);
         panel.pad(22f);
-
-        Table titleBar = new Table();
-        titleBar.add(new Label("Sort Leaderboard", skin, "big"))
-                .left().expandX();
+        Table title = new Table();
+        title.add(new Label("Sort Leaderboard", skin, "big")).left().expandX();
         ImageButton close = new ImageButton(skin, "generic_close_circle");
         close.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 closeSortModal();
             }
         });
-        titleBar.add(close).size(52f);
-        panel.add(titleBar).growX().padBottom(10f).row();
-
-        Label helper = new Label(
-                "Choose any sorting option available in the phase-one leaderboard.",
-                skin, "secondary");
-        panel.add(helper).left().padBottom(12f).row();
-
+        title.add(close).size(52f);
+        panel.add(title).growX().padBottom(10f).row();
+        panel.add(new Label("Choose a server leaderboard ordering.", skin,
+                "secondary")).left().padBottom(12f).row();
         Table options = new Table();
         options.defaults().width(240f).height(50f).pad(5f);
-        addSortOption(options, "Username", LeaderBoard.SortColumn.USERNAME);
-        addSortOption(options, "Last Level", LeaderBoard.SortColumn.LAST_LEVEL);
+        addSortOption(options, "Username", LeaderboardSortColumn.USERNAME, state);
+        addSortOption(options, "Last Level", LeaderboardSortColumn.LAST_LEVEL, state);
         options.row();
-        addSortOption(options, "Minigames", LeaderBoard.SortColumn.MINIGAMES);
-        addSortOption(options, "Daily Quests", LeaderBoard.SortColumn.DAILY_QUESTS);
+        addSortOption(options, "Minigames", LeaderboardSortColumn.MINIGAMES, state);
+        addSortOption(options, "Daily Quests", LeaderboardSortColumn.DAILY_QUESTS, state);
         options.row();
         addSortOption(options, "Non-Daily Quests",
-                LeaderBoard.SortColumn.NON_DAILY_QUESTS);
-        addSortOption(options, "All Quests", LeaderBoard.SortColumn.QUESTS);
+                LeaderboardSortColumn.NON_DAILY_QUESTS, state);
+        addSortOption(options, "All Quests", LeaderboardSortColumn.QUESTS, state);
         options.row();
-        addSortOption(options, "High Score", LeaderBoard.SortColumn.HIGH_SCORE);
+        addSortOption(options, "High Score", LeaderboardSortColumn.HIGH_SCORE, state);
         panel.add(options).row();
-
         Table direction = new Table();
         direction.defaults().pad(10f);
-        Label directionLabel = new Label("Order", skin, "medium_outline");
-        direction.add(directionLabel).padRight(8f);
-
-        ImageButton ascendingButton = assetImageButton(
+        direction.add(new Label("Order", skin, "medium_outline")).padRight(8f);
+        ImageButton ascending = assetImageButton(
                 ASCENDING_UP, ASCENDING_DOWN, "Ascending");
-        ascendingButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                ascending = true;
+        ascending.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 closeSortModal();
-                rebuildLeaderboard();
+                controller.selectSort(controller.getState().sortColumn(),
+                        LeaderboardSortDirection.ASCENDING);
             }
         });
-        direction.add(ascendingButton).size(58f);
-
-        ImageButton descendingButton = assetImageButton(
+        direction.add(ascending).size(58f);
+        ImageButton descending = assetImageButton(
                 DESCENDING_UP, DESCENDING_DOWN, "Descending");
-        descendingButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                ascending = false;
+        descending.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
                 closeSortModal();
-                rebuildLeaderboard();
+                controller.selectSort(controller.getState().sortColumn(),
+                        LeaderboardSortDirection.DESCENDING);
             }
         });
-        direction.add(descendingButton).size(58f);
+        direction.add(descending).size(58f);
         panel.add(direction).padTop(8f).row();
-
-        Label note = new Label(
-                "Current: " + buildSortSummary(), skin, "secondary");
-        panel.add(note).padTop(6f);
-
+        panel.add(new Label("Current: " + buildSortSummary(state), skin,
+                "secondary")).padTop(6f);
         sortModal.add(panel).width(590f).height(520f);
         root.setTouchable(Touchable.disabled);
         stage.addActor(sortModal);
     }
 
     private void addSortOption(Table options, String label,
-            LeaderBoard.SortColumn column) {
+            LeaderboardSortColumn column, LeaderboardFlowController.State state) {
         TextButton button = new TextButton(label, skin,
-                sortColumn == column ? "green" : "brown");
+                state.sortColumn() == column ? "green" : "brown");
         button.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                sortColumn = column;
+            @Override public void clicked(InputEvent event, float x, float y) {
                 closeSortModal();
-                rebuildLeaderboard();
+                controller.selectSort(column,
+                        controller.getState().sortDirection());
             }
         });
         options.add(button);
     }
 
-    private String buildSortSummary() {
-        return displayName(sortColumn) + " - "
-                + (ascending ? "Ascending" : "Descending");
+    private String buildSortSummary(LeaderboardFlowController.State state) {
+        return displayName(state.sortColumn()) + " - "
+                + (state.sortDirection() == LeaderboardSortDirection.ASCENDING
+                        ? "Ascending" : "Descending");
     }
 
-    private String displayName(LeaderBoard.SortColumn column) {
-        switch (column) {
-            case USERNAME:
-                return "Username";
-            case LAST_LEVEL:
-                return "Last Level";
-            case MINIGAMES:
-                return "Minigames";
-            case DAILY_QUESTS:
-                return "Daily Quests";
-            case NON_DAILY_QUESTS:
-                return "Non-Daily Quests";
-            case QUESTS:
-                return "All Quests";
-            case HIGH_SCORE:
-            default:
-                return "High Score";
-        }
+    private String displayName(LeaderboardSortColumn column) {
+        return switch (column) {
+            case USERNAME -> "Username";
+            case LAST_LEVEL -> "Last Level";
+            case MINIGAMES -> "Minigames";
+            case DAILY_QUESTS -> "Daily Quests";
+            case NON_DAILY_QUESTS -> "Non-Daily Quests";
+            case QUESTS -> "All Quests";
+            case HIGH_SCORE -> "High Score";
+        };
     }
 
     private ImageButton assetImageButton(String normalAsset,
@@ -307,11 +305,15 @@ public final class LeaderboardScreen extends AbstractScreen {
     }
 
     private void closeSortModal() {
-        if (sortModal == null) {
-            return;
-        }
+        if (sortModal == null) return;
         sortModal.remove();
         sortModal = null;
         root.setTouchable(Touchable.enabled);
+    }
+
+    @Override public void dispose() {
+        navigator.getAccountSession().removeStateListener(sessionListener);
+        controller.close();
+        super.dispose();
     }
 }

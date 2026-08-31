@@ -134,6 +134,18 @@ public final class RemoteGameplaySyncService implements AutoCloseable {
         return synchronize();
     }
 
+    /**
+     * Sends a final dirty snapshot during forced application disposal without
+     * waiting on the render thread. Delivery cannot be guaranteed once the OS
+     * is closing the process, so normal logout remains the reliable path.
+     */
+    public void flushBestEffortOnShutdown() {
+        if (!isAttached()) return;
+        GameplayState current = GameplayState.fromUser(user);
+        if (current.equals(acknowledged)) return;
+        session.synchronizeGameplayState(acknowledgedRevision, current);
+    }
+
     public Status getStatus() {
         return new Status(isAttached(), dirty, pending, conflict,
                 error, acknowledgedRevision);

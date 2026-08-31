@@ -117,6 +117,16 @@ public final class AllQuestsProgress {
         return completedNonDailyQuests;
     }
 
+    /** Applies only persisted aggregate counters; active quest state is untouched. */
+    public void restoreCompletedCountsForStorage(int completedDailyQuests,
+            int completedNonDailyQuests) {
+        if (completedDailyQuests < 0 || completedNonDailyQuests < 0) {
+            throw new IllegalArgumentException("quest completion counts cannot be negative");
+        }
+        this.completedDailyQuests = completedDailyQuests;
+        this.completedNonDailyQuests = completedNonDailyQuests;
+    }
+
     public void addCompletedNonDailyQuest() {
         completedNonDailyQuests++;
     }

@@ -246,6 +246,9 @@ public class User {
                 state.getCompletedMinigames(), state.getHighestScore(),
                 state.getGamesPlayed(), state.getMinigameUnlockedLevels(),
                 state.getCompletedMinigameLevels());
+        questProgress.restoreCompletedCountsForStorage(
+                state.getCompletedDailyQuests(),
+                state.getCompletedNonDailyQuests());
 
         PlantCollection restoredPlants = new PlantCollection();
         for (PlantGameplayState plant : state.getPlants()) {

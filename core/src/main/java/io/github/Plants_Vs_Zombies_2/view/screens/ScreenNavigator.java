@@ -600,6 +600,7 @@ public final class ScreenNavigator {
 
     public void dispose() {
         disposed = true;
+        gameplaySync.flushBestEffortOnShutdown();
         gameplaySync.close();
         dismissInvitationDialog();
         if (invitationBridge != null) {

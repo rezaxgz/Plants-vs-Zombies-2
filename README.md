@@ -66,7 +66,7 @@ authentication source of truth. Persistent remote login tokens and remote
 password recovery are not implemented yet, so the graphical client requires a
 fresh login after restart. The temporary `User` exposed to legacy gameplay is a
 non-persisted compatibility snapshot with no usable local password; gameplay
-progress synchronization remains out of scope for this stage.
+progress is synchronized as described below.
 
 ## Headless matchmaking foundation
 
@@ -194,7 +194,7 @@ the current skin/rendering primitives and adds no binary assets. A desktop smoke
 test still requires the complete `pvz-assets` bundle in its normal runtime
 location; a missing bundle is not replaced with committed placeholder assets.
 
-Reactions/messages, server-backed leaderboards, Couch Play,
+Reactions/messages, Couch Play,
 persistent login tokens, automatic reconnect loops and TLS remain out of scope.
 
 ### Stage 8 server-backed gameplay progress
@@ -204,6 +204,8 @@ database. The synchronized state includes coins, diamonds, sprouts, plant food,
 pot inventory and greenhouse unlock count; chapter/level, minigame completion,
 high score and games-played statistics; adventure/minigame unlock records;
 plant and zombie collections, plant boosts, and daily-offer purchase state.
+Daily and non-daily completed-quest counters are also synchronized; their total
+is always derived and active quest definitions are not transported.
 Passwords, hashes, security answers, profile fields, and connection state are
 never part of gameplay responses or update requests.
 
@@ -228,5 +230,35 @@ Full greenhouse planted-pot contents, active quest-instance progress/news, and
 saved in-progress adventure boards are not synchronized yet. Their resulting
 currency, collection, score, and completion changes are synchronized, but those
 three richer object graphs require dedicated conflict policies in a later stage.
-There is still no leaderboard, offline retry queue, automatic reconnect, or
-persistent login token support.
+There is still no offline retry queue, automatic reconnect, or persistent login
+token support.
+
+### Stage 9 server-backed graphical leaderboard
+
+The graphical leaderboard is authenticated and server-backed. It reads an
+immutable snapshot from the same server users database used by login and
+gameplay synchronization, never from graphical `UserManager`/`data/users.json`
+state. The terminal `LeaderboardMenuController` intentionally keeps its local
+Phase 1 behavior for compatibility.
+
+The graphical client can sort by username, last completed chapter/level,
+completed minigames, completed daily quests, completed non-daily quests, total
+completed quests, or high score in either direction. The primary sort is
+followed by a case-insensitive ascending username tie-breaker and then exact
+ascending username spelling. Ranks are sequential positions in the complete
+ordered result. Requests are capped at 100 rows; the first page reports the
+total player count and the authenticated user's global rank even when it falls
+outside that page.
+
+Leaderboard rows contain only rank, username, the displayed completion
+counters, and high score. Passwords/hashes, email, security data, connection
+identity, and gameplay revisions are not exposed. Loading and refresh are fully
+asynchronous on the existing account-session socket. The screen shows loading,
+empty and recoverable error states, offers explicit retry, ignores superseded
+sort responses, and highlights the current account by profile username.
+
+Controlled graphical logout and in-application exit await an asynchronous
+gameplay flush. A direct window-manager/process shutdown now sends a non-blocking
+best-effort final dirty snapshot before closing the socket, but delivery cannot
+be guaranteed once the operating system is terminating the process. No blocking
+wait or persistent retry queue is used during LibGDX disposal.

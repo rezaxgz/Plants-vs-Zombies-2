@@ -13,6 +13,7 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardClient;
 
 /**
  * One application-scoped remote account session. It never blocks its caller;
@@ -26,6 +27,7 @@ public final class RemoteAccountSession implements AccountSession {
     private final RemoteAccountTransport transport;
     private final MatchmakingClient matchmakingClient;
     private final MultiplayerGameClient multiplayerGameClient;
+    private final LeaderboardClient leaderboardClient;
     private final List<SessionStateListener> listeners = new CopyOnWriteArrayList<>();
     private volatile ClientSessionState state = ClientSessionState.DISCONNECTED;
     private volatile AccountProfile profile;
@@ -46,6 +48,7 @@ public final class RemoteAccountSession implements AccountSession {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.matchmakingClient = transport.getMatchmakingClient();
         this.multiplayerGameClient = transport.getMultiplayerGameClient();
+        this.leaderboardClient = transport.getLeaderboardClient();
         transport.setDisconnectListener(this::handleDisconnect);
     }
 
@@ -231,6 +234,11 @@ public final class RemoteAccountSession implements AccountSession {
     @Override
     public MultiplayerGameClient getMultiplayerGameClient() {
         return multiplayerGameClient;
+    }
+
+    @Override
+    public LeaderboardClient getLeaderboardClient() {
+        return leaderboardClient;
     }
 
     @Override
