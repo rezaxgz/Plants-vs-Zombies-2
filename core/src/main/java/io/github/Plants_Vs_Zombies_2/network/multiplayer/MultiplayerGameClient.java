@@ -3,6 +3,7 @@ package io.github.Plants_Vs_Zombies_2.network.multiplayer;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -29,7 +30,10 @@ public final class MultiplayerGameClient implements AutoCloseable {
     private final List<MultiplayerGameListener> listeners = new CopyOnWriteArrayList<>();
     private final NetworkMessageListener networkListener = new NetworkMessageListener() {
         @Override public void onMessage(ProtocolMessage message) { receivePush(message); }
-        @Override public void onDisconnected(Throwable cause) { clearState(); }
+        @Override public void onDisconnected(Throwable cause) {
+            clearState();
+            notifyListeners(listener -> listener.connectionLost(cause));
+        }
     };
     private volatile MatchStateSnapshot currentSnapshot;
     private volatile String terminalMatchId;
@@ -84,6 +88,26 @@ public final class MultiplayerGameClient implements AutoCloseable {
                     clearState();
                     return null;
                 });
+    }
+
+    public CompletableFuture<MatchReactionReceipt> sendReaction(String matchId,
+            MatchReactionType reactionType) {
+        Objects.requireNonNull(reactionType, "reactionType");
+        CompletableFuture<ProtocolMessage> response = exchange(ProtocolMessages.withPayload(
+                MessageType.SEND_MATCH_REACTION_REQUEST,
+                ProtocolMessages.newRequestId(),
+                new MatchReaction(matchId, reactionType)),
+                MessageType.SEND_MATCH_REACTION_RESPONSE);
+        CompletableFuture<MatchReactionReceipt> result = response.thenApply(message -> {
+                    MatchReactionReceipt receipt = read(message,
+                            MatchReactionReceipt.class);
+                    if (!validReceipt(receipt, matchId, reactionType)) {
+                        throw malformedReaction();
+                    }
+                    return receipt;
+                });
+        propagateCancellation(result, response);
+        return result;
     }
 
     private CompletableFuture<ActionResult> mutation(MessageType requestType,
@@ -156,6 +180,12 @@ public final class MultiplayerGameClient implements AutoCloseable {
                     clearState();
                     notifyListeners(listener -> listener.matchCancelled(cancellation));
                 }
+                case MATCH_REACTION_RECEIVED -> {
+                    MatchReactionEvent reaction = read(message,
+                            MatchReactionEvent.class);
+                    if (!validEvent(reaction)) throw malformedReaction();
+                    notifyListeners(listener -> listener.reactionReceived(reaction));
+                }
                 default -> { }
             }
         } catch (RuntimeException exception) {
@@ -208,7 +238,8 @@ public final class MultiplayerGameClient implements AutoCloseable {
 
     private CompletableFuture<ProtocolMessage> exchange(
             ProtocolMessage request, MessageType expected) {
-        return networkClient.sendRequest(request).thenApply(response -> {
+        CompletableFuture<ProtocolMessage> pending = networkClient.sendRequest(request);
+        CompletableFuture<ProtocolMessage> result = pending.thenApply(response -> {
             if (response.getType() == MessageType.ERROR) throw readError(response);
             if (response.getType() != expected) {
                 throw new MultiplayerGameException(ProtocolErrorCode.UNEXPECTED_RESPONSE,
@@ -216,6 +247,40 @@ public final class MultiplayerGameClient implements AutoCloseable {
             }
             return response;
         });
+        propagateCancellation(result, pending);
+        return result;
+    }
+
+    private static void propagateCancellation(CompletableFuture<?> derived,
+            CompletableFuture<?> source) {
+        derived.whenComplete((value, failure) -> {
+            if (failure instanceof CancellationException) source.cancel(false);
+        });
+    }
+
+    private static boolean validReceipt(MatchReactionReceipt receipt,
+            String matchId, MatchReactionType reactionType) {
+        return receipt != null && matchId != null
+                && matchId.equals(receipt.getMatchId())
+                && reactionType == receipt.getReactionType()
+                && receipt.getSequence() > 0
+                && receipt.getServerTimestampMillis() >= 0;
+    }
+
+    private static boolean validEvent(MatchReactionEvent event) {
+        return event != null && event.getMatchId() != null
+                && !event.getMatchId().isBlank()
+                && event.getSenderUsername() != null
+                && !event.getSenderUsername().isBlank()
+                && event.getReactionType() != null
+                && event.getReactionKind() == event.getReactionType().getKind()
+                && event.getSequence() > 0
+                && event.getServerTimestampMillis() >= 0;
+    }
+
+    private static MultiplayerGameException malformedReaction() {
+        return new MultiplayerGameException(ProtocolErrorCode.UNEXPECTED_RESPONSE,
+                "The server returned malformed match reaction data");
     }
 
     private <T> T read(ProtocolMessage message, Class<T> type) {

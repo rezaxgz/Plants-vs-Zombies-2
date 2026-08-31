@@ -65,14 +65,48 @@ class MultiplayerGameClientStage6Test {
         }
     }
 
+    @Test
+    void reactionPushIsTypedAndMalformedDataAndListenerFailuresAreIsolated()
+            throws Exception {
+        try (NetworkClient network = new NetworkClient("127.0.0.1", 0);
+                MultiplayerGameClient client = new MultiplayerGameClient(network)) {
+            AtomicInteger healthyCalls = new AtomicInteger();
+            client.addListener(new MultiplayerGameListener() {
+                @Override public void reactionReceived(MatchReactionEvent reaction) {
+                    throw new IllegalStateException("reaction listener failure");
+                }
+            });
+            client.addListener(new MultiplayerGameListener() {
+                @Override public void reactionReceived(MatchReactionEvent reaction) {
+                    assertEquals(MatchReactionType.SMILE, reaction.getReactionType());
+                    healthyCalls.incrementAndGet();
+                }
+            });
+
+            push(client, MessageType.MATCH_REACTION_RECEIVED,
+                    new MatchReactionEvent("match", "alice", MatchReactionType.SMILE,
+                            MatchReactionKind.EMOJI, 1L, 1_000L));
+            push(client, MessageType.MATCH_REACTION_RECEIVED,
+                    new MatchReactionEvent("match", "alice", MatchReactionType.SMILE,
+                            MatchReactionKind.TEXT, 2L, 1_001L));
+
+            assertEquals(1, healthyCalls.get());
+        }
+    }
+
     private static void push(MultiplayerGameClient client, MessageType type,
             MatchStateSnapshot snapshot) throws Exception {
+        push(client, type, (Object) snapshot);
+    }
+
+    private static void push(MultiplayerGameClient client, MessageType type,
+            Object payload) throws Exception {
         Method method = MultiplayerGameClient.class.getDeclaredMethod(
                 "receivePush",
                 io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage.class);
         method.setAccessible(true);
         method.invoke(client, ProtocolMessages.withPayload(type,
-                ProtocolMessages.newRequestId(), snapshot));
+                ProtocolMessages.newRequestId(), payload));
     }
 
     private static MatchStateSnapshot snapshot(long tick, long revision,

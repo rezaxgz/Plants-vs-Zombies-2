@@ -125,6 +125,7 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             case REMOVE_MATCH_PLANT_REQUEST -> removeMatchPlant(message, context);
             case PLACE_MATCH_ZOMBIE_REQUEST -> placeMatchZombie(message, context);
             case GET_MATCH_STATE_REQUEST -> getMatchState(message, context);
+            case SEND_MATCH_REACTION_REQUEST -> sendMatchReaction(message, context);
             default -> error(
                     message,
                     ProtocolErrorCode.UNSUPPORTED_MESSAGE_TYPE,
@@ -281,6 +282,23 @@ public final class ServerMessageHandler implements ServerRequestHandler {
         return ProtocolMessages.withPayload(MessageType.GET_MATCH_STATE_RESPONSE,
                 message.getRequestId(),
                 multiplayerSessionService.getState(username, matchId));
+    }
+
+    private ProtocolMessage sendMatchReaction(ProtocolMessage message,
+            ConnectionContext context)
+            throws AccountServiceException, MultiplayerSessionException {
+        String username = requireAuthentication(context);
+        if (!connectionDirectory.isCurrent(username, context.getConnection())) {
+            throw new AccountServiceException(ProtocolErrorCode.AUTH_REQUIRED,
+                    "This authenticated connection is no longer current");
+        }
+        PayloadReader payload = PayloadReader.from(message);
+        payload.requireOnlyFields("matchId", "reactionType");
+        return ProtocolMessages.withPayload(
+                MessageType.SEND_MATCH_REACTION_RESPONSE,
+                message.getRequestId(), multiplayerSessionService.sendReaction(
+                        username, payload.requiredBoundedString("matchId", 128),
+                        payload.reactionType()));
     }
 
     private static String requireAuthentication(ConnectionContext context)

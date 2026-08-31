@@ -9,4 +9,6 @@ public interface MultiplayerGameListener {
     default void matchStateUpdated(MatchStateSnapshot snapshot) { }
     default void matchFinished(MatchStateSnapshot snapshot) { }
     default void matchCancelled(MatchCancelled cancellation) { }
+    default void reactionReceived(MatchReactionEvent reaction) { }
+    default void connectionLost(Throwable cause) { }
 }

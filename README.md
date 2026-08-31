@@ -51,9 +51,11 @@ with Java system properties passed to Gradle:
 ```
 
 Server properties are `pvz.server.host`, `pvz.server.port`, optionally
-`pvz.server.users.database`, and `pvz.server.invitation.expiration.seconds`
-(30 seconds by default). Client properties are `pvz.client.server.host` and
-`pvz.client.server.port`.
+`pvz.server.users.database`, `pvz.server.invitation.expiration.seconds`
+(30 seconds by default), `pvz.server.multiplayer.tick.rate`,
+`pvz.server.multiplayer.match.duration.seconds`, and
+`pvz.server.multiplayer.reaction.cooldown.millis`. Client properties are
+`pvz.client.server.host` and `pvz.client.server.port`.
 
 Loopback only accepts clients on the same computer. For another computer on the
 LAN, bind the server to an accessible address such as `0.0.0.0` and configure
@@ -188,6 +190,41 @@ screen/controller removes listeners during disposal and ignores late callbacks.
 Network events and future completions cross the injected `UiDispatcher`; the
 LibGDX implementation uses `Gdx.app.postRunnable(...)`, keeping Scene2D mutation
 and navigation on the render thread.
+
+### Stage 10 match reactions
+
+An active multiplayer match has exactly six predefined reactions. The three
+text choices are `GOOD_LUCK` (**Good luck!**), `NICE_MOVE` (**Nice move!**), and
+`WELL_PLAYED` (**Well played!**). The three emoji identities are `SMILE`,
+`LAUGH`, and `ANGRY`; the graphical screen deliberately renders the readable
+fallback labels **Smile**, **Laugh**, and **Angry** because no new emoji assets
+or font assumptions are required. There is no text field, free-form chat,
+custom emoji, URL, or markup path.
+
+`SEND_MATCH_REACTION_REQUEST` carries only the match ID and stable reaction
+identifier over the application-scoped `NetworkClient`. The correlated receipt
+contains the server sequence and time, while `MATCH_REACTION_RECEIVED` pushes
+the same server-confirmed event to both participants. The sender is derived from
+the authenticated current connection; client-supplied sender, ordering, time,
+or extra fields are rejected. Reactions from other matches and non-participants
+are never routed to a client.
+
+Each match owns an independent monotonic reaction sequence and independent
+per-player cooldown. The default is one accepted reaction per player every
+1,000 milliseconds and is configured with
+`pvz.server.multiplayer.reaction.cooldown.millis`. Tests inject a clock, so rate
+limits require no timing sleeps. Rejected reactions do not consume sequence
+numbers, one player's cooldown does not block the opponent or gameplay, and
+reactions never change the gameplay revision, simulation tick, or snapshot.
+
+Reaction history and cooldown state are transient: the controller retains at
+most the latest five server events and clears them on leave, finish,
+cancellation, disconnect, logout, disposal, or shutdown. Nothing is written to
+the users database or restored after a match/server restart. Multiplayer
+listener callbacks, including reactions and disconnect notification, initially
+run on the `NetworkClient` reader thread; `LiveMatchController` routes every UI
+observer callback through `UiDispatcher`. The sender also renders only the push
+event, not an optimistic copy of the button click.
 
 Stage 7 controller tests are asset-independent. The graphical integration reuses
 the current skin/rendering primitives and adds no binary assets. A desktop smoke

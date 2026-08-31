@@ -8,6 +8,8 @@ import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameListener;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ReadyStatus;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionReceipt;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionType;
 
 /** Adapter over the account session's already-connected MultiplayerGameClient. */
 public final class ClientMultiplayerTransport implements MultiplayerTransport {
@@ -37,6 +39,10 @@ public final class ClientMultiplayerTransport implements MultiplayerTransport {
     }
     @Override public CompletableFuture<Void> leaveMatch(String matchId) {
         return client.leaveMatch(matchId);
+    }
+    @Override public CompletableFuture<MatchReactionReceipt> sendReaction(
+            String matchId, MatchReactionType reactionType) {
+        return client.sendReaction(matchId, reactionType);
     }
     @Override public void addListener(MultiplayerGameListener listener) { client.addListener(listener); }
     @Override public void removeListener(MultiplayerGameListener listener) { client.removeListener(listener); }
