@@ -12,6 +12,7 @@ public final class UserManager {
     private static final String DEFAULT_DATABASE_PATH = "data/users.json";
     private static final Path databasePath = resolveDatabasePath();
     private static final List<User> users = new ArrayList<>();
+    private static boolean persistenceEnabled = true;
 
     static {
         reloadUsersFromDatabase();
@@ -50,11 +51,25 @@ public final class UserManager {
         return databasePath;
     }
 
+    /**
+     * Prevents the server-authenticated graphical application from rewriting
+     * the legacy local account database. Console mode keeps persistence enabled
+     * by default; graphical startup opts into this process-wide remote-only mode.
+     */
+    public static synchronized void useRemoteOnlyMode() {
+        persistenceEnabled = false;
+    }
+
+    public static synchronized boolean isPersistenceEnabled() {
+        return persistenceEnabled;
+    }
+
     public static synchronized List<User> loadAllUsers() {
         return new ArrayList<>(users);
     }
 
     public static synchronized void reloadUsersFromDatabase() {
+        requirePersistenceEnabled("reload the local user database");
         List<User> loadedUsers = UserJsonDatabase.load(databasePath);
         users.clear();
         for (User user : loadedUsers) {
@@ -66,6 +81,9 @@ public final class UserManager {
     }
 
     public static synchronized void saveAllUsers() {
+        if (!persistenceEnabled) {
+            return;
+        }
         UserJsonDatabase.save(databasePath, users);
     }
 
@@ -74,6 +92,7 @@ public final class UserManager {
     }
 
     public static synchronized void addUserToDatabase(User user) {
+        requirePersistenceEnabled("add a local user");
         if (user == null) {
             throw new IllegalArgumentException("user cannot be null");
         }
@@ -91,6 +110,7 @@ public final class UserManager {
     }
 
     public static synchronized void renameUser(User user, String newUsername) {
+        requirePersistenceEnabled("rename a local user");
         if (user == null || !users.contains(user)) {
             throw new IllegalArgumentException("user is not managed by the database");
         }
@@ -127,5 +147,16 @@ public final class UserManager {
             }
         }
         return null;
+    }
+
+    static synchronized void restoreLocalModeForTesting() {
+        persistenceEnabled = true;
+    }
+
+    private static void requirePersistenceEnabled(String operation) {
+        if (!persistenceEnabled) {
+            throw new IllegalStateException(
+                    "Remote-only graphical mode cannot " + operation);
+        }
     }
 }

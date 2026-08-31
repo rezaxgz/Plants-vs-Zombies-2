@@ -29,6 +29,10 @@ public class Main extends Game {
 
     @Override
     public void create() {
+        // Phase 3 graphical accounts are server-owned. Legacy controllers may
+        // still call UserManager.saveAllUsers(), but those calls must never
+        // rewrite the unrelated local console database in this process.
+        UserManager.useRemoteOnlyMode();
         skin = PvzSkin.get();
         PvzSkinCompatibility.installMissingStyles(skin);
 
