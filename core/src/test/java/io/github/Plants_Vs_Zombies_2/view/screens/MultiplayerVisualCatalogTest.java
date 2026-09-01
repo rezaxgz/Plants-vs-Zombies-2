@@ -65,6 +65,18 @@ class MultiplayerVisualCatalogTest {
         assertTrue(consumed.alpha() < available.alpha());
     }
 
+    @Test
+    void unlockedLoadoutPlantsReuseTheFullSinglePlayerVisualCatalog() {
+        MultiplayerVisualCatalog.Visual repeater =
+                MultiplayerVisualCatalog.plant("Repeater");
+        MultiplayerVisualCatalog.Visual projectile =
+                MultiplayerVisualCatalog.projectile("Repeater_PROJECTILE");
+
+        assertComplete(repeater);
+        assertComplete(projectile);
+        assertTrue(MultiplayerVisualCatalog.plantCost("Repeater") >= 0);
+    }
+
     private static void assertComplete(MultiplayerVisualCatalog.Visual visual) {
         assertNotNull(visual);
         assertTrue(visual.canonicalType() != null

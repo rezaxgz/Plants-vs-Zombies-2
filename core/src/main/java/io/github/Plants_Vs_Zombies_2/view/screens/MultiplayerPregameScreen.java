@@ -1,5 +1,7 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
+import java.util.List;
+
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -10,9 +12,13 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Scaling;
 
+import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMultiplayerTransport;
+import io.github.Plants_Vs_Zombies_2.view.multiplayer.MultiplayerPlantLoadout;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.PregameController;
 import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
@@ -27,6 +33,8 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
     private final Label statusLabel;
     private final TextButton readyButton;
     private final TextButton leaveButton;
+    private List<String> selectedPlantLoadout = List.of();
+    private MultiplayerPlantSelectionModal plantSelectionModal;
     private boolean disposed;
 
     public MultiplayerPregameScreen(ScreenNavigator navigator,
@@ -43,7 +51,8 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
         connectionLabel = new Label("", skin, "medium_outline");
         statusLabel = new Label("", skin, "medium_outline");
         statusLabel.setWrap(true);
-        readyButton = new TextButton("Ready", skin, "green");
+        readyButton = new TextButton(assignment.getRole() == MatchRole.PLANTS
+                ? "Choose 8 Plants & Ready" : "Ready", skin, "green");
         leaveButton = new TextButton("Leave Match", skin, "brown");
 
         Table panel = new Table();
@@ -77,7 +86,8 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
                         applyState(state);
                     }
                     @Override public void matchStarted(MatchStateSnapshot snapshot) {
-                        if (!disposed) navigator.showMultiplayerIZombieGame(assignment, snapshot);
+                        if (!disposed) navigator.showMultiplayerIZombieGame(
+                                assignment, snapshot, selectedPlantLoadout);
                     }
                     @Override public void leaveCompleted() {
                         if (!disposed) navigator.showMultiplayerIZombieMenu("Left the match.");
@@ -86,7 +96,12 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
 
         readyButton.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                if (!disposed) controller.ready();
+                if (disposed) return;
+                if (assignment.getRole() == MatchRole.PLANTS) {
+                    showPlantSelection();
+                } else {
+                    controller.ready();
+                }
             }
         });
         leaveButton.addListener(new ClickListener() {
@@ -94,6 +109,32 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
                 if (!disposed) controller.leave();
             }
         });
+    }
+
+    private void showPlantSelection() {
+        if (plantSelectionModal != null) return;
+        User user = App.getInstance().getLoggedInUser();
+        if (user == null) {
+            statusLabel.setText(
+                    "A local plant collection is required to choose a loadout.");
+            return;
+        }
+        MultiplayerPlantLoadout availability = new MultiplayerPlantLoadout(
+                user.getPlantCollection().getAllPlants());
+        if (availability.unlockedCount() < MultiplayerPlantLoadout.SLOT_COUNT) {
+            statusLabel.setText("Unlock at least eight plants before readying "
+                    + "for the plant side. You currently have "
+                    + availability.unlockedCount() + ".");
+            return;
+        }
+        plantSelectionModal = new MultiplayerPlantSelectionModal(navigator,
+                user.getPlantCollection().getAllPlants(), selected -> {
+                    if (disposed) return;
+                    selectedPlantLoadout = List.copyOf(selected);
+                    plantSelectionModal = null;
+                    controller.ready();
+                }, () -> plantSelectionModal = null);
+        plantSelectionModal.show(stage);
     }
 
     private void applyState(PregameController.State state) {
@@ -108,6 +149,10 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
                 "Waiting for both players..."));
         readyButton.setDisabled(state.requestInFlight() || state.localReady()
                 || state.cancelled());
+        if (state.localReady() && plantSelectionModal != null) {
+            plantSelectionModal.close();
+            plantSelectionModal = null;
+        }
         leaveButton.setDisabled(state.requestInFlight());
         if (state.cancelled()) {
             navigator.showMultiplayerIZombieMenu(state.status());
@@ -135,6 +180,10 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
     @Override public void dispose() {
         if (disposed) return;
         disposed = true;
+        if (plantSelectionModal != null) {
+            plantSelectionModal.close();
+            plantSelectionModal = null;
+        }
         controller.close();
         super.dispose();
     }
