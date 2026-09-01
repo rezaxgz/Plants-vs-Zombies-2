@@ -338,6 +338,44 @@ class MultiplayerStage7ControllerTest {
     }
 
     @Test
+    void placementCommandsPreserveTypeCoordinatesAndPreventDuplicates() {
+        MatchStateSnapshot initial = snapshot(5, 3, MatchStatus.ACTIVE,
+                null, null);
+        FakeMultiplayer plants = new FakeMultiplayer();
+        plants.stateFuture.complete(initial);
+        try (LiveMatchController controller = new LiveMatchController(plants,
+                UiDispatcher.direct(), assignment(MatchRole.PLANTS), initial,
+                ignored -> { })) {
+            controller.placePlant("Cabbage-pult", 3, 2);
+            controller.placePlant("Cabbage-pult", 3, 2);
+            assertEquals(1, plants.placePlantCalls);
+            assertEquals("Cabbage-pult", plants.lastPlantType);
+            assertEquals(3, plants.lastPlantRow);
+            assertEquals(2, plants.lastPlantColumn);
+            plants.placePlantFuture.complete(new ActionResult(
+                    "m1", 4L, "plant-1",
+                    snapshot(5, 4, MatchStatus.ACTIVE, null, null)));
+
+            controller.removePlant("plant-1");
+            assertEquals(1, plants.removePlantCalls);
+            assertEquals("plant-1", plants.lastRemovedEntityId);
+        }
+
+        FakeMultiplayer zombies = new FakeMultiplayer();
+        zombies.stateFuture.complete(initial);
+        try (LiveMatchController controller = new LiveMatchController(zombies,
+                UiDispatcher.direct(), assignment(MatchRole.ZOMBIES), initial,
+                ignored -> { })) {
+            controller.placeZombie("NEWSPAPER", 4, 7);
+            controller.placeZombie("NEWSPAPER", 4, 7);
+            assertEquals(1, zombies.placeZombieCalls);
+            assertEquals("NEWSPAPER", zombies.lastZombieType);
+            assertEquals(4, zombies.lastZombieRow);
+            assertEquals(7, zombies.lastZombieColumn);
+        }
+    }
+
+    @Test
     void staleRevisionRefreshesAndRejectedPlacementCreatesNoOptimisticEntity() {
         FakeMultiplayer transport = new FakeMultiplayer();
         MatchStateSnapshot initial = snapshot(10, 4, MatchStatus.ACTIVE, null, null);
@@ -640,11 +678,17 @@ class MultiplayerStage7ControllerTest {
         int getStateCalls;
         int placePlantCalls;
         int placeZombieCalls;
+        int removePlantCalls;
         int leaveCalls;
         int reactionCalls;
         long lastExpectedRevision;
         String lastPlantType;
         String lastZombieType;
+        int lastPlantRow;
+        int lastPlantColumn;
+        int lastZombieRow;
+        int lastZombieColumn;
+        String lastRemovedEntityId;
 
         @Override public CompletableFuture<ReadyStatus> markReady(String matchId) {
             readyCalls++;
@@ -658,6 +702,8 @@ class MultiplayerStage7ControllerTest {
                 String plantType, int row, int column, long expectedRevision) {
             placePlantCalls++;
             lastPlantType = plantType;
+            lastPlantRow = row;
+            lastPlantColumn = column;
             lastExpectedRevision = expectedRevision;
             return placePlantFuture;
         }
@@ -665,11 +711,15 @@ class MultiplayerStage7ControllerTest {
                 String zombieType, int row, int column, long expectedRevision) {
             placeZombieCalls++;
             lastZombieType = zombieType;
+            lastZombieRow = row;
+            lastZombieColumn = column;
             lastExpectedRevision = expectedRevision;
             return placeZombieFuture;
         }
         @Override public CompletableFuture<ActionResult> removePlant(String matchId,
                 String entityId, long expectedRevision) {
+            removePlantCalls++;
+            lastRemovedEntityId = entityId;
             lastExpectedRevision = expectedRevision;
             return removeFuture;
         }

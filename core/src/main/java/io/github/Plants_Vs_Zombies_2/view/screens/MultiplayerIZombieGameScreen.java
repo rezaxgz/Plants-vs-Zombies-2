@@ -20,7 +20,6 @@ import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
-import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Stack;
@@ -102,6 +101,8 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
 
         pixelTexture = createPixelTexture();
         boardGridActor = new BoardGridActor(pixelTexture);
+        configureBoardInputLayers(boardGridActor, cellLayer, brainLayer,
+                entityLayer, projectileLayer);
         localPlayerLabel = new Label("Player: " + Phase3Text.required(
                 assignment.getLocalUsername(), "Player unavailable"), skin,
                 "medium_outline");
@@ -202,6 +203,15 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         matchBody.add(createReactionPanel()).width(255f).height(BOARD_HEIGHT)
                 .padLeft(10f).padTop(6f);
         content.add(matchBody).growX().row();
+    }
+
+    static void configureBoardInputLayers(Actor boardGrid, Group cells,
+            Group brains, Group entities, Group projectiles) {
+        boardGrid.setTouchable(Touchable.disabled);
+        cells.setTouchable(Touchable.childrenOnly);
+        brains.setTouchable(Touchable.disabled);
+        entities.setTouchable(Touchable.childrenOnly);
+        projectiles.setTouchable(Touchable.disabled);
     }
 
     private static TextureRegion cropEgyptLawn(TextureRegion source) {
@@ -456,19 +466,39 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
     }
 
     private void submitPlacement(int row, int column) {
-        if (disposed || latestState == null || selectedCardType == null
-                || latestState.commandInFlight()
-                || latestState.terminalKind()
-                        != LiveMatchController.TerminalKind.NONE) return;
+        if (disposed || latestState == null) return;
         MatchStateSnapshot snapshot = latestState.snapshot();
         if (snapshot == null) return;
-        if (assignment.getRole() == MatchRole.PLANTS) {
-            if (column > snapshot.getRedLineColumn()) return;
-            controller.placePlant(selectedCardType, row, column);
+        PlacementCommand command = placementCommand(assignment.getRole(),
+                selectedCardType, row, column, snapshot.getRedLineColumn(),
+                latestState.commandInFlight(), latestState.terminalKind()
+                        != LiveMatchController.TerminalKind.NONE);
+        if (command == null) return;
+        if (command.role() == MatchRole.PLANTS) {
+            controller.placePlant(command.canonicalType(), command.row(),
+                    command.column());
         } else {
-            if (column <= snapshot.getRedLineColumn()) return;
-            controller.placeZombie(selectedCardType, row, column);
+            controller.placeZombie(command.canonicalType(), command.row(),
+                    command.column());
         }
+    }
+
+    static PlacementCommand placementCommand(MatchRole role,
+            String canonicalType, int row, int column, int redLine,
+            boolean commandInFlight, boolean terminal) {
+        if (role == null || canonicalType == null || canonicalType.isBlank()
+                || row < 0 || column < 0 || commandInFlight || terminal) {
+            return null;
+        }
+        boolean allowed = role == MatchRole.PLANTS
+                ? column <= redLine : column > redLine;
+        return allowed
+                ? new PlacementCommand(role, canonicalType, row, column)
+                : null;
+    }
+
+    record PlacementCommand(MatchRole role, String canonicalType,
+            int row, int column) {
     }
 
     private void renderAuthoritativeSnapshot(MatchStateSnapshot snapshot) {
@@ -746,7 +776,7 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                     + Phase3Text.cancellationReason(
                             state.cancellationReason());
         }
-        Dialog dialog = new Dialog(title, skin) {
+        PvzDialog dialog = new PvzDialog(title, skin) {
             @Override protected void result(Object object) {
                 if (!disposed) {
                     navigator.showMultiplayerIZombieMenu(victory
@@ -755,8 +785,8 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                 }
             }
         };
-        dialog.text(message);
-        dialog.button("Return to Multiplayer", Boolean.TRUE);
+        dialog.message(message);
+        dialog.action("Return to Multiplayer", Boolean.TRUE, "green");
         dialog.setModal(true);
         dialog.show(stage);
     }

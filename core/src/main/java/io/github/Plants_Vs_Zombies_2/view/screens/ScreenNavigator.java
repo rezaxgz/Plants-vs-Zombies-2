@@ -594,6 +594,7 @@ public final class ScreenNavigator {
                 || current instanceof LoginScreen || current instanceof SignUpScreen) return;
         long secondsLeft = Math.max(0L,
                 (invitation.expiresAtEpochMillis() - System.currentTimeMillis() + 999L) / 1000L);
+        PvzDialog dialog = new PvzDialog("Multiplayer invitation", skin) {
         Window.WindowStyle invitationStyle = new Window.WindowStyle();
         Dialog dialog = new Dialog("Multiplayer invitation", invitationStyle) {
             @Override protected void result(Object object) {
@@ -609,11 +610,11 @@ public final class ScreenNavigator {
                 "Another player");
         String invitationStatus = Phase3Text.status(invitation.status(),
                 "Waiting for your response.");
-        dialog.text(inviter + " invited you to I, Zombie.\n"
+        dialog.message(inviter + " invited you to I, Zombie.\n"
                 + "Expires in about " + secondsLeft + "s.\n"
                 + invitationStatus);
-        dialog.button("Accept", Boolean.TRUE);
-        dialog.button("Reject", Boolean.FALSE);
+        dialog.action("Accept", Boolean.TRUE, "green");
+        dialog.action("Reject", Boolean.FALSE, "brown");
         dialog.setModal(true);
         invitationDialog = dialog;
         dialog.show(host.stage);
