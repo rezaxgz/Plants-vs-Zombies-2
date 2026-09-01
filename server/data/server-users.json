@@ -1,0 +1,2169 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "username": "Arian",
+      "passwordHash": "5b79fe8124970ed520544b98784825eb2892c8a239302a70c78d16cf1dca6a60",
+      "nickname": "arian",
+      "email": "arian@gmail.com",
+      "gender": "MALE",
+      "securityQuestion": {
+        "question": "What was the name of your first school?",
+        "answerHash": "9834876dcfb05cb167a5c24953eba58c4ac89b1adf57f28f2f9d09af107ee8f0"
+      },
+      "coins": 101799,
+      "diamonds": 99999,
+      "sprouts": 0,
+      "greenhousePotsUnlocked": 4,
+      "potCount": 0,
+      "plantFoodCount": 0,
+      "gameplayRevision": 73,
+      "settings": {
+        "difficultyLevel": 3,
+        "debugMode": false,
+        "gameSpeed": 1,
+        "showGameMapGrid": false
+      },
+      "adventureProgress": {
+        "highestUnlockedLevels": {
+          "ancient-egypt": 2,
+          "frostbite-caves": 0,
+          "big-wave-beach": 0,
+          "dark-ages": 0
+        },
+        "completedLevels": ["ancient-egypt:1"]
+      },
+      "gameProgress": {
+        "lastCompletedChapter": 1,
+        "lastCompletedLevel": 1,
+        "completedMinigames": 0,
+        "highestScore": 0,
+        "gamesPlayed": 5,
+        "highestUnlockedMinigameLevels": {
+        },
+        "completedMinigameLevels": []
+      },
+      "questProgress": {
+        "completedDailyQuests": 2,
+        "completedNonDailyQuests": 1,
+        "maximumDifficultyWinStreak": 0,
+        "lastDailyRefresh": "2026-09-01",
+        "quests": [
+          {
+            "id": "chapter-hunter",
+            "name": "Chapter Hunter",
+            "instructions": "Defeat 50 zombies in chapter frostbite-caves.",
+            "type": "MAIN",
+            "priority": "HIGH",
+            "condition": "KILL_ZOMBIES_IN_CHAPTER",
+            "parameter": "frostbite-caves",
+            "target": 50,
+            "progress": 0,
+            "rewardType": "SEED_PACKS",
+            "rewardAmount": 10,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "economic-plant-eater",
+            "name": "Economic Plant Eater",
+            "instructions": "Win a level while losing no more than 5 plants.",
+            "type": "MAIN",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_MAXIMUM_PLANT_LOSSES",
+            "parameter": "5",
+            "target": 1,
+            "progress": 1,
+            "rewardType": "SEED_PACKS",
+            "rewardAmount": 15,
+            "completed": true,
+            "rewardGranted": true
+          },
+          {
+            "id": "speed",
+            "name": "Speed",
+            "instructions": "Kill 10 zombies within 30 seconds of the first wave.",
+            "type": "MAIN",
+            "priority": "AVARAGE",
+            "condition": "KILL_TEN_WITHIN_THIRTY_SECONDS",
+            "parameter": "",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 500,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "master-defense",
+            "name": "Master Defense",
+            "instructions": "Win a level with exactly zero sun remaining.",
+            "type": "EPIC",
+            "priority": "CRITICAL",
+            "condition": "FINISH_WITH_ZERO_SUN",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 200,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "night-or-morning",
+            "name": "Night or Morning",
+            "instructions": "Win a daytime level using only mushroom plants.",
+            "type": "EPIC",
+            "priority": "HIGH",
+            "condition": "WIN_DAY_LEVEL_WITH_SHROOMS",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 20,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-sun-collector",
+            "name": "Daily Sun Collector",
+            "instructions": "Collect 4000 sun during this day.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "COLLECT_SUN",
+            "parameter": "4000",
+            "target": 4000,
+            "progress": 225,
+            "rewardType": "COINS",
+            "rewardAmount": 40,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-plant-pro",
+            "name": "Plant Pro",
+            "instructions": "Kill 10 zombies using only Peashooter.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "KILL_ONLY_WITH_PLANT",
+            "parameter": "Peashooter",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "RANDOM_PLANT",
+            "rewardAmount": 1,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-only-cactus",
+            "name": "Only Cactus",
+            "instructions": "Kill 10 zombies using only Cactus.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "KILL_ONLY_WITH_CACTUS",
+            "parameter": "Cactus",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 20,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-demolition-pro",
+            "name": "Demolition Pro",
+            "instructions": "Use 3 explosive plants in one level.",
+            "type": "DAILY",
+            "priority": "LOW",
+            "condition": "USE_THREE_EXPLOSIVE_PLANTS",
+            "parameter": "",
+            "target": 3,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 100,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-symmetry",
+            "name": "Symmetry",
+            "instructions": "Win with a horizontally symmetrical final garden.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "FINISH_WITH_SYMMETRICAL_GARDEN",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 500,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-family-massacre",
+            "name": "Family Massacre",
+            "instructions": "Kill 10 zombies using only the SHOOTER family.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "KILL_ONLY_WITH_FAMILY",
+            "parameter": "SHOOTER",
+            "target": 10,
+            "progress": 10,
+            "rewardType": "COINS",
+            "rewardAmount": 1000,
+            "completed": true,
+            "rewardGranted": true
+          },
+          {
+            "id": "daily-2026-09-01-limitations-bloom",
+            "name": "Limitations Bloom",
+            "instructions": "Win without planting a member of the MODIFIER family.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITHOUT_FAMILY",
+            "parameter": "MODIFIER",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 100,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-win-streak",
+            "name": "Win Streak",
+            "instructions": "Win 5 consecutive stages at maximum difficulty.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "WIN_FIVE_AT_MAXIMUM_DIFFICULTY",
+            "parameter": "",
+            "target": 5,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 5000,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-almost-won",
+            "name": "Almost Won",
+            "instructions": "Kill 10 zombies in column one of a row whose mower is gone.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "KILL_IN_FIRST_COLUMN_WITHOUT_MOWER",
+            "parameter": "",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 300,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-ocd-no",
+            "name": "OCD No",
+            "instructions": "Win with no horizontal garden symmetry (middle row ignored).",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "FINISH_WITHOUT_GARDEN_SYMMETRY",
+            "parameter": "",
+            "target": 1,
+            "progress": 1,
+            "rewardType": "COINS",
+            "rewardAmount": 800,
+            "completed": true,
+            "rewardGranted": true
+          },
+          {
+            "id": "daily-2026-09-01-cloudy-day",
+            "name": "Cloudy Day",
+            "instructions": "Win using exactly 3 plants, all of them sun producers.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EXACTLY_THREE_SUN_PRODUCERS",
+            "parameter": "",
+            "target": 3,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 10,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-one-less-column",
+            "name": "One Less Column",
+            "instructions": "Win without ever planting in column 4.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EMPTY_COLUMN",
+            "parameter": "4",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 10,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-undefended-row",
+            "name": "Undefended Row",
+            "instructions": "Win without ever planting in row 5.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EMPTY_ROW",
+            "parameter": "5",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 20,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-undefended-cross",
+            "name": "Undefended Cross",
+            "instructions": "Win without ever planting in row and column 5.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EMPTY_CROSS",
+            "parameter": "5",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 25,
+            "completed": false,
+            "rewardGranted": false
+          }
+        ]
+      },
+      "dailyOfferDate": "2026-09-01",
+      "dailyOfferPlant": "Sunflower",
+      "dailyOfferPurchased": false,
+      "plantBoosts": {
+      },
+      "plantCollection": [
+        {
+          "name": "Sunflower",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Twin Sunflower",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sun-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Primal Sunflower",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Gold Bloom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Peashooter",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Repeater",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Threepeater",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Snow Pea",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Rotobaga",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pea Pod",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Split Pea",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Citron",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Caulipower",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Electric Blueberry",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Bowling Bulb",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cactus",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Fire Peashooter",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Starfruit",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Goo Peashooter",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Mega Gatling Pea",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sea-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Puff-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Fume-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cabbage-pult",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Kernel-pult",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Melon-pult",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Winter Melon",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pepper-pult",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Potato Mine",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Primal Potato Mine",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cherry Bomb",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Squash",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Grapeshot",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Jalapeno",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Doom-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Tangle Kelp",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Iceberg Lettuce",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Bonk Choy",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Phat Beet",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Chomper",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Wasabi Whip",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Kiwibeast",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Wall-nut",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Tall-nut",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Endurian",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Garlic",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sweet Potato",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Explode-o-nut",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pumpkin",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sun Bean",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Torchwood",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Magnet-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Hypno-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cat-tail",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Imitater",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Ice-shroom",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Lily Pad",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Hot Potato",
+          "unlocked": true,
+          "level": 1,
+          "cards": 15
+        },
+        {
+          "name": "Grave Buster",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Enlighten-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Appease-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Arma-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Bombard-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Enforce-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Reinforce-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Enchant-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pierce-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "catTail-mint",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        }
+      ],
+      "zombieCollection": [
+        {
+          "name": "ZombieBeachArmor1Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachArmor2Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachFastSwimmer",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachFisherman",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachGargantuar",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachImpDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachOctopus",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachSnorkel",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieBeachSurfer",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieCamelDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieCrystalSkullDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkArmor1Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkArmor2Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkArmor3Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkArmor4Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkGargantuar",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkImpDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkImpDragonDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkJugglerDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieDarkKing",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieEgyptGargantuar",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieEgyptImpDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieEightiesArcade",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieExplorerDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieGargantuarBasic",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceAgeDodo",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceAgeGargantuar",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceAgeHunter",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceAgeTroglobite",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceageArmor1Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceageArmor2Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceageArmor3Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceageDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieIceageImpDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieLostCityJaneDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieModernAllStarDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieModernNewspaperDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieMummyArmor1Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieMummyArmor2Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieMummyArmor4Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieMummyDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombiePetDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombiePharaohDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombiePianoDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieProspectorDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieRaDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieRollerBarrelDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTombRaiserDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialArmor1Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialArmor2Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialArmor4Default",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialFlagDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialImpDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieWeaselDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieWeaselHoarderDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieWizardDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieZombossMechBeach",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieZombossMechCowboy",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieZombossMechDark",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieZombossMechEgypt",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieZombossMechIceAge",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieZombossMechPirate",
+          "unlocked": true
+        }
+      ],
+      "news": [
+        {
+          "timestampMillis": 1788235057088,
+          "title": "New Zombie Encountered!",
+          "description": "A new threat has appeared: ZombieTutorialDefault.",
+          "hasRead": true
+        },
+        {
+          "timestampMillis": 1788235102556,
+          "title": "New Plant Unlocked!",
+          "description": "You have successfully unlocked the Repeater.",
+          "hasRead": true
+        },
+        {
+          "timestampMillis": 1788235765136,
+          "title": "Special Level Unlocked!",
+          "description": "Ancient Egypt level 2 (\"Ancient Egypt - Conveyor Belt\") is now available. Special rules: Conveyor Belt.",
+          "hasRead": true
+        },
+        {
+          "timestampMillis": 1788235765138,
+          "title": "Quest Completed",
+          "description": "Quest completed: Economic Plant Eater. Reward: 15 Hot Potato seed packs.",
+          "hasRead": true
+        },
+        {
+          "timestampMillis": 1788235765138,
+          "title": "Quest Completed",
+          "description": "Quest completed: Family Massacre. Reward: 1000 coins.",
+          "hasRead": true
+        },
+        {
+          "timestampMillis": 1788235765138,
+          "title": "Quest Completed",
+          "description": "Quest completed: OCD No. Reward: 800 coins.",
+          "hasRead": true
+        }
+      ],
+      "greenHouse": {
+        "pots": [
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          }
+        ]
+      }
+    },
+    {
+      "username": "Arian2",
+      "passwordHash": "5b79fe8124970ed520544b98784825eb2892c8a239302a70c78d16cf1dca6a60",
+      "nickname": "arian",
+      "email": "arian2@gmail.com",
+      "gender": "MALE",
+      "securityQuestion": {
+        "question": "What was the name of your first school?",
+        "answerHash": "9834876dcfb05cb167a5c24953eba58c4ac89b1adf57f28f2f9d09af107ee8f0"
+      },
+      "coins": 0,
+      "diamonds": 0,
+      "sprouts": 0,
+      "greenhousePotsUnlocked": 4,
+      "potCount": 0,
+      "plantFoodCount": 0,
+      "gameplayRevision": 2,
+      "settings": {
+        "difficultyLevel": 3,
+        "debugMode": false,
+        "gameSpeed": 1,
+        "showGameMapGrid": false
+      },
+      "adventureProgress": {
+        "highestUnlockedLevels": {
+          "ancient-egypt": 1,
+          "frostbite-caves": 0,
+          "big-wave-beach": 0,
+          "dark-ages": 0
+        },
+        "completedLevels": []
+      },
+      "gameProgress": {
+        "lastCompletedChapter": 0,
+        "lastCompletedLevel": 0,
+        "completedMinigames": 0,
+        "highestScore": 0,
+        "gamesPlayed": 0,
+        "highestUnlockedMinigameLevels": {
+        },
+        "completedMinigameLevels": []
+      },
+      "questProgress": {
+        "completedDailyQuests": 0,
+        "completedNonDailyQuests": 0,
+        "maximumDifficultyWinStreak": 0,
+        "lastDailyRefresh": "2026-09-01",
+        "quests": [
+          {
+            "id": "chapter-hunter",
+            "name": "Chapter Hunter",
+            "instructions": "Defeat 50 zombies in chapter frostbite-caves.",
+            "type": "MAIN",
+            "priority": "HIGH",
+            "condition": "KILL_ZOMBIES_IN_CHAPTER",
+            "parameter": "frostbite-caves",
+            "target": 50,
+            "progress": 0,
+            "rewardType": "SEED_PACKS",
+            "rewardAmount": 10,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "economic-plant-eater",
+            "name": "Economic Plant Eater",
+            "instructions": "Win a level while losing no more than 2 plants.",
+            "type": "MAIN",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_MAXIMUM_PLANT_LOSSES",
+            "parameter": "2",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "SEED_PACKS",
+            "rewardAmount": 18,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "speed",
+            "name": "Speed",
+            "instructions": "Kill 10 zombies within 30 seconds of the first wave.",
+            "type": "MAIN",
+            "priority": "AVARAGE",
+            "condition": "KILL_TEN_WITHIN_THIRTY_SECONDS",
+            "parameter": "",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 500,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "master-defense",
+            "name": "Master Defense",
+            "instructions": "Win a level with exactly zero sun remaining.",
+            "type": "EPIC",
+            "priority": "CRITICAL",
+            "condition": "FINISH_WITH_ZERO_SUN",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 200,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "night-or-morning",
+            "name": "Night or Morning",
+            "instructions": "Win a daytime level using only mushroom plants.",
+            "type": "EPIC",
+            "priority": "HIGH",
+            "condition": "WIN_DAY_LEVEL_WITH_SHROOMS",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 20,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-sun-collector",
+            "name": "Daily Sun Collector",
+            "instructions": "Collect 3000 sun during this day.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "COLLECT_SUN",
+            "parameter": "3000",
+            "target": 3000,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 30,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-plant-pro",
+            "name": "Plant Pro",
+            "instructions": "Kill 10 zombies using only Peashooter.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "KILL_ONLY_WITH_PLANT",
+            "parameter": "Peashooter",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "RANDOM_PLANT",
+            "rewardAmount": 1,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-only-cactus",
+            "name": "Only Cactus",
+            "instructions": "Kill 10 zombies using only Cactus.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "KILL_ONLY_WITH_CACTUS",
+            "parameter": "Cactus",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 20,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-demolition-pro",
+            "name": "Demolition Pro",
+            "instructions": "Use 3 explosive plants in one level.",
+            "type": "DAILY",
+            "priority": "LOW",
+            "condition": "USE_THREE_EXPLOSIVE_PLANTS",
+            "parameter": "",
+            "target": 3,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 100,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-symmetry",
+            "name": "Symmetry",
+            "instructions": "Win with a horizontally symmetrical final garden.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "FINISH_WITH_SYMMETRICAL_GARDEN",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 500,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-family-massacre",
+            "name": "Family Massacre",
+            "instructions": "Kill 10 zombies using only the SHOOTER family.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "KILL_ONLY_WITH_FAMILY",
+            "parameter": "SHOOTER",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 1000,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-limitations-bloom",
+            "name": "Limitations Bloom",
+            "instructions": "Win without planting a member of the LOBBER family.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITHOUT_FAMILY",
+            "parameter": "LOBBER",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 100,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-win-streak",
+            "name": "Win Streak",
+            "instructions": "Win 5 consecutive stages at maximum difficulty.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "WIN_FIVE_AT_MAXIMUM_DIFFICULTY",
+            "parameter": "",
+            "target": 5,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 5000,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-almost-won",
+            "name": "Almost Won",
+            "instructions": "Kill 10 zombies in column one of a row whose mower is gone.",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "KILL_IN_FIRST_COLUMN_WITHOUT_MOWER",
+            "parameter": "",
+            "target": 10,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 300,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-ocd-no",
+            "name": "OCD No",
+            "instructions": "Win with no horizontal garden symmetry (middle row ignored).",
+            "type": "DAILY",
+            "priority": "AVARAGE",
+            "condition": "FINISH_WITHOUT_GARDEN_SYMMETRY",
+            "parameter": "",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "COINS",
+            "rewardAmount": 800,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-cloudy-day",
+            "name": "Cloudy Day",
+            "instructions": "Win using exactly 3 plants, all of them sun producers.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EXACTLY_THREE_SUN_PRODUCERS",
+            "parameter": "",
+            "target": 3,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 10,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-one-less-column",
+            "name": "One Less Column",
+            "instructions": "Win without ever planting in column 4.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EMPTY_COLUMN",
+            "parameter": "4",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 10,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-undefended-row",
+            "name": "Undefended Row",
+            "instructions": "Win without ever planting in row 2.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EMPTY_ROW",
+            "parameter": "2",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 20,
+            "completed": false,
+            "rewardGranted": false
+          },
+          {
+            "id": "daily-2026-09-01-undefended-cross",
+            "name": "Undefended Cross",
+            "instructions": "Win without ever planting in row and column 5.",
+            "type": "DAILY",
+            "priority": "HIGH",
+            "condition": "WIN_WITH_EMPTY_CROSS",
+            "parameter": "5",
+            "target": 1,
+            "progress": 0,
+            "rewardType": "DIAMONDS",
+            "rewardAmount": 25,
+            "completed": false,
+            "rewardGranted": false
+          }
+        ]
+      },
+      "dailyOfferDate": "",
+      "dailyOfferPlant": "",
+      "dailyOfferPurchased": false,
+      "plantBoosts": {
+      },
+      "plantCollection": [
+        {
+          "name": "Sunflower",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Twin Sunflower",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sun-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Primal Sunflower",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Gold Bloom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Peashooter",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Repeater",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Threepeater",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Snow Pea",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Rotobaga",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pea Pod",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Split Pea",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Citron",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Caulipower",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Electric Blueberry",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Bowling Bulb",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cactus",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Fire Peashooter",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Starfruit",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Goo Peashooter",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Mega Gatling Pea",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sea-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Puff-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Fume-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cabbage-pult",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Kernel-pult",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Melon-pult",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Winter Melon",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pepper-pult",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Potato Mine",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Primal Potato Mine",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cherry Bomb",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Squash",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Grapeshot",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Jalapeno",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Doom-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Tangle Kelp",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Iceberg Lettuce",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Bonk Choy",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Phat Beet",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Chomper",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Wasabi Whip",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Kiwibeast",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Wall-nut",
+          "unlocked": true,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Tall-nut",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Endurian",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Garlic",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sweet Potato",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Explode-o-nut",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pumpkin",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Sun Bean",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Torchwood",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Magnet-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Hypno-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Cat-tail",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Imitater",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Ice-shroom",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Lily Pad",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Hot Potato",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Grave Buster",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Enlighten-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Appease-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Arma-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Bombard-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Enforce-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Reinforce-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Enchant-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "Pierce-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        },
+        {
+          "name": "catTail-mint",
+          "unlocked": false,
+          "level": 1,
+          "cards": 0
+        }
+      ],
+      "zombieCollection": [
+        {
+          "name": "ZombieBeachArmor1Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachArmor2Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachFastSwimmer",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachFisherman",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachGargantuar",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachImpDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachOctopus",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachSnorkel",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieBeachSurfer",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieCamelDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieCrystalSkullDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkArmor1Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkArmor2Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkArmor3Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkArmor4Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkGargantuar",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkImpDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkImpDragonDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkJugglerDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieDarkKing",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieEgyptGargantuar",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieEgyptImpDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieEightiesArcade",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieExplorerDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieGargantuarBasic",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceAgeDodo",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceAgeGargantuar",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceAgeHunter",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceAgeTroglobite",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceageArmor1Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceageArmor2Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceageArmor3Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceageDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieIceageImpDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieLostCityJaneDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieModernAllStarDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieModernNewspaperDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieMummyArmor1Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieMummyArmor2Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieMummyArmor4Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieMummyDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombiePetDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombiePharaohDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombiePianoDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieProspectorDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieRaDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieRollerBarrelDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieTombRaiserDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieTutorialArmor1Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieTutorialArmor2Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieTutorialArmor4Default",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieTutorialDefault",
+          "unlocked": true
+        },
+        {
+          "name": "ZombieTutorialFlagDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieTutorialImpDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieWeaselDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieWeaselHoarderDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieWizardDefault",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieZombossMechBeach",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieZombossMechCowboy",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieZombossMechDark",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieZombossMechEgypt",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieZombossMechIceAge",
+          "unlocked": false
+        },
+        {
+          "name": "ZombieZombossMechPirate",
+          "unlocked": false
+        }
+      ],
+      "news": [
+        {
+          "timestampMillis": 1788236032291,
+          "title": "New Zombie Encountered!",
+          "description": "A new threat has appeared: ZombieTutorialDefault.",
+          "hasRead": true
+        }
+      ],
+      "greenHouse": {
+        "pots": [
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": false
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          },
+          {
+            "isLocked": true
+          }
+        ]
+      }
+    }
+  ]
+}
