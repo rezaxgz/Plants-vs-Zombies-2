@@ -8,6 +8,9 @@ import com.google.gson.JsonParseException;
 import java.util.Set;
 import io.github.Plants_Vs_Zombies_2.network.auth.LoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetLookup;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetRequest;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolMessage;
 import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardQuery;
@@ -46,6 +49,23 @@ final class PayloadReader {
 
     LoginCredentials login() throws AccountServiceException {
         return new LoginCredentials(requiredString("username"), requiredString("password"));
+    }
+
+    PersistentLoginCredentials persistentLogin() throws AccountServiceException {
+        return new PersistentLoginCredentials(requiredString("username"),
+                requiredString("token"));
+    }
+
+    PasswordResetLookup passwordResetLookup() throws AccountServiceException {
+        return new PasswordResetLookup(requiredString("username"),
+                requiredString("email"));
+    }
+
+    PasswordResetRequest passwordReset() throws AccountServiceException {
+        return new PasswordResetRequest(requiredString("username"),
+                requiredString("email"), requiredString("answer"),
+                requiredString("password"),
+                requiredString("passwordConfirmation"));
     }
 
     LeaderboardQuery leaderboardQuery() throws AccountServiceException {

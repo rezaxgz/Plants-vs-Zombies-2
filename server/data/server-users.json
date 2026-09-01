@@ -4,6 +4,7 @@
     {
       "username": "Arian",
       "passwordHash": "5b79fe8124970ed520544b98784825eb2892c8a239302a70c78d16cf1dca6a60",
+      "persistentLoginTokenHash": null,
       "nickname": "arian",
       "email": "arian@gmail.com",
       "gender": "MALE",
@@ -11,13 +12,13 @@
         "question": "What was the name of your first school?",
         "answerHash": "9834876dcfb05cb167a5c24953eba58c4ac89b1adf57f28f2f9d09af107ee8f0"
       },
-      "coins": 93799,
-      "diamonds": 99999,
-      "sprouts": 0,
+      "coins": 95299,
+      "diamonds": 99976,
+      "sprouts": 32,
       "greenhousePotsUnlocked": 8,
       "potCount": 0,
       "plantFoodCount": 0,
-      "gameplayRevision": 86,
+      "gameplayRevision": 123,
       "settings": {
         "difficultyLevel": 3,
         "debugMode": false,
@@ -36,13 +37,14 @@
       "gameProgress": {
         "lastCompletedChapter": 1,
         "lastCompletedLevel": 1,
-        "completedMinigames": 1,
+        "completedMinigames": 2,
         "highestScore": 0,
-        "gamesPlayed": 13,
+        "gamesPlayed": 17,
         "highestUnlockedMinigameLevels": {
-          "izombie": 2
+          "izombie": 2,
+          "wallnutbowling": 2
         },
-        "completedMinigameLevels": ["izombie:1"]
+        "completedMinigameLevels": ["izombie:1", "wallnutbowling:1"]
       },
       "questProgress": {
         "completedDailyQuests": 2,
@@ -341,6 +343,11 @@
       "dailyOfferPlant": "Sunflower",
       "dailyOfferPurchased": false,
       "plantBoosts": {
+        "Twin Sunflower": 1,
+        "Lily Pad": 1,
+        "Cactus": 1,
+        "Electric Blueberry": 1,
+        "Bowling Bulb": 1
       },
       "plantCollection": [
         {
@@ -1068,6 +1075,24 @@
           "title": "New Minigame Unlocked!",
           "description": "I, Zombie level 2 is now available to play.",
           "hasRead": false
+        },
+        {
+          "timestampMillis": 1788292135548,
+          "title": "New Minigame Unlocked!",
+          "description": "Vase Breaker level 1 is now available to play.",
+          "hasRead": false
+        },
+        {
+          "timestampMillis": 1788292188283,
+          "title": "New Minigame Unlocked!",
+          "description": "Wall-nut Bowling level 1 is now available to play.",
+          "hasRead": false
+        },
+        {
+          "timestampMillis": 1788292316107,
+          "title": "New Minigame Unlocked!",
+          "description": "Wall-nut Bowling level 2 is now available to play.",
+          "hasRead": false
         }
       ],
       "greenHouse": {
@@ -1114,6 +1139,7 @@
     {
       "username": "Arian2",
       "passwordHash": "5b79fe8124970ed520544b98784825eb2892c8a239302a70c78d16cf1dca6a60",
+      "persistentLoginTokenHash": null,
       "nickname": "arian",
       "email": "arian2@gmail.com",
       "gender": "MALE",
@@ -2181,6 +2207,7 @@
     {
       "username": "reza",
       "passwordHash": "8b187a707cdf4526ef78413fa926a9064ef688058016a64f097c89540b4e8848",
+      "persistentLoginTokenHash": null,
       "nickname": "reza",
       "email": "reza@gmail.com",
       "gender": "MALE",

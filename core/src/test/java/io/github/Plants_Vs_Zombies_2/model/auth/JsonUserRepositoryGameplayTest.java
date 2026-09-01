@@ -25,9 +25,28 @@ import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GreenhousePotGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.NewsGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.QuestGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.SettingsGameplayState;
 
 class JsonUserRepositoryGameplayTest {
     @TempDir Path temporaryDirectory;
+
+    @Test
+    void accountSettingsRoundTripThroughServerGameplayState() throws Exception {
+        Path database = temporaryDirectory.resolve("settings-users.json");
+        JsonUserRepository repository = repository(database);
+        GameplayState initial = repository.findGameplayState("alice")
+                .orElseThrow().getState();
+
+        repository.updateGameplayState("alice", 0L, withSettings(initial,
+                new SettingsGameplayState(5, true, 3, true)));
+        GameplayState restored = new JsonUserRepository(database)
+                .findGameplayState("alice").orElseThrow().getState();
+
+        assertEquals(5, restored.getSettings().getDifficultyLevel());
+        assertTrue(restored.getSettings().isDebugMode());
+        assertEquals(3, restored.getSettings().getGameSpeed());
+        assertTrue(restored.getSettings().isShowGameMapGrid());
+    }
 
     @Test
     void acceptedUpdateIsAtomicAndRevisionSurvivesReload() throws Exception {
@@ -291,7 +310,7 @@ class JsonUserRepositoryGameplayTest {
                 source.getGreenhousePots(),
                 source.getMaximumDifficultyWinStreak(),
                 source.getLastDailyQuestRefresh(), source.getActiveQuests(),
-                source.getNews());
+                source.getNews(), source.getSettings());
     }
 
     private static GameplayState withQuests(GameplayState source,
@@ -311,7 +330,7 @@ class JsonUserRepositoryGameplayTest {
                 source.getGreenhousePots(),
                 source.getMaximumDifficultyWinStreak(),
                 source.getLastDailyQuestRefresh(), source.getActiveQuests(),
-                source.getNews());
+                source.getNews(), source.getSettings());
     }
 
     private static GameplayState withRich(GameplayState source,
@@ -332,6 +351,28 @@ class JsonUserRepositoryGameplayTest {
                 source.isDailyOfferPurchased(),
                 source.getCompletedDailyQuests(),
                 source.getCompletedNonDailyQuests(), pots, maximumStreak,
-                lastDailyRefresh, quests, news);
+                lastDailyRefresh, quests, news, source.getSettings());
+    }
+
+    private static GameplayState withSettings(GameplayState source,
+            SettingsGameplayState settings) {
+        return new GameplayState(source.getCoins(), source.getDiamonds(),
+                source.getSprouts(), source.getPlantFoodCount(),
+                source.getPotCount(), source.getGreenhousePotsUnlocked(),
+                source.getLastCompletedChapter(), source.getLastCompletedLevel(),
+                source.getCompletedMinigames(), source.getHighestScore(),
+                source.getGamesPlayed(), source.getAdventureUnlockedLevels(),
+                source.getCompletedAdventureLevels(),
+                source.getMinigameUnlockedLevels(),
+                source.getCompletedMinigameLevels(), source.getPlants(),
+                source.getZombies(), source.getPlantBoosts(),
+                source.getDailyOfferDate(), source.getDailyOfferPlant(),
+                source.isDailyOfferPurchased(),
+                source.getCompletedDailyQuests(),
+                source.getCompletedNonDailyQuests(),
+                source.getGreenhousePots(),
+                source.getMaximumDifficultyWinStreak(),
+                source.getLastDailyQuestRefresh(), source.getActiveQuests(),
+                source.getNews(), settings);
     }
 }

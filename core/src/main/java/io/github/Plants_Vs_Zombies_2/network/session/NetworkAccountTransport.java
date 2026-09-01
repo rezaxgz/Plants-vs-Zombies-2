@@ -7,6 +7,10 @@ import java.util.function.Consumer;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.AuthenticationClient;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetChallenge;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetRequest;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginCredentials;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginToken;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkMessageListener;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
@@ -64,6 +68,28 @@ final class NetworkAccountTransport implements RemoteAccountTransport {
     @Override
     public CompletableFuture<AccountProfile> login(String username, String password) {
         return authenticationClient.login(username, password);
+    }
+
+    @Override
+    public CompletableFuture<PersistentLoginToken> createPersistentLogin() {
+        return authenticationClient.createPersistentLogin();
+    }
+
+    @Override
+    public CompletableFuture<AccountProfile> login(
+            PersistentLoginCredentials credentials) {
+        return authenticationClient.login(credentials);
+    }
+
+    @Override
+    public CompletableFuture<PasswordResetChallenge> lookupPasswordReset(
+            String username, String email) {
+        return authenticationClient.lookupPasswordReset(username, email);
+    }
+
+    @Override
+    public CompletableFuture<Void> resetPassword(PasswordResetRequest details) {
+        return authenticationClient.resetPassword(details);
     }
 
     @Override

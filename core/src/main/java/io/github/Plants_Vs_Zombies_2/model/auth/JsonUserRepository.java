@@ -67,6 +67,16 @@ public final class JsonUserRepository implements UserRepository {
     }
 
     @Override
+    public synchronized void save(User user) {
+        Objects.requireNonNull(user, "user");
+        if (!users.contains(user)) {
+            throw new IllegalArgumentException(
+                    "user does not belong to this repository");
+        }
+        UserJsonDatabase.save(databasePath, users);
+    }
+
+    @Override
     public synchronized Optional<GameplayStateSnapshot> findGameplayState(String username) {
         return findByUsername(username).map(user -> {
             user.getQuestProgress().ensureInitialized(user);

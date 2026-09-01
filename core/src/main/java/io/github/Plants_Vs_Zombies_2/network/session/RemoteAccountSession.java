@@ -8,6 +8,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetChallenge;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetRequest;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
@@ -28,6 +31,7 @@ public final class RemoteAccountSession implements AccountSession {
     private final MatchmakingClient matchmakingClient;
     private final MultiplayerGameClient multiplayerGameClient;
     private final LeaderboardClient leaderboardClient;
+    private final RemoteSessionStore persistentSession;
     private final List<SessionStateListener> listeners = new CopyOnWriteArrayList<>();
     private volatile ClientSessionState state = ClientSessionState.DISCONNECTED;
     private volatile AccountProfile profile;
@@ -45,7 +49,14 @@ public final class RemoteAccountSession implements AccountSession {
     }
 
     RemoteAccountSession(RemoteAccountTransport transport) {
+        this(transport, RemoteSessionStore.fromSystemProperties());
+    }
+
+    RemoteAccountSession(RemoteAccountTransport transport,
+            RemoteSessionStore persistentSession) {
         this.transport = Objects.requireNonNull(transport, "transport");
+        this.persistentSession = Objects.requireNonNull(
+                persistentSession, "persistentSession");
         this.matchmakingClient = transport.getMatchmakingClient();
         this.multiplayerGameClient = transport.getMultiplayerGameClient();
         this.leaderboardClient = transport.getLeaderboardClient();
@@ -100,9 +111,24 @@ public final class RemoteAccountSession implements AccountSession {
 
     @Override
     public CompletableFuture<AccountProfile> login(String username, String password) {
+        return login(username, password, false);
+    }
+
+    @Override
+    public CompletableFuture<AccountProfile> login(String username, String password,
+            boolean stayLoggedIn) {
+        if (!stayLoggedIn) persistentSession.clear();
         return connect().thenCompose(ignored -> {
             transition(ClientSessionState.AUTHENTICATING, null);
             return transport.login(username, password);
+        }).thenCompose(authenticatedProfile -> {
+            if (!stayLoggedIn) {
+                return CompletableFuture.completedFuture(authenticatedProfile);
+            }
+            return transport.createPersistentLogin().thenApply(token -> {
+                persistentSession.save(token);
+                return authenticatedProfile;
+            });
         }).thenCompose(authenticatedProfile -> transport.getGameplayState()
                 .thenApply(gameplay -> new LoginResult(authenticatedProfile, gameplay)))
         .whenComplete((result, failure) -> {
@@ -122,6 +148,57 @@ public final class RemoteAccountSession implements AccountSession {
             }
         }).thenApply(result -> result.profile().withGameplayState(
                 result.gameplay().getState()));
+    }
+
+    @Override
+    public boolean hasPersistentLogin() {
+        return persistentSession.load().isPresent();
+    }
+
+    @Override
+    public CompletableFuture<AccountProfile> restorePersistentLogin() {
+        PersistentLoginCredentials credentials = persistentSession.load()
+                .orElse(null);
+        if (credentials == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("No saved remote login"));
+        }
+        return connect().thenCompose(ignored -> {
+            transition(ClientSessionState.AUTHENTICATING, null);
+            return transport.login(credentials);
+        }).thenCompose(authenticatedProfile -> transport.getGameplayState()
+                .thenApply(gameplay -> new LoginResult(authenticatedProfile, gameplay)))
+        .whenComplete((result, failure) -> {
+            if (failure == null) {
+                synchronized (lock) {
+                    authenticationGeneration++;
+                    gameplayStateSnapshot = result.gameplay();
+                    profile = result.profile().withGameplayState(
+                            result.gameplay().getState());
+                }
+                transition(ClientSessionState.AUTHENTICATED, null);
+            } else {
+                persistentSession.clear();
+                profile = null;
+                gameplayStateSnapshot = null;
+                if (transport.isConnected()) transport.disconnect();
+                transitionAfterRequest(failure);
+            }
+        }).thenApply(result -> result.profile().withGameplayState(
+                result.gameplay().getState()));
+    }
+
+    @Override
+    public CompletableFuture<PasswordResetChallenge> lookupPasswordReset(
+            String username, String email) {
+        return connect().thenCompose(ignored ->
+                transport.lookupPasswordReset(username, email));
+    }
+
+    @Override
+    public CompletableFuture<Void> resetPassword(PasswordResetRequest details) {
+        return connect().thenCompose(ignored -> transport.resetPassword(details))
+                .thenRun(persistentSession::clear);
     }
 
     @Override
@@ -183,6 +260,7 @@ public final class RemoteAccountSession implements AccountSession {
 
     @Override
     public CompletableFuture<Void> logout() {
+        persistentSession.clear();
         AccountProfile previousProfile = profile;
         clearAuthenticatedState();
         if (!transport.isConnected()) {

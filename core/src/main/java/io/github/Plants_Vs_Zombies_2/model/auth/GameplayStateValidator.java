@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import io.github.Plants_Vs_Zombies_2.model.Settings;
 import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
 import io.github.Plants_Vs_Zombies_2.model.greenHouse.GreenhouseBoard;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Chapter;
@@ -18,6 +19,7 @@ import io.github.Plants_Vs_Zombies_2.network.gameplay.GreenhousePotGameplayState
 import io.github.Plants_Vs_Zombies_2.network.gameplay.NewsGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.PlantGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.QuestGameplayState;
+import io.github.Plants_Vs_Zombies_2.network.gameplay.SettingsGameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.ZombieGameplayState;
 
 /** Complete pre-mutation validation for the server's gameplay sync endpoint. */
@@ -80,10 +82,24 @@ final class GameplayStateValidator {
         validateZombies(incoming.getZombies(), current.getZombies());
         validateBoosts(incoming.getPlantBoosts(), incoming.getPlants());
         validateDailyOffer(incoming);
+        validateSettings(incoming.getSettings());
         validateGreenhouse(incoming);
         validateQuests(incoming, current);
         validateNews(incoming);
         validateMonotonicProgress(incoming, current);
+    }
+
+    private static void validateSettings(SettingsGameplayState settings)
+            throws GameplayUpdateException {
+        if (settings == null
+                || settings.getDifficultyLevel() < Settings.MIN_DIFFICULTY
+                || settings.getDifficultyLevel() > Settings.MAX_DIFFICULTY
+                || settings.getGameSpeed() < Settings.MIN_GAME_SPEED
+                || settings.getGameSpeed() > Settings.MAX_GAME_SPEED) {
+            throw new GameplayUpdateException(
+                    GameplayUpdateFailure.VALIDATION_FAILED,
+                    "Account settings are outside the supported range");
+        }
     }
 
     private static void validateGreenhouse(GameplayState state)

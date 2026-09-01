@@ -109,6 +109,10 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             case PING -> ProtocolMessages.pong(message.getRequestId(), message.getPayload());
             case REGISTER_REQUEST -> register(message);
             case LOGIN_REQUEST -> login(message, context);
+            case CREATE_PERSISTENT_LOGIN_REQUEST -> createPersistentLogin(message, context);
+            case PERSISTENT_LOGIN_REQUEST -> persistentLogin(message, context);
+            case PASSWORD_RESET_LOOKUP_REQUEST -> passwordResetLookup(message);
+            case PASSWORD_RESET_REQUEST -> passwordReset(message);
             case LOGOUT_REQUEST -> logout(message, context);
             case GET_PROFILE_REQUEST -> getProfile(message, context);
             case GET_GAMEPLAY_STATE_REQUEST -> getGameplayState(message, context);
@@ -142,6 +146,13 @@ public final class ServerMessageHandler implements ServerRequestHandler {
             throws AccountServiceException {
         AccountProfile profile = accountService.login(
                 context, PayloadReader.from(message).login());
+        registerAuthenticatedConnection(context, profile);
+        return ProtocolMessages.withPayload(
+                MessageType.LOGIN_RESPONSE, message.getRequestId(), profile);
+    }
+
+    private void registerAuthenticatedConnection(ConnectionContext context,
+            AccountProfile profile) throws AccountServiceException {
         if (!connectionDirectory.register(profile.getUsername(),
                 context.getConnection(), () -> matchmakingService.playerDisconnected(
                         profile.getUsername()))) {
@@ -150,8 +161,39 @@ public final class ServerMessageHandler implements ServerRequestHandler {
                     ProtocolErrorCode.USER_ALREADY_ONLINE,
                     "This account is already online");
         }
+    }
+
+    private ProtocolMessage persistentLogin(ProtocolMessage message,
+            ConnectionContext context) throws AccountServiceException {
+        AccountProfile profile = accountService.login(
+                context, PayloadReader.from(message).persistentLogin());
+        registerAuthenticatedConnection(context, profile);
+        return ProtocolMessages.withPayload(MessageType.PERSISTENT_LOGIN_RESPONSE,
+                message.getRequestId(), profile);
+    }
+
+    private ProtocolMessage createPersistentLogin(ProtocolMessage message,
+            ConnectionContext context) throws AccountServiceException {
+        PayloadReader.from(message);
         return ProtocolMessages.withPayload(
-                MessageType.LOGIN_RESPONSE, message.getRequestId(), profile);
+                MessageType.CREATE_PERSISTENT_LOGIN_RESPONSE,
+                message.getRequestId(),
+                accountService.createPersistentLogin(context));
+    }
+
+    private ProtocolMessage passwordResetLookup(ProtocolMessage message)
+            throws AccountServiceException {
+        return ProtocolMessages.withPayload(
+                MessageType.PASSWORD_RESET_LOOKUP_RESPONSE,
+                message.getRequestId(), accountService.lookupPasswordReset(
+                        PayloadReader.from(message).passwordResetLookup()));
+    }
+
+    private ProtocolMessage passwordReset(ProtocolMessage message)
+            throws AccountServiceException {
+        accountService.resetPassword(PayloadReader.from(message).passwordReset());
+        return ProtocolMessages.empty(MessageType.PASSWORD_RESET_RESPONSE,
+                message.getRequestId());
     }
 
     private ProtocolMessage logout(ProtocolMessage message, ConnectionContext context)

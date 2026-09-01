@@ -5,6 +5,10 @@ import io.github.Plants_Vs_Zombies_2.network.auth.AuthenticationClient;
 import io.github.Plants_Vs_Zombies_2.network.auth.AuthenticationException;
 import io.github.Plants_Vs_Zombies_2.network.auth.LoginCredentials;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetChallenge;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetRequest;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginCredentials;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginToken;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkClient;
 import io.github.Plants_Vs_Zombies_2.network.client.NetworkMessageListener;
 import io.github.Plants_Vs_Zombies_2.network.protocol.MessageType;
@@ -169,6 +173,76 @@ class AuthenticationIntegrationTest {
             assertEquals("Player", profile.getNickname());
             assertEquals("player@example.com", profile.getEmail());
             assertEquals("FEMALE", profile.getGender());
+        }
+    }
+
+    @Test
+    void persistentLoginSurvivesRestartAndIsRevokedByLogout() throws Exception {
+        PersistentLoginToken token;
+        try (NetworkClient client = connectedClient("remember-login")) {
+            AuthenticationClient authentication = new AuthenticationClient(client);
+            authentication.register(validDetails()).get(5, TimeUnit.SECONDS);
+            authentication.login("valid-user", PASSWORD).get(5, TimeUnit.SECONDS);
+            token = authentication.createPersistentLogin().get(5, TimeUnit.SECONDS);
+        }
+        String persisted = Files.readString(databasePath, StandardCharsets.UTF_8);
+        assertFalse(persisted.contains(token.getToken()));
+
+        server.close();
+        server = new GameServer(GameServer.DEFAULT_HOST, 0, databasePath);
+        server.start();
+        try (NetworkClient client = connectedClient("remember-restore")) {
+            AuthenticationClient authentication = new AuthenticationClient(client);
+            AccountProfile profile = authentication.login(
+                    new PersistentLoginCredentials(token.getUsername(),
+                            token.getToken())).get(5, TimeUnit.SECONDS);
+            assertEquals("valid-user", profile.getUsername());
+            authentication.logout().get(5, TimeUnit.SECONDS);
+        }
+
+        try (NetworkClient client = connectedClient("remember-revoked")) {
+            AuthenticationException failure = authenticationFailure(
+                    new AuthenticationClient(client).login(
+                            new PersistentLoginCredentials(token.getUsername(),
+                                    token.getToken())));
+            assertEquals(ProtocolErrorCode.INVALID_CREDENTIALS,
+                    failure.getErrorCode());
+        }
+    }
+
+    @Test
+    void passwordRecoveryChangesPasswordAndRevokesPersistentLogin()
+            throws Exception {
+        PersistentLoginToken token;
+        try (NetworkClient client = connectedClient("reset-register")) {
+            AuthenticationClient authentication = new AuthenticationClient(client);
+            authentication.register(validDetails()).get(5, TimeUnit.SECONDS);
+            authentication.login("valid-user", PASSWORD).get(5, TimeUnit.SECONDS);
+            token = authentication.createPersistentLogin().get(5, TimeUnit.SECONDS);
+        }
+        awaitCondition(() -> server.getConnectionCount() == 0);
+
+        String replacement = "BetterPass2@";
+        try (NetworkClient client = connectedClient("reset-client")) {
+            AuthenticationClient authentication = new AuthenticationClient(client);
+            PasswordResetChallenge challenge = authentication.lookupPasswordReset(
+                    "valid-user", "player@example.com").get(5, TimeUnit.SECONDS);
+            assertEquals("valid-user", challenge.getUsername());
+            assertNotNull(challenge.getQuestion());
+            authentication.resetPassword(new PasswordResetRequest(
+                    "valid-user", "player@example.com", "favorite-answer",
+                    replacement, replacement)).get(5, TimeUnit.SECONDS);
+
+            assertEquals(ProtocolErrorCode.INVALID_CREDENTIALS,
+                    authenticationFailure(authentication.login(
+                            new PersistentLoginCredentials(token.getUsername(),
+                                    token.getToken()))).getErrorCode());
+            assertEquals(ProtocolErrorCode.INVALID_CREDENTIALS,
+                    authenticationFailure(authentication.login(
+                            "valid-user", PASSWORD)).getErrorCode());
+            assertEquals("valid-user", authentication.login(
+                    "valid-user", replacement).get(5, TimeUnit.SECONDS)
+                    .getUsername());
         }
     }
 

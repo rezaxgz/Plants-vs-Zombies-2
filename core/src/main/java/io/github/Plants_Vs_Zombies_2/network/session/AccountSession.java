@@ -4,6 +4,8 @@ import java.util.concurrent.CompletableFuture;
 
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetChallenge;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetRequest;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingClient;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameClient;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
@@ -17,6 +19,29 @@ public interface AccountSession extends AutoCloseable {
     CompletableFuture<Void> register(RegistrationDetails details);
 
     CompletableFuture<AccountProfile> login(String username, String password);
+
+    default CompletableFuture<AccountProfile> login(String username,
+            String password, boolean stayLoggedIn) {
+        return login(username, password);
+    }
+
+    default boolean hasPersistentLogin() { return false; }
+
+    default CompletableFuture<AccountProfile> restorePersistentLogin() {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("No saved remote login"));
+    }
+
+    default CompletableFuture<PasswordResetChallenge> lookupPasswordReset(
+            String username, String email) {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("Password recovery is unavailable"));
+    }
+
+    default CompletableFuture<Void> resetPassword(PasswordResetRequest details) {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("Password recovery is unavailable"));
+    }
 
     CompletableFuture<AccountProfile> refreshProfile();
 

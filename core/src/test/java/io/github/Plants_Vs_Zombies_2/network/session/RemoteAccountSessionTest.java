@@ -15,15 +15,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import io.github.Plants_Vs_Zombies_2.model.auth.UserManager;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginToken;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
 
 class RemoteAccountSessionTest {
+    @TempDir Path temporaryDirectory;
     private static final AccountProfile PROFILE = new AccountProfile(
             "remote-only-user-for-test", "Remote", "remote@example.com", "FEMALE",
             100, 5, 3, 2, 1, 2, 4, 6, 120, 9);
@@ -31,7 +34,7 @@ class RemoteAccountSessionTest {
     @Test
     void simultaneousConnectCallsShareOneAttempt() {
         FakeTransport transport = new FakeTransport();
-        RemoteAccountSession session = new RemoteAccountSession(transport);
+        RemoteAccountSession session = session(transport);
 
         CompletableFuture<Void> first = session.connect();
         CompletableFuture<Void> second = session.connect();
@@ -47,7 +50,7 @@ class RemoteAccountSessionTest {
     void loginStoresProfileAndLogoutClearsItEvenWhenRequestFails() {
         FakeTransport transport = new FakeTransport();
         transport.connected = true;
-        RemoteAccountSession session = new RemoteAccountSession(transport);
+        RemoteAccountSession session = session(transport);
 
         transport.loginFuture.complete(PROFILE);
         AccountProfile loggedIn = session.login(
@@ -71,6 +74,23 @@ class RemoteAccountSessionTest {
         session.logout().handle((ignored, failure) -> null).join();
         assertNull(session.getProfile());
         assertEquals(ClientSessionState.DISCONNECTED, session.getState());
+    }
+
+    @Test
+    void stayLoggedInStoresAnOpaqueTokenWithoutThePassword() throws Exception {
+        FakeTransport transport = new FakeTransport();
+        transport.connected = true;
+        transport.loginFuture.complete(PROFILE);
+        Path sessionPath = temporaryDirectory.resolve("remote-session.json");
+        RemoteAccountSession session = new RemoteAccountSession(transport,
+                new RemoteSessionStore(sessionPath));
+
+        session.login(PROFILE.getUsername(), "do-not-store-this", true).join();
+
+        assertTrue(session.hasPersistentLogin());
+        String stored = Files.readString(sessionPath);
+        assertFalse(stored.contains("do-not-store-this"));
+        assertTrue(stored.contains("opaque-token"));
     }
 
     @Test
@@ -105,6 +125,11 @@ class RemoteAccountSessionTest {
         assertTrue(profile.contains("ProfileFlowController"));
     }
 
+    private RemoteAccountSession session(FakeTransport transport) {
+        return new RemoteAccountSession(transport, new RemoteSessionStore(
+                temporaryDirectory.resolve("remote-session.json")));
+    }
+
     private static final class FakeTransport implements RemoteAccountTransport {
         private final CompletableFuture<Void> connectFuture = new CompletableFuture<>();
         private final CompletableFuture<AccountProfile> loginFuture = new CompletableFuture<>();
@@ -132,6 +157,12 @@ class RemoteAccountSessionTest {
         @Override
         public CompletableFuture<AccountProfile> login(String username, String password) {
             return loginFuture;
+        }
+
+        @Override
+        public CompletableFuture<PersistentLoginToken> createPersistentLogin() {
+            return CompletableFuture.completedFuture(new PersistentLoginToken(
+                    PROFILE.getUsername(), "opaque-token"));
         }
 
         @Override

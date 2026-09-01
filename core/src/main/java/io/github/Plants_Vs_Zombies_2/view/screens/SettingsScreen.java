@@ -130,6 +130,7 @@ public final class SettingsScreen extends AbstractScreen {
 
     private void saveAndRefresh() {
         UserManager.saveAllUsers();
+        navigator.getGameplaySync().markDirty();
         refreshSettingsState();
     }
 

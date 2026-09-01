@@ -44,6 +44,7 @@ public final class GameplayState {
     private final String lastDailyQuestRefresh;
     private final List<QuestGameplayState> activeQuests;
     private final List<NewsGameplayState> news;
+    private final SettingsGameplayState settings;
 
     public GameplayState(int coins, int diamonds, int sprouts,
             int plantFoodCount, int potCount, int greenhousePotsUnlocked,
@@ -111,6 +112,37 @@ public final class GameplayState {
             int maximumDifficultyWinStreak, String lastDailyQuestRefresh,
             List<QuestGameplayState> activeQuests,
             List<NewsGameplayState> news) {
+        this(coins, diamonds, sprouts, plantFoodCount, potCount,
+                greenhousePotsUnlocked, lastCompletedChapter,
+                lastCompletedLevel, completedMinigames, highestScore,
+                gamesPlayed, adventureUnlockedLevels,
+                completedAdventureLevels, minigameUnlockedLevels,
+                completedMinigameLevels, plants, zombies, plantBoosts,
+                dailyOfferDate, dailyOfferPlant, dailyOfferPurchased,
+                completedDailyQuests, completedNonDailyQuests,
+                greenhousePots, maximumDifficultyWinStreak,
+                lastDailyQuestRefresh, activeQuests, news, null);
+    }
+
+    public GameplayState(int coins, int diamonds, int sprouts,
+            int plantFoodCount, int potCount, int greenhousePotsUnlocked,
+            int lastCompletedChapter, int lastCompletedLevel,
+            int completedMinigames, int highestScore, int gamesPlayed,
+            Map<String, Integer> adventureUnlockedLevels,
+            List<String> completedAdventureLevels,
+            Map<String, Integer> minigameUnlockedLevels,
+            List<String> completedMinigameLevels,
+            List<PlantGameplayState> plants,
+            List<ZombieGameplayState> zombies,
+            Map<String, Integer> plantBoosts,
+            String dailyOfferDate, String dailyOfferPlant,
+            boolean dailyOfferPurchased, int completedDailyQuests,
+            int completedNonDailyQuests,
+            List<GreenhousePotGameplayState> greenhousePots,
+            int maximumDifficultyWinStreak, String lastDailyQuestRefresh,
+            List<QuestGameplayState> activeQuests,
+            List<NewsGameplayState> news,
+            SettingsGameplayState settings) {
         this.coins = coins;
         this.diamonds = diamonds;
         this.sprouts = sprouts;
@@ -139,6 +171,7 @@ public final class GameplayState {
         this.lastDailyQuestRefresh = lastDailyQuestRefresh;
         this.activeQuests = activeQuests == null ? null : copyList(activeQuests);
         this.news = news == null ? null : copyList(news);
+        this.settings = settings;
     }
 
     public static GameplayState fromUser(User user) {
@@ -192,7 +225,8 @@ public final class GameplayState {
                 user.getQuestProgress().getCompletedNonDailyQuests(),
                 greenhousePots,
                 user.getQuestProgress().getMaximumDifficultyWinStreak(),
-                user.getQuestProgress().getLastDailyRefresh(), quests, news);
+                user.getQuestProgress().getLastDailyRefresh(), quests, news,
+                SettingsGameplayState.fromSettings(user.getSettings()));
     }
 
     private static <T> List<T> copyList(List<T> values) {
@@ -244,6 +278,7 @@ public final class GameplayState {
     }
     public List<QuestGameplayState> getActiveQuests() { return copyList(activeQuests); }
     public List<NewsGameplayState> getNews() { return copyList(news); }
+    public SettingsGameplayState getSettings() { return settings; }
     public boolean hasCompleteRichState() {
         return greenhousePots != null && lastDailyQuestRefresh != null
                 && activeQuests != null && news != null;
@@ -251,7 +286,10 @@ public final class GameplayState {
 
     /** Preserves server-owned rich fields for legacy clients that omit them. */
     public GameplayState withRichStateFrom(GameplayState current) {
-        if (hasCompleteRichState() || current == null) return this;
+        if (current == null || (hasCompleteRichState() && settings != null)) {
+            return this;
+        }
+        boolean keepIncomingRichState = hasCompleteRichState();
         return new GameplayState(coins, diamonds, sprouts, plantFoodCount,
                 potCount, greenhousePotsUnlocked, lastCompletedChapter,
                 lastCompletedLevel, completedMinigames, highestScore,
@@ -259,10 +297,17 @@ public final class GameplayState {
                 minigameUnlockedLevels, completedMinigameLevels, plants, zombies,
                 plantBoosts, dailyOfferDate, dailyOfferPlant,
                 dailyOfferPurchased, completedDailyQuests,
-                completedNonDailyQuests, current.getGreenhousePots(),
-                current.getMaximumDifficultyWinStreak(),
-                current.getLastDailyQuestRefresh(), current.getActiveQuests(),
-                current.getNews());
+                completedNonDailyQuests,
+                keepIncomingRichState ? greenhousePots
+                        : current.getGreenhousePots(),
+                keepIncomingRichState ? maximumDifficultyWinStreak
+                        : current.getMaximumDifficultyWinStreak(),
+                keepIncomingRichState ? lastDailyQuestRefresh
+                        : current.getLastDailyQuestRefresh(),
+                keepIncomingRichState ? activeQuests
+                        : current.getActiveQuests(),
+                keepIncomingRichState ? news : current.getNews(),
+                settings == null ? current.getSettings() : settings);
     }
 
     @Override public boolean equals(Object other) {
@@ -290,7 +335,8 @@ public final class GameplayState {
                 && maximumDifficultyWinStreak == value.maximumDifficultyWinStreak
                 && Objects.equals(lastDailyQuestRefresh, value.lastDailyQuestRefresh)
                 && Objects.equals(activeQuests, value.activeQuests)
-                && Objects.equals(news, value.news);
+                && Objects.equals(news, value.news)
+                && Objects.equals(settings, value.settings);
     }
 
     @Override public int hashCode() {
@@ -302,6 +348,6 @@ public final class GameplayState {
                 minigameUnlockedLevels, completedMinigameLevels, plants, zombies,
                 plantBoosts, dailyOfferDate, dailyOfferPlant, dailyOfferPurchased,
                 greenhousePots, maximumDifficultyWinStreak,
-                lastDailyQuestRefresh, activeQuests, news);
+                lastDailyQuestRefresh, activeQuests, news, settings);
     }
 }

@@ -60,6 +60,44 @@ public final class AuthenticationClient {
         return exchange(request, MessageType.LOGIN_RESPONSE).thenApply(this::readProfile);
     }
 
+    public CompletableFuture<PersistentLoginToken> createPersistentLogin() {
+        ProtocolMessage request = ProtocolMessages.empty(
+                MessageType.CREATE_PERSISTENT_LOGIN_REQUEST,
+                ProtocolMessages.newRequestId());
+        return exchange(request, MessageType.CREATE_PERSISTENT_LOGIN_RESPONSE)
+                .thenApply(response -> readPayload(response,
+                        PersistentLoginToken.class, "persistent login token"));
+    }
+
+    public CompletableFuture<AccountProfile> login(PersistentLoginCredentials credentials) {
+        Objects.requireNonNull(credentials, "credentials");
+        ProtocolMessage request = ProtocolMessages.withPayload(
+                MessageType.PERSISTENT_LOGIN_REQUEST,
+                ProtocolMessages.newRequestId(), credentials);
+        return exchange(request, MessageType.PERSISTENT_LOGIN_RESPONSE)
+                .thenApply(this::readProfile);
+    }
+
+    public CompletableFuture<PasswordResetChallenge> lookupPasswordReset(
+            String username, String email) {
+        ProtocolMessage request = ProtocolMessages.withPayload(
+                MessageType.PASSWORD_RESET_LOOKUP_REQUEST,
+                ProtocolMessages.newRequestId(),
+                new PasswordResetLookup(username, email));
+        return exchange(request, MessageType.PASSWORD_RESET_LOOKUP_RESPONSE)
+                .thenApply(response -> readPayload(response,
+                        PasswordResetChallenge.class, "password reset challenge"));
+    }
+
+    public CompletableFuture<Void> resetPassword(PasswordResetRequest details) {
+        Objects.requireNonNull(details, "details");
+        ProtocolMessage request = ProtocolMessages.withPayload(
+                MessageType.PASSWORD_RESET_REQUEST,
+                ProtocolMessages.newRequestId(), details);
+        return exchange(request, MessageType.PASSWORD_RESET_RESPONSE)
+                .thenApply(response -> null);
+    }
+
     public CompletableFuture<Void> logout() {
         ProtocolMessage request = ProtocolMessages.empty(
                 MessageType.LOGOUT_REQUEST, ProtocolMessages.newRequestId());
@@ -88,18 +126,30 @@ public final class AuthenticationClient {
     }
 
     private AccountProfile readProfile(ProtocolMessage response) {
+        AccountProfile profile = readPayload(response, AccountProfile.class,
+                "account profile");
+        if (profile.getUsername() == null) {
+            throw new AuthenticationException(
+                    ProtocolErrorCode.UNEXPECTED_RESPONSE,
+                    "The server returned an incomplete account profile");
+        }
+        return profile;
+    }
+
+    private <T> T readPayload(ProtocolMessage response, Class<T> type,
+            String description) {
         try {
-            AccountProfile profile = codec.deserializePayload(response, AccountProfile.class);
-            if (profile == null || profile.getUsername() == null) {
+            T value = codec.deserializePayload(response, type);
+            if (value == null) {
                 throw new AuthenticationException(
                         ProtocolErrorCode.UNEXPECTED_RESPONSE,
-                        "The server returned an incomplete account profile");
+                        "The server returned an incomplete " + description);
             }
-            return profile;
+            return value;
         } catch (ProtocolException exception) {
             throw new AuthenticationException(
                     ProtocolErrorCode.UNEXPECTED_RESPONSE,
-                    "The server returned an invalid account profile",
+                    "The server returned an invalid " + description,
                     exception);
         }
     }
