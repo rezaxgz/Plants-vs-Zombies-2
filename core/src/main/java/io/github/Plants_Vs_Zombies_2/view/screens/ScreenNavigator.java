@@ -573,6 +573,12 @@ public final class ScreenNavigator {
         long secondsLeft = Math.max(0L,
                 (invitation.expiresAtEpochMillis() - System.currentTimeMillis() + 999L) / 1000L);
         Window.WindowStyle invitationStyle = new Window.WindowStyle();
+        com.badlogic.gdx.graphics.g2d.BitmapFont invitationFont =
+                skin.getAll(com.badlogic.gdx.graphics.g2d.BitmapFont.class)
+                        .values().iterator().next();
+        invitationStyle.titleLabelStyle =
+                new com.badlogic.gdx.scenes.scene2d.ui.Label.LabelStyle(
+                        invitationFont, com.badlogic.gdx.graphics.Color.WHITE);
         Dialog dialog = new Dialog("Multiplayer invitation", invitationStyle) {
             @Override protected void result(Object object) {
                 if (disposed || invitationBridge == null) return;
