@@ -6,6 +6,7 @@ import java.util.Deque;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
+import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 
 import io.github.Plants_Vs_Zombies_2.Main;
@@ -571,7 +572,8 @@ public final class ScreenNavigator {
                 || current instanceof LoginScreen || current instanceof SignUpScreen) return;
         long secondsLeft = Math.max(0L,
                 (invitation.expiresAtEpochMillis() - System.currentTimeMillis() + 999L) / 1000L);
-        Dialog dialog = new Dialog("Multiplayer invitation", skin) {
+        Window.WindowStyle invitationStyle = new Window.WindowStyle();
+        Dialog dialog = new Dialog("Multiplayer invitation", invitationStyle) {
             @Override protected void result(Object object) {
                 if (disposed || invitationBridge == null) return;
                 if (Boolean.TRUE.equals(object)) {
