@@ -1,15 +1,20 @@
 package io.github.Plants_Vs_Zombies_2.view.screens;
 
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.utils.Scaling;
 
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMultiplayerTransport;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.PregameController;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Server-assigned role and readiness screen shown after MATCH_FOUND. */
 public final class MultiplayerPregameScreen extends AbstractScreen {
@@ -43,12 +48,17 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
 
         Table panel = new Table();
         panel.defaults().pad(8f).left();
-        panel.add(new Label("Match ID:", skin)).width(170f);
-        panel.add(new Label(assignment.getMatchId(), skin)).width(600f).row();
+        panel.add(new Label("Preparing your multiplayer match", skin, "big"))
+                .colspan(2).center().padBottom(12f).row();
         panel.add(new Label("Opponent:", skin));
-        panel.add(new Label(assignment.getOpponentUsername(), skin)).row();
+        panel.add(new Label(Phase3Text.username(
+                assignment.getOpponentUsername()), skin)).row();
         panel.add(new Label("Your role:", skin));
-        panel.add(roleLabel).row();
+        Table rolePresentation = new Table();
+        rolePresentation.add(createRoleVisual()).size(88f, 74f)
+                .padRight(10f);
+        rolePresentation.add(roleLabel).left();
+        panel.add(rolePresentation).row();
         panel.add(new Label("Connection:", skin));
         panel.add(connectionLabel).row();
         panel.add(new Label("You:", skin));
@@ -88,17 +98,38 @@ public final class MultiplayerPregameScreen extends AbstractScreen {
 
     private void applyState(PregameController.State state) {
         if (disposed) return;
-        roleLabel.setText(String.valueOf(state.role()));
-        localReadyLabel.setText(state.localReady() ? "READY" : "Not ready");
-        opponentReadyLabel.setText(state.opponentReady() ? "READY" : "Not ready");
-        connectionLabel.setText(String.valueOf(navigator.getAccountSession().getState()));
-        statusLabel.setText(state.status());
+        roleLabel.setText(Phase3Text.role(state.role()));
+        localReadyLabel.setText(state.localReady() ? "Ready" : "Not ready");
+        opponentReadyLabel.setText(state.opponentReady()
+                ? "Ready" : "Waiting for opponent...");
+        connectionLabel.setText(Phase3Text.connection(
+                navigator.getAccountSession().getState()));
+        statusLabel.setText(Phase3Text.status(state.status(),
+                "Waiting for both players..."));
         readyButton.setDisabled(state.requestInFlight() || state.localReady()
                 || state.cancelled());
         leaveButton.setDisabled(state.requestInFlight());
         if (state.cancelled()) {
             navigator.showMultiplayerIZombieMenu(state.status());
         }
+    }
+
+    private Actor createRoleVisual() {
+        String asset = MultiplayerVisualCatalog.roleIconAsset(
+                assignment.getRole());
+        TextureRegion region = navigator.getTextureBank().region(asset);
+        if (region == null) {
+            region = navigator.getTextureBank().region(
+                    MultiplayerVisualCatalog.MISSING_ASSET);
+        }
+        if (region == null) {
+            return new Label(Phase3Text.roleShort(assignment.getRole()), skin,
+                    "medium_outline");
+        }
+        Image image = new Image(region);
+        image.setScaling(Scaling.fit);
+        image.setTouchable(com.badlogic.gdx.scenes.scene2d.Touchable.disabled);
+        return image;
     }
 
     @Override public void dispose() {

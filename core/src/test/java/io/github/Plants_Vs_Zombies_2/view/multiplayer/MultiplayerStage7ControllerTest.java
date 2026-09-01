@@ -311,7 +311,8 @@ class MultiplayerStage7ControllerTest {
             cancelTransport.fireCancelled(new MatchCancelled(
                     "m1", "bob", "PLAYER_DISCONNECTED"));
             assertTrue(cancelled.get().cancelled());
-            assertTrue(cancelled.get().status().contains("PLAYER_DISCONNECTED"));
+            assertTrue(cancelled.get().status().contains("disconnected"));
+            assertFalse(cancelled.get().status().contains("_"));
         }
     }
 
@@ -331,6 +332,7 @@ class MultiplayerStage7ControllerTest {
             assertEquals(0, transport.placeZombieCalls);
             controller.placePlant("Peashooter", 0, 0);
             assertEquals(1, transport.placePlantCalls);
+            assertEquals("Peashooter", transport.lastPlantType);
             assertEquals(3, transport.lastExpectedRevision);
         }
     }
@@ -353,6 +355,35 @@ class MultiplayerStage7ControllerTest {
         }
     }
 
+    @Test
+    void malformedSnapshotKeepsTheLastValidGraphicalState() {
+        FakeMultiplayer transport = new FakeMultiplayer();
+        MatchStateSnapshot initial = snapshot(10, 4, MatchStatus.ACTIVE,
+                null, null);
+        transport.stateFuture.complete(initial);
+        AtomicReference<LiveMatchController.State> state =
+                new AtomicReference<>();
+        try (LiveMatchController controller = new LiveMatchController(
+                transport, UiDispatcher.direct(),
+                assignment(MatchRole.PLANTS), initial, state::set)) {
+            MatchStateSnapshot malformed = new MatchStateSnapshot(
+                    "different-match", MatchStatus.ACTIVE, 11L, 5L,
+                    1_000L, 1.0, 119.0, "FIRST_BITE", 7L,
+                    5, 9, 3,
+                    List.of(
+                            new MatchPlayerSnapshot("alice",
+                                    MatchRole.PLANTS, true),
+                            new MatchPlayerSnapshot("bob",
+                                    MatchRole.ZOMBIES, true)),
+                    500, 300, List.of(), List.of(), List.of(),
+                    List.of(true, true, true, true, true), null, null);
+            transport.fireState(malformed);
+
+            assertSame(initial, state.get().snapshot());
+            assertTrue(state.get().status().contains("different match"));
+        }
+    }
+
 
     @Test
     void acceptedMutationUsesOnlyReturnedAuthoritativeSnapshotAndCleansListener() {
@@ -364,6 +395,7 @@ class MultiplayerStage7ControllerTest {
                 UiDispatcher.direct(), assignment(MatchRole.ZOMBIES), initial, state::set);
         controller.placeZombie("BASIC", 0, 4);
         assertSame(initial, state.get().snapshot());
+        assertEquals("BASIC", transport.lastZombieType);
         MatchStateSnapshot accepted = snapshot(10, 5, MatchStatus.ACTIVE, null, null);
         transport.placeZombieFuture.complete(new ActionResult("m1", 5L,
                 "zombie-1", accepted));
@@ -611,6 +643,8 @@ class MultiplayerStage7ControllerTest {
         int leaveCalls;
         int reactionCalls;
         long lastExpectedRevision;
+        String lastPlantType;
+        String lastZombieType;
 
         @Override public CompletableFuture<ReadyStatus> markReady(String matchId) {
             readyCalls++;
@@ -623,12 +657,14 @@ class MultiplayerStage7ControllerTest {
         @Override public CompletableFuture<ActionResult> placePlant(String matchId,
                 String plantType, int row, int column, long expectedRevision) {
             placePlantCalls++;
+            lastPlantType = plantType;
             lastExpectedRevision = expectedRevision;
             return placePlantFuture;
         }
         @Override public CompletableFuture<ActionResult> placeZombie(String matchId,
                 String zombieType, int row, int column, long expectedRevision) {
             placeZombieCalls++;
+            lastZombieType = zombieType;
             lastExpectedRevision = expectedRevision;
             return placeZombieFuture;
         }

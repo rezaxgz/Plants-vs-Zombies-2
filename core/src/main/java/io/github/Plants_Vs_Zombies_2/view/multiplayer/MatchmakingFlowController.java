@@ -9,6 +9,7 @@ import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingListener;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.PlayerMatchmakingState;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.QueueStatus;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /**
  * Render-independent state machine for the outgoing direct-invite and random
@@ -47,7 +48,9 @@ public final class MatchmakingFlowController implements AutoCloseable {
                 queued = false;
                 pendingInvitationId = null;
                 status = cancellation == null ? "Match cancelled."
-                        : "Match cancelled: " + cancellation.getReason();
+                        : "Match cancelled. "
+                                + Phase3Text.cancellationReason(
+                                        cancellation.getReason());
                 error = false;
                 publish();
             });
@@ -91,10 +94,15 @@ public final class MatchmakingFlowController implements AutoCloseable {
                     } else {
                         pendingInvitationId = invitation == null ? null
                                 : invitation.getInvitationId();
-                        status = invitation == null
-                                ? "Invitation sent. Waiting for server update."
-                                : "Invitation sent to " + target + ".";
-                        error = false;
+                        if (!Phase3Text.hasText(pendingInvitationId)) {
+                            pendingInvitationId = null;
+                            status = "The server returned an invalid invitation. "
+                                    + "Please try again.";
+                            error = true;
+                        } else {
+                            status = "Invitation sent to " + target + ".";
+                            error = false;
+                        }
                     }
                     publish();
                 }));
@@ -195,6 +203,15 @@ public final class MatchmakingFlowController implements AutoCloseable {
         if (disposed || invitation == null || pendingInvitationId == null
                 || !pendingInvitationId.equals(invitation.getInvitationId())) return;
         InvitationStatus result = invitation.getStatus();
+        if (result == null) {
+            pendingInvitationId = null;
+            requestInFlight = false;
+            status = "The server returned an invalid invitation update. "
+                    + "Please try again.";
+            error = true;
+            publish();
+            return;
+        }
         if (result != InvitationStatus.PENDING) pendingInvitationId = null;
         requestInFlight = false;
         error = false;
