@@ -22,6 +22,7 @@ import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Stack;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
@@ -30,6 +31,15 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
 
+import io.github.Plants_Vs_Zombies_2.model.App;
+import io.github.Plants_Vs_Zombies_2.model.collections.plants.PlantCollectionItem;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.EntityPosition;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.BasePlant;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.PlantFactory;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.lobber.Lobber;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.plants.shooter.Shooter;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.Zombie;
+import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchEntitySnapshot;
@@ -46,7 +56,7 @@ import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Graphical Scene2D projection of server-authoritative I, Zombie snapshots. */
 public final class MultiplayerIZombieGameScreen extends AbstractScreen {
-    private static final float BOARD_WIDTH = 930f;
+    private static final float BOARD_WIDTH = 900f;
     private static final float BOARD_HEIGHT = 430f;
 
     private final MatchAssignment assignment;
@@ -77,6 +87,7 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
     private final Set<String> missingVisualWarnings = new HashSet<>();
     private final Texture pixelTexture;
     private final BoardGridActor boardGridActor;
+    private final List<String> cardTypes;
 
     private MatchStateSnapshot pendingSnapshot;
     private MatchStateSnapshot renderedSnapshot;
@@ -92,8 +103,17 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
 
     public MultiplayerIZombieGameScreen(ScreenNavigator navigator,
             MatchAssignment assignment, MatchStateSnapshot initialSnapshot) {
+        this(navigator, assignment, initialSnapshot, List.of());
+    }
+
+    public MultiplayerIZombieGameScreen(ScreenNavigator navigator,
+            MatchAssignment assignment, MatchStateSnapshot initialSnapshot,
+            List<String> plantLoadout) {
         super(navigator, "Multiplayer I, Zombie - Live");
         this.assignment = assignment;
+        this.cardTypes = assignment.getRole() == MatchRole.PLANTS
+                ? resolvePlantCardTypes(plantLoadout)
+                : MultiplayerVisualCatalog.zombieTypes();
         if (navigator.getAccountSession().getMultiplayerGameClient() == null) {
             throw new IllegalStateException(
                     "Authoritative multiplayer client is unavailable");
@@ -130,8 +150,8 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         reactionStatusLabel.setWrap(true);
 
         buildHud();
-        buildBoard();
         buildCards();
+        buildBoard();
 
         controller = new LiveMatchController(
                 new ClientMultiplayerTransport(navigator.getAccountSession()
@@ -198,11 +218,37 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         boardStack.add(projectileLayer);
 
         Table matchBody = new Table();
+        matchBody.add(createControlSidebar()).width(306f).height(BOARD_HEIGHT)
+                .padRight(8f).padTop(6f);
         matchBody.add(boardStack).width(BOARD_WIDTH).height(BOARD_HEIGHT)
                 .padTop(6f);
-        matchBody.add(createReactionPanel()).width(255f).height(BOARD_HEIGHT)
-                .padLeft(10f).padTop(6f);
         content.add(matchBody).growX().row();
+    }
+
+    private Table createControlSidebar() {
+        Table sidebar = new Table();
+        sidebar.top().left();
+
+        Table tray = new Table();
+        tray.top();
+        tray.add(new Label(assignment.getRole() == MatchRole.PLANTS
+                ? "PLANTS" : "ZOMBIES", skin, "medium_outline"))
+                .padBottom(3f).row();
+        ScrollPane cardScroll = new ScrollPane(cardTable, skin);
+        cardScroll.setFadeScrollBars(false);
+        cardScroll.setScrollingDisabled(true, false);
+        tray.add(cardScroll).width(162f).height(292f).top();
+
+        Table sideBySide = new Table();
+        sideBySide.top();
+        sideBySide.add(tray).width(166f).top();
+        sideBySide.add(createReactionPanel()).width(138f).top();
+        sidebar.add(sideBySide).height(318f).top().row();
+        sidebar.add(leaveButton).width(170f).height(36f)
+                .padTop(3f).left().row();
+        sidebar.add(statusLabel).width(300f).height(60f).left().top()
+                .padTop(3f);
+        return sidebar;
     }
 
     static void configureBoardInputLayers(Actor boardGrid, Group cells,
@@ -227,27 +273,17 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
     }
 
     private void buildCards() {
-        List<String> types = assignment.getRole() == MatchRole.PLANTS
-                ? MultiplayerVisualCatalog.plantTypes()
-                : MultiplayerVisualCatalog.zombieTypes();
-        selectedCardType = types.get(0);
+        selectedCardType = cardTypes.get(0);
+        cardTable.top();
         cardTable.defaults().pad(3f);
-        for (String type : types) {
+        for (String type : cardTypes) {
             Button button = createCardButton(type);
             cardButtons.put(type, button);
-            cardTable.add(button).width(130f).height(86f);
+            cardTable.add(button).width(148f)
+                    .height(assignment.getRole() == MatchRole.PLANTS
+                            ? 112f : 86f).row();
         }
         updateCardSelection();
-
-        Table controls = new Table();
-        controls.defaults().pad(5f);
-        controls.add(new Label(assignment.getRole() == MatchRole.PLANTS
-                ? "Choose a plant" : "Choose a zombie", skin,
-                "medium_outline")).left();
-        controls.add(cardTable).expandX().left();
-        controls.add(leaveButton).width(170f).height(46f).right().row();
-        controls.add(statusLabel).colspan(3).width(1050f).left().row();
-        content.add(controls).growX();
     }
 
     private Button createCardButton(String type) {
@@ -265,6 +301,20 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         style.checkedOver = green.over != null ? green.over : green.up;
         Button button = new Button(style);
         Table contents = new Table();
+        PlantCollectionItem collectionPlant = assignment.getRole()
+                == MatchRole.PLANTS ? collectionPlant(type) : null;
+        if (collectionPlant != null) {
+            contents.add(new PlantPacketCard(navigator, collectionPlant))
+                    .width(PlantPacketCard.WIDTH)
+                    .height(PlantPacketCard.TOTAL_HEIGHT).row();
+            Label cost = new Label("Cost " + collectionPlant.getCost(), skin,
+                    "medium_outline");
+            cost.setFontScale(0.55f);
+            contents.add(cost).height(16f);
+            button.add(contents).grow();
+            installCardSelection(button, type);
+            return button;
+        }
         TextureRegion art = visual == null ? null : borrowRegion(
                 visual.packetAsset(), "packet card", type);
         if (art != null) {
@@ -289,6 +339,11 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         text.add(costLabel).left();
         contents.add(text).left();
         button.add(contents).grow();
+        installCardSelection(button, type);
+        return button;
+    }
+
+    private void installCardSelection(Button button, String type) {
         button.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 if (!disposed && latestState != null
@@ -300,7 +355,31 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                 }
             }
         });
-        return button;
+    }
+
+    private PlantCollectionItem collectionPlant(String type) {
+        if (App.getInstance().getLoggedInUser() == null) return null;
+        return App.getInstance().getLoggedInUser().getPlantCollection()
+                .findPlant(type);
+    }
+
+    static List<String> resolvePlantCardTypes(List<String> requested) {
+        if (requested != null && requested.size() == 8) {
+            List<String> distinct = new ArrayList<>();
+            for (String type : requested) {
+                if (type == null || type.isBlank()
+                        || PlantFactory.createPlant(type,
+                                new EntityPosition(0, 0)) == null
+                        || distinct.stream().anyMatch(
+                                value -> value.equalsIgnoreCase(type))) {
+                    distinct.clear();
+                    break;
+                }
+                distinct.add(type);
+            }
+            if (distinct.size() == 8) return List.copyOf(distinct);
+        }
+        return MultiplayerVisualCatalog.plantTypes();
     }
 
     private void updateCardSelection() {
@@ -348,13 +427,13 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
 
     private Table createReactionPanel() {
         Table panel = new Table();
-        panel.setBackground(skin.get("brown", TextButtonStyle.class).up);
-        panel.pad(8f);
+        // Deliberately transparent: this lives beside the role tray and never
+        // overlays or consumes space from the lawn.
+        panel.pad(2f);
         panel.add(new Label("Match Reactions", skin, "medium_outline"))
-                .colspan(2).padBottom(5f).row();
+                .width(132f).padBottom(3f).row();
         MatchReactionType[] types = MatchReactionType.values();
-        for (int index = 0; index < types.length; index++) {
-            MatchReactionType type = types[index];
+        for (MatchReactionType type : types) {
             TextButton button = new TextButton(type.getDisplayText(), skin,
                     type.getKind() == MatchReactionKind.TEXT
                             ? "green" : "brown");
@@ -375,13 +454,12 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                 }
             });
             reactionButtons.add(button);
-            panel.add(button).width(112f).height(40f).pad(3f);
-            if (index % 2 == 1) panel.row();
+            panel.add(button).width(128f).height(28f).pad(1f).row();
         }
-        panel.add(reactionStatusLabel).colspan(2).width(225f)
-                .left().padTop(5f).row();
-        panel.add(reactionHistoryTable).colspan(2).width(225f)
-                .height(150f).left().top().padTop(5f);
+        panel.add(reactionStatusLabel).width(128f)
+                .left().padTop(3f).row();
+        panel.add(reactionHistoryTable).width(128f)
+                .height(65f).left().top().padTop(3f);
         return panel;
     }
 
@@ -417,9 +495,11 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
             }
             String sender = local ? "You" : Phase3Text.required(
                     reaction.getSenderUsername(), "Opponent");
-            reactionHistoryTable.add(new Label(sender + ": "
-                    + type.getDisplayText(), skin, "secondary"))
-                    .width(190f).left().row();
+            Label reactionLabel = new Label(sender + ": "
+                    + type.getDisplayText(), skin, "secondary");
+            reactionLabel.setWrap(true);
+            reactionHistoryTable.add(reactionLabel)
+                    .width(94f).left().row();
         }
     }
 
@@ -562,6 +642,7 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                 entityLayer.addActor(actor);
             }
             actor.updateHealth(entity.getHealth(), entity.getMaximumHealth());
+            actor.updatePresentation(entity);
             positionEntityActor(actor, entity, snapshot);
         }
     }
@@ -582,11 +663,30 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                             + " mapping for " + entity.getEntityType()
                             + "; using named fallback.");
         }
-        Actor artwork = createPamOrImage(visual,
-                entity.getOwnerRole() == MatchRole.PLANTS
-                        ? "plant" : "zombie");
+        Actor artwork = null;
+        Zombie snapshotZombie = null;
+        if (entity.getOwnerRole() == MatchRole.ZOMBIES) {
+            try {
+                ZombieType type = ZombieType.valueOf(entity.getEntityType());
+                ZombieVisualCatalog.Visual zombieVisual =
+                        ZombieVisualCatalog.find(type);
+                if (zombieVisual != null) {
+                    snapshotZombie = new Zombie(type, 0, entity.getRow(),
+                            Math.max(0.0, entity.getColumnPosition()), false);
+                    artwork = new ZombiePamActor(navigator.getPamPlayer(),
+                            snapshotZombie, zombieVisual);
+                }
+            } catch (IllegalArgumentException | IllegalStateException ignored) {
+                // The verified packet/PAM fallback below keeps the entity visible.
+            }
+        }
+        if (artwork == null) {
+            artwork = createPamOrImage(visual,
+                    entity.getOwnerRole() == MatchRole.PLANTS
+                            ? "plant" : "zombie");
+        }
         EntityVisualActor actor = new EntityVisualActor(pixelTexture, artwork,
-                entity.getEntityType(), entity.getOwnerRole());
+                entity.getEntityType(), entity.getOwnerRole(), snapshotZombie);
         actor.setTouchable(Touchable.enabled);
         final String entityId = entity.getEntityId();
         actor.addListener(new ClickListener() {
@@ -684,6 +784,7 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
             Actor actor = createPamOrImage(visual, "projectile");
             projectileActors.put(id, actor);
             projectileLayer.addActor(actor);
+            playMatchingPlantAttack(projectile);
         }
         for (MatchProjectileSnapshot projectile : incoming.values()) {
             Actor actor = projectileActors.get(projectile.getProjectileId());
@@ -695,6 +796,23 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
                     projectile.getColumnPosition(), snapshot,
                     Math.max(20f, cellWidth * 0.34f),
                     Math.max(20f, cellHeight * 0.34f));
+        }
+    }
+
+    private void playMatchingPlantAttack(MatchProjectileSnapshot projectile) {
+        if (projectile == null || latestState == null
+                || latestState.snapshot() == null) return;
+        String suffix = "_PROJECTILE";
+        String type = projectile.getProjectileType();
+        if (type == null || !type.endsWith(suffix)) return;
+        String plantType = type.substring(0, type.length() - suffix.length());
+        for (MatchEntitySnapshot plant : latestState.snapshot().getPlants()) {
+            if (plant.getRow() == projectile.getLane()
+                    && plantType.equalsIgnoreCase(plant.getEntityType())) {
+                EntityVisualActor actor = entityActors.get(plant.getEntityId());
+                if (actor != null) actor.playPlantAttack();
+                return;
+            }
         }
     }
 
@@ -852,13 +970,19 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
         private final HealthBarActor healthBar;
         private final String canonicalType;
         private final MatchRole role;
+        private final Zombie snapshotZombie;
+        private final ZombiePamActor zombieArtwork;
         private int previousHealth = -1;
+        private double previousColumn = Double.NaN;
 
         EntityVisualActor(Texture pixel, Actor artwork, String canonicalType,
-                MatchRole role) {
+                MatchRole role, Zombie snapshotZombie) {
             this.artwork = artwork;
             this.canonicalType = canonicalType;
             this.role = role;
+            this.snapshotZombie = snapshotZombie;
+            this.zombieArtwork = artwork instanceof ZombiePamActor
+                    ? (ZombiePamActor) artwork : null;
             artwork.setTouchable(Touchable.disabled);
             healthBar = new HealthBarActor(pixel);
             healthBar.setTouchable(Touchable.disabled);
@@ -879,6 +1003,37 @@ public final class MultiplayerIZombieGameScreen extends AbstractScreen {
             previousHealth = health;
             healthBar.setRatio(maximumHealth <= 0 ? 0f
                     : health / (float) maximumHealth);
+        }
+
+        void updatePresentation(MatchEntitySnapshot entity) {
+            if (zombieArtwork == null || snapshotZombie == null) return;
+            double currentColumn = entity.getColumnPosition();
+            boolean wasMoving = !Double.isNaN(previousColumn)
+                    && currentColumn < previousColumn - 0.0001;
+            snapshotZombie.moveToLane(entity.getRow());
+            snapshotZombie.moveTo(Math.max(0.0, currentColumn));
+            zombieArtwork.setEating(!Double.isNaN(previousColumn)
+                    && !wasMoving);
+            previousColumn = currentColumn;
+        }
+
+        void playPlantAttack() {
+            if (!(artwork instanceof PamAnimationActor pam)
+                    || role != MatchRole.PLANTS) return;
+            BasePlant plant = PlantFactory.createPlant(canonicalType,
+                    new EntityPosition(0, 0));
+            PlantAnimationCatalog.AttackAnimation animation = null;
+            if (plant instanceof Shooter) {
+                animation = PlantAnimationCatalog.shooterAttackAnimation(
+                        (Shooter) plant);
+            } else if (plant instanceof Lobber) {
+                animation = PlantAnimationCatalog.lobberAttackAnimation(
+                        (Lobber) plant);
+            }
+            if (animation != null) {
+                pam.playOnce(animation.getAttackClip(),
+                        animation.getIdleClip());
+            }
         }
 
         void layoutAt(float x, float y, float width, float height) {

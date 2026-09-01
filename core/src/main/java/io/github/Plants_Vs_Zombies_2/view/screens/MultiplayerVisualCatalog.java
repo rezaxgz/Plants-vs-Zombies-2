@@ -86,7 +86,17 @@ public final class MultiplayerVisualCatalog {
     }
 
     public static Visual plant(String canonicalType) {
-        return PLANTS.get(normalize(canonicalType));
+        Visual fixed = PLANTS.get(normalize(canonicalType));
+        if (fixed != null) return fixed;
+        BasePlant plant = PlantFactory.createPlant(canonicalType,
+                new EntityPosition(0, 0));
+        if (plant == null) return null;
+        PlantAnimationCatalog.Preview preview =
+                PlantAnimationCatalog.find(plant.getName());
+        return new Visual(plant.getName(), plant.getName(),
+                PlantPacketCard.packetAssetFor(plant.getName()),
+                preview == null ? null : preview.getPath(),
+                preview == null ? null : preview.getClip(), plant.getName());
     }
 
     public static Visual zombie(String canonicalType) {
@@ -94,7 +104,22 @@ public final class MultiplayerVisualCatalog {
     }
 
     public static Visual projectile(String canonicalType) {
-        return PROJECTILES.get(normalize(canonicalType));
+        Visual fixed = PROJECTILES.get(normalize(canonicalType));
+        if (fixed != null) return fixed;
+        if (!Phase3Text.hasText(canonicalType)
+                || !canonicalType.endsWith("_PROJECTILE")) return null;
+        String source = canonicalType.substring(0,
+                canonicalType.length() - "_PROJECTILE".length());
+        if (PlantFactory.createPlant(source,
+                new EntityPosition(0, 0)) == null) return null;
+        ProjectileVisualCatalog.Preview preview =
+                ProjectileVisualCatalog.findSource(source);
+        return new Visual(canonicalType, source + " projectile",
+                preview.isStaticImage() ? preview.getImageId()
+                        : PlantPacketCard.packetAssetFor(source),
+                preview.isStaticImage() ? null : preview.getPath(),
+                preview.isStaticImage() ? null : preview.getClip(),
+                source + " projectile");
     }
 
     public static String reactionAsset(MatchReactionType type) {

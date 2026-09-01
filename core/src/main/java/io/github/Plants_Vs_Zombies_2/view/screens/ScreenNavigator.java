@@ -2,6 +2,7 @@ package io.github.Plants_Vs_Zombies_2.view.screens;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
@@ -366,6 +367,11 @@ public final class ScreenNavigator {
 
     public void showMultiplayerIZombieGame(MatchAssignment assignment,
             MatchStateSnapshot initialSnapshot) {
+        showMultiplayerIZombieGame(assignment, initialSnapshot, List.of());
+    }
+
+    public void showMultiplayerIZombieGame(MatchAssignment assignment,
+            MatchStateSnapshot initialSnapshot, List<String> plantLoadout) {
         if (disposed
                 || accountSession.getState() != ClientSessionState.AUTHENTICATED) {
             return;
@@ -378,7 +384,7 @@ public final class ScreenNavigator {
             return;
         }
         showTransient(new MultiplayerIZombieGameScreen(
-                this, assignment, initialSnapshot));
+                this, assignment, initialSnapshot, plantLoadout));
     }
 
     private void reportMalformedMultiplayerState(String message) {
