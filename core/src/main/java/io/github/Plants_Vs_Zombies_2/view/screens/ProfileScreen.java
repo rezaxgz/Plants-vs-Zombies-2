@@ -8,6 +8,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.session.ProfileFlowController;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Complete graphical view of the authenticated server-owned profile. */
 public final class ProfileScreen extends AbstractScreen {
@@ -55,33 +56,43 @@ public final class ProfileScreen extends AbstractScreen {
             profileValues.add(new Label("No server profile is available.", skin,
                     "medium_outline")).colspan(2).left().row();
         } else {
-            addValue("Username", profile.getUsername());
-            addValue("Nickname", profile.getNickname());
-            addValue("Email", profile.getEmail());
-            addValue("Gender", profile.getGender());
-            addValue("Coins", profile.getCoins());
-            addValue("Diamonds", profile.getDiamonds());
-            addValue("Sprouts", profile.getSprouts());
-            addValue("Plant Food", profile.getPlantFoodCount());
-            addValue("Pot Inventory", profile.getPotCount());
-            addValue("Last Completed Level", profile.getLastCompletedChapter()
-                    + "-" + profile.getLastCompletedLevel());
-            addValue("Completed Minigames", profile.getCompletedMinigames());
-            addValue("Highest Score", profile.getHighestScore());
-            addValue("Games Played", profile.getGamesPlayed());
+            addTextValue("Username", Phase3Text.required(
+                    profile.getUsername(), "Account unavailable"));
+            addTextValue("Nickname", Phase3Text.optional(
+                    profile.getNickname()));
+            addTextValue("Email", Phase3Text.optional(profile.getEmail()));
+            addTextValue("Gender", Phase3Text.prettyIdentifier(
+                    profile.getGender(), "Not provided"));
+            addNumberValue("Coins", profile.getCoins());
+            addNumberValue("Diamonds", profile.getDiamonds());
+            addNumberValue("Sprouts", profile.getSprouts());
+            addNumberValue("Plant Food", profile.getPlantFoodCount());
+            addNumberValue("Pot Inventory", profile.getPotCount());
+            addTextValue("Last Completed Level", Phase3Text.levelProgress(
+                    profile.getLastCompletedChapter(),
+                    profile.getLastCompletedLevel()));
+            addNumberValue("Completed Minigames",
+                    profile.getCompletedMinigames());
+            addNumberValue("Highest Score", profile.getHighestScore());
+            addNumberValue("Games Played", profile.getGamesPlayed());
         }
-        statusLabel.setText(state.message() == null
-                ? "Authenticated server profile." : state.message());
+        statusLabel.setText(Phase3Text.status(state.message(),
+                "Authenticated server profile."));
         refreshButton.setDisabled(state.loading());
         refreshButton.setText(state.loading() ? "Refreshing..."
                 : state.retryAvailable() ? "Retry Server Refresh"
                         : "Refresh from Server");
     }
 
-    private void addValue(String name, Object value) {
+    private void addNumberValue(String name, int value) {
+        addTextValue(name, Integer.toString(value));
+    }
+
+    private void addTextValue(String name, String value) {
         profileValues.add(new Label(name + ":", skin, "medium_outline"))
                 .width(235f);
-        profileValues.add(new Label(String.valueOf(value), skin, "secondary"))
+        profileValues.add(new Label(Phase3Text.optional(value), skin,
+                "secondary"))
                 .width(410f).row();
     }
 

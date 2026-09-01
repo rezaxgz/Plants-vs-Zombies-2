@@ -10,6 +10,7 @@ import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameListener;
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.ReadyStatus;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Render-independent PRE_GAME/readiness controller. */
 public final class PregameController implements AutoCloseable {
@@ -47,8 +48,11 @@ public final class PregameController implements AutoCloseable {
                 if (disposed || cancelled) return;
                 cancelled = true;
                 requestInFlight = false;
-                status = "Match cancelled: " + (cancellation == null
-                        ? "connection lost" : cancellation.getReason());
+                status = cancellation == null
+                        ? "Match cancelled. Connection lost."
+                        : "Match cancelled. "
+                                + Phase3Text.cancellationReason(
+                                        cancellation.getReason());
                 publish();
             });
         }
@@ -59,6 +63,11 @@ public final class PregameController implements AutoCloseable {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.ui = Objects.requireNonNull(ui, "ui");
         this.assignment = Objects.requireNonNull(assignment, "assignment");
+        String assignmentError = MultiplayerSnapshotValidator.assignmentError(
+                assignment);
+        if (assignmentError != null) {
+            throw new IllegalArgumentException(assignmentError);
+        }
         this.observer = Objects.requireNonNull(observer, "observer");
         transport.addListener(listener);
         publish();
@@ -123,8 +132,14 @@ public final class PregameController implements AutoCloseable {
                         publish();
                         return;
                     }
-                    if (snapshot == null
-                            || !assignment.getMatchId().equals(snapshot.getMatchId())) return;
+                    String validationError =
+                            MultiplayerSnapshotValidator.snapshotError(
+                                    snapshot, assignment);
+                    if (validationError != null) {
+                        status = validationError;
+                        publish();
+                        return;
+                    }
                     for (MatchPlayerSnapshot player : snapshot.getPlayers()) {
                         if (player.getRole() == assignment.getRole()) {
                             localReady = player.isReady();
@@ -159,8 +174,14 @@ public final class PregameController implements AutoCloseable {
     }
 
     private void deliverStart(MatchStateSnapshot snapshot) {
-        if (disposed || startDelivered || snapshot == null
-                || !assignment.getMatchId().equals(snapshot.getMatchId())) return;
+        if (disposed || startDelivered) return;
+        String validationError = MultiplayerSnapshotValidator.snapshotError(
+                snapshot, assignment);
+        if (validationError != null) {
+            status = validationError;
+            publish();
+            return;
+        }
         startDelivered = true;
         requestInFlight = false;
         status = "Match started.";

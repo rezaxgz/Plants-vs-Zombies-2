@@ -33,6 +33,7 @@ import io.github.Plants_Vs_Zombies_2.model.menu.ShopMenu;
 import io.github.Plants_Vs_Zombies_2.model.news.News;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Main menu controls requested by the phase-two GUI specification. */
 public final class MainMenuScreen extends AbstractScreen {
@@ -267,7 +268,9 @@ public final class MainMenuScreen extends AbstractScreen {
     }
 
     private void renderProfileModal(AccountProfile profile, boolean refresh) {
-
+        if (profile == null) {
+            return;
+        }
         profileModal = new Table();
         profileModal.setFillParent(true);
         profileModal.setTouchable(Touchable.enabled);
@@ -299,10 +302,14 @@ public final class MainMenuScreen extends AbstractScreen {
 
         Table accountRows = new Table();
         accountRows.defaults().growX().height(49f).pad(3f);
-        accountRows.add(profileInfoRow("Username", profile.getUsername())).row();
-        accountRows.add(profileInfoRow("Nickname", profile.getNickname())).row();
-        accountRows.add(profileInfoRow("Email", profile.getEmail())).row();
-        accountRows.add(profileInfoRow("Gender", profile.getGender())).row();
+        accountRows.add(profileInfoRow("Username", Phase3Text.required(
+                profile.getUsername(), "Account unavailable"))).row();
+        accountRows.add(profileInfoRow("Nickname", Phase3Text.optional(
+                profile.getNickname()))).row();
+        accountRows.add(profileInfoRow("Email", Phase3Text.optional(
+                profile.getEmail()))).row();
+        accountRows.add(profileInfoRow("Gender", Phase3Text.prettyIdentifier(
+                profile.getGender(), "Not provided"))).row();
         panel.add(accountRows).width(820f).top().row();
 
         Label statsHeading = new Label("Player Statistics", skin,
@@ -319,8 +326,8 @@ public final class MainMenuScreen extends AbstractScreen {
                 Integer.toString(profile.getGamesPlayed()),
                 null)).width(220f).height(68f);
         primaryStats.add(profileStatCard("Last Completed",
-                profile.getLastCompletedChapter() + "-"
-                        + profile.getLastCompletedLevel(), null))
+                Phase3Text.levelProgress(profile.getLastCompletedChapter(),
+                        profile.getLastCompletedLevel()), null))
                 .width(220f).height(68f);
         primaryStats.add(profileStatCard("Highest Mew Point",
                 Integer.toString(profile.getHighestScore()),
@@ -378,7 +385,7 @@ public final class MainMenuScreen extends AbstractScreen {
         Label nameLabel = new Label(name, nameStyle);
         nameLabel.setFontScale(0.82f);
 
-        Label valueLabel = new Label(value == null ? "" : value,
+        Label valueLabel = new Label(Phase3Text.optional(value),
                 skin, "medium_outline");
         valueLabel.setFontScale(0.72f);
         valueLabel.setColor(Color.WHITE);
@@ -403,7 +410,7 @@ public final class MainMenuScreen extends AbstractScreen {
         nameLabel.setFontScale(0.80f);
         nameLabel.setAlignment(com.badlogic.gdx.utils.Align.center);
 
-        Label valueLabel = new Label(value == null ? "" : value,
+        Label valueLabel = new Label(Phase3Text.optional(value),
                 skin, "medium_outline");
         valueLabel.setFontScale(0.96f);
         valueLabel.setColor(Color.WHITE);

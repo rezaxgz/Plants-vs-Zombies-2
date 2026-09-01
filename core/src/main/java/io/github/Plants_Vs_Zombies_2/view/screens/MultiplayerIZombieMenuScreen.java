@@ -10,6 +10,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import io.github.Plants_Vs_Zombies_2.network.session.ClientSessionState;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMatchmakingTransport;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.MatchmakingFlowController;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Direct invitation and random matchmaking entry for graphical I, Zombie. */
 public final class MultiplayerIZombieMenuScreen extends AbstractScreen {
@@ -86,7 +87,8 @@ public final class MultiplayerIZombieMenuScreen extends AbstractScreen {
 
     private void applyState(MatchmakingFlowController.State state) {
         if (disposed) return;
-        statusLabel.setText(state.status());
+        statusLabel.setText(Phase3Text.status(state.status(),
+                "Choose a multiplayer matchmaking mode."));
         boolean authenticated = navigator.getAccountSession().getState()
                 == ClientSessionState.AUTHENTICATED;
         boolean busy = state.requestInFlight() || !authenticated;
@@ -102,9 +104,11 @@ public final class MultiplayerIZombieMenuScreen extends AbstractScreen {
     private void refreshConnectionState() {
         ClientSessionState state = navigator.getAccountSession().getState();
         String username = navigator.getAccountSession().getProfile() == null
-                ? "not authenticated"
-                : navigator.getAccountSession().getProfile().getUsername();
-        connectionLabel.setText("Server: " + state + " | account: " + username);
+                ? "Not signed in"
+                : Phase3Text.required(navigator.getAccountSession().getProfile()
+                        .getUsername(), "Account unavailable");
+        connectionLabel.setText("Server: " + Phase3Text.connection(state)
+                + " | account: " + username);
     }
 
     @Override public void render(float delta) {

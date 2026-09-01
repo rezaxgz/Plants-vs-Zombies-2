@@ -12,6 +12,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import io.github.Plants_Vs_Zombies_2.model.menu.SignUpMenu;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.session.LoginFlowController;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Graphical login backed exclusively by the remote authentication server. */
 public final class LoginScreen extends AbstractScreen {
@@ -67,7 +68,8 @@ public final class LoginScreen extends AbstractScreen {
                         login.setDisabled(submitting);
                         username.setDisabled(submitting);
                         password.setDisabled(submitting);
-                        status.setText(message);
+                        status.setText(Phase3Text.status(message,
+                                "Contacting the server..."));
                         status.setColor(Color.LIGHT_GRAY);
                     }
 
@@ -143,7 +145,8 @@ public final class LoginScreen extends AbstractScreen {
     }
 
     private void showErrorMessage(Label status, String message) {
-        status.setText(message);
+        status.setText(Phase3Text.status(message,
+                "The account request failed."));
         status.setColor(Color.SCARLET);
     }
 

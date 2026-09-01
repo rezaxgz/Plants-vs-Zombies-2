@@ -181,10 +181,16 @@ public final class MultiplayerIZombieGame {
             return;
         }
         Zombie zombie = (Zombie) owned.entity();
+        // The authoritative simulation lets a zombie travel from column zero
+        // to the brain at -0.25. EntityPosition is an older board-only type
+        // that deliberately rejects negative columns, so keep that mirror at
+        // the lawn edge while the simulation and wire snapshot retain the
+        // precise sub-zero position.
+        double boardColumn = Math.max(0.0, columnPosition);
         zombie.moveToLane(row);
-        zombie.moveTo(columnPosition);
+        zombie.moveTo(boardColumn);
         entities.put(entityId, new OwnedEntity(owned.id(), owned.type(),
-                owned.role(), row, (int) Math.floor(columnPosition), zombie));
+                owned.role(), row, (int) Math.floor(boardColumn), zombie));
     }
 
     public MultiplayerIZombieConfig getConfig() { return config; }

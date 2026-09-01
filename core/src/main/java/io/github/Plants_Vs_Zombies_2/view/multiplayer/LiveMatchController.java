@@ -19,6 +19,7 @@ import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameExceptio
 import io.github.Plants_Vs_Zombies_2.network.multiplayer.MultiplayerGameListener;
 import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /**
  * Graphical live-match state holder. It never simulates gameplay: movement,
@@ -84,6 +85,11 @@ public final class LiveMatchController implements AutoCloseable {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.ui = Objects.requireNonNull(ui, "ui");
         this.assignment = Objects.requireNonNull(assignment, "assignment");
+        String assignmentError = MultiplayerSnapshotValidator.assignmentError(
+                assignment);
+        if (assignmentError != null) {
+            throw new IllegalArgumentException(assignmentError);
+        }
         this.observer = Objects.requireNonNull(observer, "observer");
         transport.addListener(listener);
         if (initialSnapshot != null) acceptSnapshot(initialSnapshot);
@@ -241,8 +247,14 @@ public final class LiveMatchController implements AutoCloseable {
     }
 
     private void acceptSnapshot(MatchStateSnapshot incoming) {
-        if (disposed || incoming == null
-                || !assignment.getMatchId().equals(incoming.getMatchId())) return;
+        if (disposed) return;
+        String validationError = MultiplayerSnapshotValidator.snapshotError(
+                incoming, assignment);
+        if (validationError != null) {
+            status = validationError + " Keeping the last valid state.";
+            publish();
+            return;
+        }
         long tick = incoming.getSimulationTick();
         long revision = incoming.getRevision();
         if (snapshot != null && (tick < newestTick
@@ -251,26 +263,35 @@ public final class LiveMatchController implements AutoCloseable {
         snapshot = incoming;
         newestTick = Math.max(newestTick, tick);
         newestRevision = advancedTick ? revision : Math.max(newestRevision, revision);
-        status = "Authoritative state tick " + tick + ", revision " + revision;
+        status = "Board synchronized with the server.";
         publish();
     }
 
     private void acceptReaction(MatchReactionEvent reaction) {
         if (disposed || terminalKind != TerminalKind.NONE || reaction == null
                 || !assignment.getMatchId().equals(reaction.getMatchId())
+                || !Phase3Text.hasText(reaction.getSenderUsername())
+                || reaction.getReactionType() == null
+                || reaction.getSequence() <= 0L
                 || reaction.getSequence() <= newestReactionSequence) return;
         newestReactionSequence = reaction.getSequence();
         recentReactions.add(reaction);
         while (recentReactions.size() > MAX_RECENT_REACTIONS) {
             recentReactions.remove(0);
         }
-        reactionStatus = "Server-confirmed reaction #" + reaction.getSequence();
+        reactionStatus = "Reaction received from the server.";
         publish();
     }
 
     private void finish(MatchStateSnapshot finalSnapshot) {
-        if (disposed || terminalDelivered || finalSnapshot == null
-                || !assignment.getMatchId().equals(finalSnapshot.getMatchId())) return;
+        if (disposed || terminalDelivered) return;
+        String validationError = MultiplayerSnapshotValidator.snapshotError(
+                finalSnapshot, assignment);
+        if (validationError != null) {
+            status = validationError + " Waiting for a valid final result.";
+            publish();
+            return;
+        }
         // A terminal event is authoritative even if it races the last periodic update.
         snapshot = finalSnapshot;
         newestTick = Math.max(newestTick, finalSnapshot.getSimulationTick());
@@ -278,7 +299,8 @@ public final class LiveMatchController implements AutoCloseable {
         terminalDelivered = true;
         terminalKind = TerminalKind.VICTORY;
         clearReactions();
-        status = "Match finished: " + finalSnapshot.getFinishReason();
+        status = "Match finished. " + Phase3Text.finishReason(
+                finalSnapshot.getFinishReason());
         publish();
     }
 
@@ -289,8 +311,8 @@ public final class LiveMatchController implements AutoCloseable {
         terminalDelivered = true;
         terminalKind = TerminalKind.CANCELLATION;
         cancellationReason = cancellation == null ? "Connection lost."
-                : cancellation.getReason();
-        status = "Match cancelled: " + cancellationReason;
+                : Phase3Text.cancellationReason(cancellation.getReason());
+        status = "Match cancelled. " + cancellationReason;
         clearReactions();
         publish();
     }

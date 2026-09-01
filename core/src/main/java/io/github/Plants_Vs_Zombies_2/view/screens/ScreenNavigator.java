@@ -49,6 +49,8 @@ import io.github.Plants_Vs_Zombies_2.network.session.RemoteGameplaySyncService;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMatchmakingTransport;
 import io.github.Plants_Vs_Zombies_2.view.multiplayer.InvitationNotificationBridge;
+import io.github.Plants_Vs_Zombies_2.view.multiplayer.MultiplayerSnapshotValidator;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 import pvz.libpvz.pam.PamPlayer;
 import pvz.libpvz.textures.TextureBank;
 
@@ -344,7 +346,14 @@ public final class ScreenNavigator {
     }
 
     public void showMultiplayerPregame(MatchAssignment assignment) {
-        if (disposed || assignment == null || assignment.getMatchId() == null) {
+        if (disposed) {
+            return;
+        }
+        String assignmentError = MultiplayerSnapshotValidator.assignmentError(
+                assignment);
+        if (assignmentError != null) {
+            reportMalformedMultiplayerState(assignmentError);
+            showMultiplayerIZombieMenu(assignmentError + " Please try again.");
             return;
         }
         if (accountSession.getState() != ClientSessionState.AUTHENTICATED
@@ -358,12 +367,25 @@ public final class ScreenNavigator {
 
     public void showMultiplayerIZombieGame(MatchAssignment assignment,
             MatchStateSnapshot initialSnapshot) {
-        if (disposed || assignment == null
+        if (disposed
                 || accountSession.getState() != ClientSessionState.AUTHENTICATED) {
+            return;
+        }
+        String snapshotError = MultiplayerSnapshotValidator.snapshotError(
+                initialSnapshot, assignment);
+        if (snapshotError != null) {
+            reportMalformedMultiplayerState(snapshotError);
+            showMultiplayerIZombieMenu(snapshotError + " Please try again.");
             return;
         }
         showTransient(new MultiplayerIZombieGameScreen(
                 this, assignment, initialSnapshot));
+    }
+
+    private void reportMalformedMultiplayerState(String message) {
+        if (Gdx.app != null) {
+            Gdx.app.error("MultiplayerState", message);
+        }
     }
 
     /** Opens Adventure with the Travel Log already on its Minigames tab. */
@@ -583,9 +605,13 @@ public final class ScreenNavigator {
                 }
             }
         };
-        dialog.text(invitation.inviter() + " invited you to I, Zombie.\n"
+        String inviter = Phase3Text.required(invitation.inviter(),
+                "Another player");
+        String invitationStatus = Phase3Text.status(invitation.status(),
+                "Waiting for your response.");
+        dialog.text(inviter + " invited you to I, Zombie.\n"
                 + "Expires in about " + secondsLeft + "s.\n"
-                + invitation.status());
+                + invitationStatus);
         dialog.button("Accept", Boolean.TRUE);
         dialog.button("Reject", Boolean.FALSE);
         dialog.setModal(true);

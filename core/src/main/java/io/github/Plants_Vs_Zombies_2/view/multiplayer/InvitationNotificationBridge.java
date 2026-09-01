@@ -1,12 +1,14 @@
 package io.github.Plants_Vs_Zombies_2.view.multiplayer;
 
 import java.util.Objects;
+import java.util.logging.Logger;
 
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.Invitation;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.InvitationStatus;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
 import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchmakingListener;
 import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /**
  * One application-scoped listener for incoming matchmaking notifications.
@@ -14,6 +16,8 @@ import io.github.Plants_Vs_Zombies_2.network.session.UiDispatcher;
  * immutable state on the currently active screen.
  */
 public final class InvitationNotificationBridge implements AutoCloseable {
+    private static final Logger LOGGER = Logger.getLogger(
+            InvitationNotificationBridge.class.getName());
     public record InvitationView(String invitationId, String inviter,
             long expiresAtEpochMillis, boolean responding, String status) { }
 
@@ -92,6 +96,10 @@ public final class InvitationNotificationBridge implements AutoCloseable {
     private void receiveInvitation(Invitation invitation) {
         if (closed || invitation == null
                 || invitation.getStatus() != InvitationStatus.PENDING) return;
+        if (!validInvitation(invitation)) {
+            LOGGER.warning("Ignored malformed incoming invitation");
+            return;
+        }
         pending = invitation;
         responding = false;
         responseError = null;
@@ -101,6 +109,10 @@ public final class InvitationNotificationBridge implements AutoCloseable {
     private void receiveInvitationResult(Invitation invitation) {
         if (closed || invitation == null || pending == null
                 || !pending.getInvitationId().equals(invitation.getInvitationId())) return;
+        if (!validInvitation(invitation)) {
+            LOGGER.warning("Ignored malformed invitation result");
+            return;
+        }
         if (invitation.getStatus() == InvitationStatus.PENDING) {
             pending = invitation;
             publishInvitation();
@@ -140,6 +152,13 @@ public final class InvitationNotificationBridge implements AutoCloseable {
         Throwable cause = failure;
         while (cause.getCause() != null) cause = cause.getCause();
         return cause.getMessage() == null ? "Invitation response failed." : cause.getMessage();
+    }
+
+    private static boolean validInvitation(Invitation invitation) {
+        return Phase3Text.hasText(invitation.getInvitationId())
+                && Phase3Text.hasText(invitation.getInviterUsername())
+                && Phase3Text.hasText(invitation.getRecipientUsername())
+                && invitation.getStatus() != null;
     }
 
     @Override public void close() {

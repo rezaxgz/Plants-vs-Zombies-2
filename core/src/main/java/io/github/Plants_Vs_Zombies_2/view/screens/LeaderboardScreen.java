@@ -24,6 +24,7 @@ import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardSortDirectio
 import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardTransport;
 import io.github.Plants_Vs_Zombies_2.network.session.ClientSessionState;
 import io.github.Plants_Vs_Zombies_2.network.session.SessionStateListener;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Graphical leaderboard backed exclusively by the authenticated server. */
 public final class LeaderboardScreen extends AbstractScreen {
@@ -161,14 +162,17 @@ public final class LeaderboardScreen extends AbstractScreen {
     private void addUserRow(Table table, LeaderboardEntry entry) {
         AccountProfile profile = navigator.getAccountSession().getProfile();
         boolean currentUser = profile != null
+                && profile.getUsername() != null
                 && profile.getUsername().equals(entry.getUsername());
         TextButtonStyle style = skin.get(currentUser ? "green" : "brown",
                 TextButtonStyle.class);
         Color color = currentUser ? Color.WHITE : Color.LIGHT_GRAY;
-        addValueCell(table, Integer.toString(entry.getRank()), 52f, style, color);
-        addValueCell(table, entry.getUsername(), 190f, style, color);
-        addValueCell(table, entry.getLastCompletedChapter() + "-"
-                + entry.getLastCompletedLevel(), 125f, style, color);
+        addValueCell(table, Phase3Text.rank(entry.getRank()), 52f, style, color);
+        addValueCell(table, Phase3Text.required(entry.getUsername(),
+                "Unavailable player"), 190f, style, color);
+        addValueCell(table, Phase3Text.levelProgress(
+                entry.getLastCompletedChapter(),
+                entry.getLastCompletedLevel()), 125f, style, color);
         addValueCell(table, Integer.toString(entry.getCompletedMinigames()),
                 120f, style, color);
         addValueCell(table, Integer.toString(entry.getCompletedDailyQuests()),
@@ -186,7 +190,8 @@ public final class LeaderboardScreen extends AbstractScreen {
             TextButtonStyle style, Color color) {
         Table cell = new Table();
         cell.setBackground(style.up);
-        Label label = new Label(text, skin, "secondary");
+        Label label = new Label(Phase3Text.required(text, "-"), skin,
+                "secondary");
         label.setColor(color);
         label.setAlignment(Align.center);
         cell.add(label).growX().pad(4f);

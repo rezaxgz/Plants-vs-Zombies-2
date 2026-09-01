@@ -14,6 +14,7 @@ import io.github.Plants_Vs_Zombies_2.model.menu.LoginMenu;
 import io.github.Plants_Vs_Zombies_2.model.security.Question;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
 import io.github.Plants_Vs_Zombies_2.network.session.SignupFlowController;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Two-step graphical registration backed exclusively by the remote server. */
 public final class SignUpScreen extends AbstractScreen {
@@ -123,7 +124,8 @@ public final class SignUpScreen extends AbstractScreen {
                         questionBox.setDisabled(submitting);
                         answer.setDisabled(submitting);
                         answerConfirm.setDisabled(submitting);
-                        status.setText(message);
+                        status.setText(Phase3Text.status(message,
+                                "Creating your account..."));
                         status.setColor(Color.LIGHT_GRAY);
                     }
 
@@ -172,7 +174,8 @@ public final class SignUpScreen extends AbstractScreen {
             }
         });
         content.add(panel).width(650f).pad(20f);
-        status.setText(initialMessage);
+        status.setText(Phase3Text.status(initialMessage,
+                "Choose a security question."));
         status.setColor(Color.GOLD);
     }
 
@@ -209,7 +212,8 @@ public final class SignUpScreen extends AbstractScreen {
     }
 
     private void showError(Label status, String message) {
-        status.setText(message);
+        status.setText(Phase3Text.status(message,
+                "The account request failed."));
         status.setColor(Color.SCARLET);
     }
 

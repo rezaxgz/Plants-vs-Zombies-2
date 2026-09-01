@@ -67,6 +67,19 @@ class MultiplayerIZombieGameTest {
         assertEquals(0, game.getZombies().size());
     }
 
+    @Test
+    void authoritativeSubzeroBrainApproachDoesNotBreakLegacyBoardMirror()
+            throws Exception {
+        MultiplayerIZombieGame game = game(300, 100);
+        String zombieId = game.placeZombie("BASIC", 2, 4);
+
+        game.synchronizeZombiePosition(zombieId, 2, -0.1);
+
+        assertEquals(1, game.getZombies().size());
+        assertEquals(0, game.getZombies().get(0).getColumn());
+        assertEquals(2, game.getZombies().get(0).getRow());
+    }
+
     private static MultiplayerIZombieGame game(int plants, int zombies) {
         return new MultiplayerIZombieGame(new MultiplayerIZombieConfig(
                 IZombieLevel.FIRST_BITE, 5, 9, plants, zombies), 1234L);
