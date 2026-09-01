@@ -154,14 +154,32 @@ public final class ScreenNavigator {
         return notice;
     }
 
-    /**
-     * Persistent remote login tokens are not implemented, so graphical startup
-     * never treats SessionManager's stored local username as authenticated.
-     */
     public void showStartupScreen() {
         history.clear();
         transientScreenVisible = false;
         app.setLoggedInUser(null);
+        if (accountSession.hasPersistentLogin()) {
+            app.changeMenu(new LoginMenu());
+            pendingAuthenticationNotice = "Restoring your saved login...";
+            showCurrentMenu();
+            accountSession.restorePersistentLogin().whenComplete((profile, failure) ->
+                    uiDispatcher.dispatch(() -> {
+                        if (disposed) return;
+                        if (failure == null) {
+                            completeRemoteLogin(profile);
+                            return;
+                        }
+                        history.clear();
+                        app.setLoggedInUser(null);
+                        app.changeMenu(new LoginMenu());
+                        pendingAuthenticationNotice =
+                                "Saved login expired. Please log in again. • "
+                                        + AuthenticationErrorMessages
+                                                .forFailure(failure);
+                        showCurrentMenu();
+                    }));
+            return;
+        }
         app.changeMenu(new SignUpMenu());
         showCurrentMenu();
     }

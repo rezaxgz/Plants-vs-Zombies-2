@@ -43,8 +43,7 @@ public class Main extends Game {
                 "768", Gdx.files.internal(PVZ_ASSETS_ROOT));
 
         // A legacy SessionManager username is not proof of a remote session.
-        // Keep terminal behavior intact, but graphical startup always requires
-        // a fresh server login until persistent remote tokens exist.
+        // ScreenNavigator restores only a server-issued opaque remote token.
         App.getInstance().setLoggedInUser(null);
         remoteAccountSession = RemoteAccountSession.fromSystemProperties();
         screenNavigator = new ScreenNavigator(

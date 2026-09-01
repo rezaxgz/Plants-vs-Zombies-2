@@ -19,11 +19,16 @@ public final class LoginFlowController {
     }
 
     public boolean submit(String username, String password) {
+        return submit(username, password, false);
+    }
+
+    public boolean submit(String username, String password,
+            boolean stayLoggedIn) {
         if (!submitting.compareAndSet(false, true)) {
             return false;
         }
         view.setSubmitting(true, "Connecting and logging in...");
-        session.login(username, password).whenComplete((profile, failure) ->
+        session.login(username, password, stayLoggedIn).whenComplete((profile, failure) ->
                 dispatcher.dispatch(() -> {
                     submitting.set(false);
                     view.setSubmitting(false, failure == null ? "Connected." : "Ready to retry.");

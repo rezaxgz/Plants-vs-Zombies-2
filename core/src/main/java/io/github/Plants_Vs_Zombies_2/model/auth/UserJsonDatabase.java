@@ -162,6 +162,9 @@ final class UserJsonDatabase {
         }
 
         SecurityQuestion securityQuestion = readSecurityQuestion(storedUser.get("securityQuestion"), prefix);
+        Object persistentTokenValue = storedUser.get("persistentLoginTokenHash");
+        String persistentTokenHash = persistentTokenValue instanceof String value
+                ? value : null;
         int coins = getInt(storedUser, "coins", 0);
         int diamonds = getInt(storedUser, "diamonds", 0);
         int sprouts = getInt(storedUser, "sprouts", 0);
@@ -202,6 +205,7 @@ final class UserJsonDatabase {
         User user = User.fromStoredData(username, passwordHash, nickname, email, gender, securityQuestion, coins,
                 diamonds, greenhousePotsUnlocked, plantFoodCount, greenHouse, plantBoosts,
                 plantCollection, zombieCollection, settings, adventureProgress, gameProgress);
+        user.setPersistentLoginTokenHashForStorage(persistentTokenHash);
         user.restoreQuestProgress(questProgress);
         user.setSprouts(sprouts);
 
@@ -512,6 +516,8 @@ final class UserJsonDatabase {
         json.append(indent).append("{\n");
         appendStringProperty(json, indent, "username", user.getUsername(), true);
         appendStringProperty(json, indent, "passwordHash", user.getPasswordHashForStorage(), true);
+        appendStringProperty(json, indent, "persistentLoginTokenHash",
+                user.getPersistentLoginTokenHashForStorage(), true);
         appendStringProperty(json, indent, "nickname", user.getNickName(), true);
         appendStringProperty(json, indent, "email", user.getEmail(), true);
         appendStringProperty(json, indent, "gender", user.getGender().name(), true);

@@ -1,25 +1,33 @@
 package io.github.Plants_Vs_Zombies_2.server;
 
-import io.github.Plants_Vs_Zombies_2.model.auth.UserRepository;
 import io.github.Plants_Vs_Zombies_2.model.auth.GameplayUpdateException;
 import io.github.Plants_Vs_Zombies_2.model.auth.GameplayUpdateFailure;
+import io.github.Plants_Vs_Zombies_2.model.auth.UserRepository;
 import io.github.Plants_Vs_Zombies_2.model.enums.Gender;
 import io.github.Plants_Vs_Zombies_2.model.security.Question;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
 import io.github.Plants_Vs_Zombies_2.model.user.UserDataValidator;
 import io.github.Plants_Vs_Zombies_2.network.auth.AccountProfile;
 import io.github.Plants_Vs_Zombies_2.network.auth.LoginCredentials;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetChallenge;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetLookup;
+import io.github.Plants_Vs_Zombies_2.network.auth.PasswordResetRequest;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginCredentials;
+import io.github.Plants_Vs_Zombies_2.network.auth.PersistentLoginToken;
 import io.github.Plants_Vs_Zombies_2.network.auth.RegistrationDetails;
-import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayState;
 import io.github.Plants_Vs_Zombies_2.network.gameplay.GameplayStateSnapshot;
 import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardPage;
 import io.github.Plants_Vs_Zombies_2.network.leaderboard.LeaderboardQuery;
+import io.github.Plants_Vs_Zombies_2.network.protocol.ProtocolErrorCode;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
 final class ServerAccountService {
+    private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
     private final UserRepository repository;
     private final LeaderboardService leaderboardService;
 
@@ -47,7 +55,8 @@ final class ServerAccountService {
         }
     }
 
-    AccountProfile login(ConnectionContext context, LoginCredentials credentials)
+    synchronized AccountProfile login(ConnectionContext context,
+            LoginCredentials credentials)
             throws AccountServiceException {
         if (context.getAuthenticatedUsername() != null) {
             throw new AccountServiceException(
@@ -61,6 +70,19 @@ final class ServerAccountService {
                     "The username or password is incorrect");
         }
 
+        // A successful password login supersedes every older remembered
+        // session. If requested, the client creates one fresh token next.
+        if (user.getPersistentLoginTokenHashForStorage() != null) {
+            String previous = user.getPersistentLoginTokenHashForStorage();
+            try {
+                user.clearPersistentLoginToken();
+                repository.save(user);
+            } catch (RuntimeException exception) {
+                user.setPersistentLoginTokenHashForStorage(previous);
+                throw exception;
+            }
+        }
+
         if (!context.authenticate(user.getUsername())) {
             throw new AccountServiceException(
                     ProtocolErrorCode.ALREADY_AUTHENTICATED,
@@ -69,13 +91,114 @@ final class ServerAccountService {
         return AccountProfile.fromUser(user);
     }
 
-    String logout(ConnectionContext context) throws AccountServiceException {
-        String username = context.clearAuthentication();
+    AccountProfile login(ConnectionContext context,
+            PersistentLoginCredentials credentials) throws AccountServiceException {
+        if (context.getAuthenticatedUsername() != null) {
+            throw new AccountServiceException(
+                    ProtocolErrorCode.ALREADY_AUTHENTICATED,
+                    "This connection is already authenticated");
+        }
+        User user = repository.findByUsername(credentials.getUsername()).orElse(null);
+        if (user == null || !user.matchesPersistentLoginToken(
+                credentials.getToken())) {
+            throw new AccountServiceException(
+                    ProtocolErrorCode.INVALID_CREDENTIALS,
+                    "The saved login is no longer valid");
+        }
+        if (!context.authenticate(user.getUsername())) {
+            throw new AccountServiceException(
+                    ProtocolErrorCode.ALREADY_AUTHENTICATED,
+                    "This connection is already authenticated");
+        }
+        return AccountProfile.fromUser(user);
+    }
+
+    synchronized PersistentLoginToken createPersistentLogin(
+            ConnectionContext context) throws AccountServiceException {
+        String username = requireAuthentication(context);
+        User user = repository.findByUsername(username).orElseThrow(() ->
+                new AccountServiceException(ProtocolErrorCode.USER_NOT_FOUND,
+                        "The authenticated account no longer exists"));
+        byte[] random = new byte[32];
+        TOKEN_RANDOM.nextBytes(random);
+        String token = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(random);
+        String previous = user.getPersistentLoginTokenHashForStorage();
+        try {
+            user.setPersistentLoginToken(token);
+            repository.save(user);
+        } catch (RuntimeException exception) {
+            user.setPersistentLoginTokenHashForStorage(previous);
+            throw exception;
+        }
+        return new PersistentLoginToken(username, token);
+    }
+
+    PasswordResetChallenge lookupPasswordReset(PasswordResetLookup lookup)
+            throws AccountServiceException {
+        User user = repository.findByUsername(lookup.getUsername()).orElse(null);
+        if (user == null || !user.doesMatchEmail(lookup.getEmail())) {
+            throw new AccountServiceException(ProtocolErrorCode.INVALID_CREDENTIALS,
+                    "The username or email is incorrect");
+        }
+        String question = user.getSecurityQuestion();
+        if (question == null) {
+            throw new AccountServiceException(ProtocolErrorCode.VALIDATION_FAILED,
+                    "This account does not have a security question");
+        }
+        return new PasswordResetChallenge(user.getUsername(), question);
+    }
+
+    synchronized void resetPassword(PasswordResetRequest details)
+            throws AccountServiceException {
+        User user = repository.findByUsername(details.getUsername()).orElse(null);
+        if (user == null || !user.doesMatchEmail(details.getEmail())
+                || !user.isCorrectSecurityAnswer(details.getAnswer())) {
+            throw new AccountServiceException(ProtocolErrorCode.INVALID_CREDENTIALS,
+                    "The recovery answer is incorrect");
+        }
+        List<String> passwordErrors = UserDataValidator.validatePassword(
+                details.getPassword());
+        if (!passwordErrors.isEmpty()) validationFailure(passwordErrors.get(0));
+        if (!details.getPassword().equals(details.getPasswordConfirmation())) {
+            validationFailure("Password and confirmation do not match");
+        }
+        if (user.doesMatchPassword(details.getPassword())) {
+            validationFailure(
+                    "New password must be different from the current password");
+        }
+        String previousPasswordHash = user.getPasswordHashForStorage();
+        String previousTokenHash = user.getPersistentLoginTokenHashForStorage();
+        try {
+            user.changePassword(details.getPassword());
+            user.clearPersistentLoginToken();
+            repository.save(user);
+        } catch (RuntimeException exception) {
+            user.setPasswordHashForStorage(previousPasswordHash);
+            user.setPersistentLoginTokenHashForStorage(previousTokenHash);
+            throw exception;
+        }
+    }
+
+    synchronized String logout(ConnectionContext context) throws AccountServiceException {
+        String username = context.getAuthenticatedUsername();
         if (username == null) {
             throw new AccountServiceException(
                     ProtocolErrorCode.AUTH_REQUIRED,
                     "Authentication is required");
         }
+        User user = repository.findByUsername(username).orElse(null);
+        if (user != null && user.getPersistentLoginTokenHashForStorage() != null) {
+            String previous = user.getPersistentLoginTokenHashForStorage();
+            try {
+                user.clearPersistentLoginToken();
+                repository.save(user);
+            } catch (RuntimeException exception) {
+                user.setPersistentLoginTokenHashForStorage(previous);
+                throw exception;
+            }
+        }
+        context.clearAuthentication();
         return username;
     }
 

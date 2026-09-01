@@ -19,6 +19,9 @@ public interface UserRepository {
 
     boolean addIfUsernameAvailable(User user);
 
+    /** Persists credential-only mutations made to an existing repository user. */
+    void save(User user);
+
     Optional<GameplayStateSnapshot> findGameplayState(String username);
 
     GameplayStateSnapshot updateGameplayState(String username,

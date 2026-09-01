@@ -35,6 +35,7 @@ public class User {
     private String email;
     private Gender gender;
     private SecurityQuestion securityQuestion;
+    private String persistentLoginTokenHash;
 
     // progress info
     private int coins;
@@ -177,6 +178,38 @@ public class User {
         return passwordHash;
     }
 
+    public void setPasswordHashForStorage(String passwordHash) {
+        if (passwordHash == null || passwordHash.isBlank()) {
+            throw new IllegalArgumentException("password hash cannot be blank");
+        }
+        this.passwordHash = passwordHash;
+    }
+
+    public String getPersistentLoginTokenHashForStorage() {
+        return persistentLoginTokenHash;
+    }
+
+    public void setPersistentLoginToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("persistent login token cannot be blank");
+        }
+        persistentLoginTokenHash = Sha256.hash(token);
+    }
+
+    public void setPersistentLoginTokenHashForStorage(String tokenHash) {
+        persistentLoginTokenHash = tokenHash == null || tokenHash.isBlank()
+                ? null : tokenHash;
+    }
+
+    public boolean matchesPersistentLoginToken(String token) {
+        return persistentLoginTokenHash != null && token != null
+                && Sha256.hash(token).equals(persistentLoginTokenHash);
+    }
+
+    public void clearPersistentLoginToken() {
+        persistentLoginTokenHash = null;
+    }
+
     public String getNickName() {
         return nickName;
     }
@@ -232,6 +265,9 @@ public class User {
         diamonds = state.getDiamonds();
         sprouts = state.getSprouts();
         plantFoodCount = state.getPlantFoodCount();
+        if (state.getSettings() != null) {
+            settings = state.getSettings().toSettings();
+        }
         potCount = state.getPotCount();
         greenhousePotsUnlocked = state.getGreenhousePotsUnlocked();
         int potIndex = 0;

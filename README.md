@@ -64,11 +64,16 @@ manually if required; the application does not change operating-system or
 firewall settings.
 
 Graphical signup, login, profile refresh, and logout use the server as their
-authentication source of truth. Persistent remote login tokens and remote
-password recovery are not implemented yet, so the graphical client requires a
-fresh login after restart. The temporary `User` exposed to legacy gameplay is a
-non-persisted compatibility snapshot with no usable local password; gameplay
-progress is synchronized as described below.
+authentication source of truth. Selecting **Stay logged in** stores an opaque
+server token in `data/remote-session.json`; the password is never written to
+that file, and the server stores only the token hash. Explicit logout, a new
+password login, or a successful password reset revokes the old token. The
+Forgot Password flow verifies the account email and registered security answer
+through the server before changing the password. The temporary `User` exposed
+to legacy gameplay is a non-persisted compatibility snapshot with no usable
+local password; gameplay progress is synchronized as described below. The
+client token path can be overridden with `pvz.remote.session.path` for tests or
+packaged deployments.
 
 ## Headless matchmaking foundation
 
@@ -231,8 +236,8 @@ the current skin/rendering primitives and adds no binary assets. A desktop smoke
 test still requires the complete `pvz-assets` bundle in its normal runtime
 location; a missing bundle is not replaced with committed placeholder assets.
 
-Reactions/messages, Couch Play,
-persistent login tokens, automatic reconnect loops and TLS remain out of scope.
+Reactions/messages, Couch Play, automatic reconnect loops and TLS remain out of
+scope.
 
 ### Stage 8 server-backed gameplay progress
 
@@ -243,8 +248,10 @@ high score and games-played statistics; adventure/minigame unlock records;
 plant and zombie collections, plant boosts, and daily-offer purchase state.
 Daily and non-daily completed-quest counters, fixed greenhouse pot contents and
 growth timers, active quest-instance progress, and bounded account news are also
-synchronized. Quest definitions remain catalog-owned and are validated against
-the server copy; their total completion count is always derived.
+synchronized. Per-user difficulty, debug mode, game speed, and map-grid settings
+are synchronized as well. Quest definitions remain catalog-owned and are
+validated against the server copy; their total completion count is always
+derived.
 Passwords, hashes, security answers, profile fields, and connection state are
 never part of gameplay responses or update requests.
 
@@ -269,8 +276,7 @@ Saved in-progress adventure boards remain local checkpoints. The Phase 3 PDF
 does not require cross-device resume for those transient battle snapshots, and
 their legacy format uses Java object serialization, so they are deliberately not
 accepted by the network gameplay endpoint.
-There is still no offline retry queue, automatic reconnect, or persistent login
-token support.
+There is still no offline retry queue or automatic reconnect.
 
 ### Stage 9 server-backed graphical leaderboard
 

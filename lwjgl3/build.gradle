@@ -56,7 +56,8 @@ def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
 
 run {
   workingDir = rootProject.file('assets').path
-  ['pvz.client.server.host', 'pvz.client.server.port'].each { propertyName ->
+  ['pvz.client.server.host', 'pvz.client.server.port',
+      'pvz.remote.session.path'].each { propertyName ->
     String value = System.getProperty(propertyName)
     if (value != null) {
       systemProperty propertyName, value
