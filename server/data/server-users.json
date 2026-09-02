@@ -4,7 +4,7 @@
     {
       "username": "Arian",
       "passwordHash": "5b79fe8124970ed520544b98784825eb2892c8a239302a70c78d16cf1dca6a60",
-      "persistentLoginTokenHash": null,
+      "persistentLoginTokenHash": "22d14f20fd0a533db6c85e7a929fa95cfbf069d7bfbed6e75a7f11d0ab40f8f7",
       "nickname": "arian",
       "email": "arian@gmail.com",
       "gender": "MALE",
@@ -50,7 +50,7 @@
         "completedDailyQuests": 2,
         "completedNonDailyQuests": 1,
         "maximumDifficultyWinStreak": 0,
-        "lastDailyRefresh": "2026-09-01",
+        "lastDailyRefresh": "2026-09-03",
         "quests": [
           {
             "id": "chapter-hunter",
@@ -128,28 +128,28 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-sun-collector",
+            "id": "daily-2026-09-03-sun-collector",
             "name": "Daily Sun Collector",
-            "instructions": "Collect 4000 sun during this day.",
+            "instructions": "Collect 3000 sun during this day.",
             "type": "DAILY",
             "priority": "AVARAGE",
             "condition": "COLLECT_SUN",
-            "parameter": "4000",
-            "target": 4000,
-            "progress": 225,
+            "parameter": "3000",
+            "target": 3000,
+            "progress": 0,
             "rewardType": "COINS",
-            "rewardAmount": 40,
+            "rewardAmount": 30,
             "completed": false,
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-plant-pro",
+            "id": "daily-2026-09-03-plant-pro",
             "name": "Plant Pro",
-            "instructions": "Kill 10 zombies using only Peashooter.",
+            "instructions": "Kill 10 zombies using only Kiwibeast.",
             "type": "DAILY",
             "priority": "HIGH",
             "condition": "KILL_ONLY_WITH_PLANT",
-            "parameter": "Peashooter",
+            "parameter": "Kiwibeast",
             "target": 10,
             "progress": 0,
             "rewardType": "RANDOM_PLANT",
@@ -158,7 +158,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-only-cactus",
+            "id": "daily-2026-09-03-only-cactus",
             "name": "Only Cactus",
             "instructions": "Kill 10 zombies using only Cactus.",
             "type": "DAILY",
@@ -173,7 +173,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-demolition-pro",
+            "id": "daily-2026-09-03-demolition-pro",
             "name": "Demolition Pro",
             "instructions": "Use 3 explosive plants in one level.",
             "type": "DAILY",
@@ -188,7 +188,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-symmetry",
+            "id": "daily-2026-09-03-symmetry",
             "name": "Symmetry",
             "instructions": "Win with a horizontally symmetrical final garden.",
             "type": "DAILY",
@@ -203,22 +203,22 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-family-massacre",
+            "id": "daily-2026-09-03-family-massacre",
             "name": "Family Massacre",
-            "instructions": "Kill 10 zombies using only the SHOOTER family.",
+            "instructions": "Kill 10 zombies using only the HOMING family.",
             "type": "DAILY",
             "priority": "AVARAGE",
             "condition": "KILL_ONLY_WITH_FAMILY",
-            "parameter": "SHOOTER",
+            "parameter": "HOMING",
             "target": 10,
-            "progress": 10,
+            "progress": 0,
             "rewardType": "COINS",
             "rewardAmount": 1000,
-            "completed": true,
-            "rewardGranted": true
+            "completed": false,
+            "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-limitations-bloom",
+            "id": "daily-2026-09-03-limitations-bloom",
             "name": "Limitations Bloom",
             "instructions": "Win without planting a member of the MODIFIER family.",
             "type": "DAILY",
@@ -233,7 +233,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-win-streak",
+            "id": "daily-2026-09-03-win-streak",
             "name": "Win Streak",
             "instructions": "Win 5 consecutive stages at maximum difficulty.",
             "type": "DAILY",
@@ -248,7 +248,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-almost-won",
+            "id": "daily-2026-09-03-almost-won",
             "name": "Almost Won",
             "instructions": "Kill 10 zombies in column one of a row whose mower is gone.",
             "type": "DAILY",
@@ -263,7 +263,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-ocd-no",
+            "id": "daily-2026-09-03-ocd-no",
             "name": "OCD No",
             "instructions": "Win with no horizontal garden symmetry (middle row ignored).",
             "type": "DAILY",
@@ -271,14 +271,14 @@
             "condition": "FINISH_WITHOUT_GARDEN_SYMMETRY",
             "parameter": "",
             "target": 1,
-            "progress": 1,
+            "progress": 0,
             "rewardType": "COINS",
             "rewardAmount": 800,
-            "completed": true,
-            "rewardGranted": true
+            "completed": false,
+            "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-cloudy-day",
+            "id": "daily-2026-09-03-cloudy-day",
             "name": "Cloudy Day",
             "instructions": "Win using exactly 3 plants, all of them sun producers.",
             "type": "DAILY",
@@ -293,7 +293,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-one-less-column",
+            "id": "daily-2026-09-03-one-less-column",
             "name": "One Less Column",
             "instructions": "Win without ever planting in column 4.",
             "type": "DAILY",
@@ -308,7 +308,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-undefended-row",
+            "id": "daily-2026-09-03-undefended-row",
             "name": "Undefended Row",
             "instructions": "Win without ever planting in row 5.",
             "type": "DAILY",
@@ -323,7 +323,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-undefended-cross",
+            "id": "daily-2026-09-03-undefended-cross",
             "name": "Undefended Cross",
             "instructions": "Win without ever planting in row and column 5.",
             "type": "DAILY",
@@ -1183,7 +1183,7 @@
         "completedDailyQuests": 0,
         "completedNonDailyQuests": 0,
         "maximumDifficultyWinStreak": 0,
-        "lastDailyRefresh": "2026-09-01",
+        "lastDailyRefresh": "2026-09-03",
         "quests": [
           {
             "id": "chapter-hunter",
@@ -1261,22 +1261,22 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-sun-collector",
+            "id": "daily-2026-09-03-sun-collector",
             "name": "Daily Sun Collector",
-            "instructions": "Collect 3000 sun during this day.",
+            "instructions": "Collect 5000 sun during this day.",
             "type": "DAILY",
             "priority": "AVARAGE",
             "condition": "COLLECT_SUN",
-            "parameter": "3000",
-            "target": 3000,
+            "parameter": "5000",
+            "target": 5000,
             "progress": 0,
             "rewardType": "COINS",
-            "rewardAmount": 30,
+            "rewardAmount": 50,
             "completed": false,
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-plant-pro",
+            "id": "daily-2026-09-03-plant-pro",
             "name": "Plant Pro",
             "instructions": "Kill 10 zombies using only Peashooter.",
             "type": "DAILY",
@@ -1291,7 +1291,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-only-cactus",
+            "id": "daily-2026-09-03-only-cactus",
             "name": "Only Cactus",
             "instructions": "Kill 10 zombies using only Cactus.",
             "type": "DAILY",
@@ -1306,7 +1306,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-demolition-pro",
+            "id": "daily-2026-09-03-demolition-pro",
             "name": "Demolition Pro",
             "instructions": "Use 3 explosive plants in one level.",
             "type": "DAILY",
@@ -1321,7 +1321,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-symmetry",
+            "id": "daily-2026-09-03-symmetry",
             "name": "Symmetry",
             "instructions": "Win with a horizontally symmetrical final garden.",
             "type": "DAILY",
@@ -1336,7 +1336,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-family-massacre",
+            "id": "daily-2026-09-03-family-massacre",
             "name": "Family Massacre",
             "instructions": "Kill 10 zombies using only the SHOOTER family.",
             "type": "DAILY",
@@ -1351,7 +1351,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-limitations-bloom",
+            "id": "daily-2026-09-03-limitations-bloom",
             "name": "Limitations Bloom",
             "instructions": "Win without planting a member of the LOBBER family.",
             "type": "DAILY",
@@ -1366,7 +1366,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-win-streak",
+            "id": "daily-2026-09-03-win-streak",
             "name": "Win Streak",
             "instructions": "Win 5 consecutive stages at maximum difficulty.",
             "type": "DAILY",
@@ -1381,7 +1381,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-almost-won",
+            "id": "daily-2026-09-03-almost-won",
             "name": "Almost Won",
             "instructions": "Kill 10 zombies in column one of a row whose mower is gone.",
             "type": "DAILY",
@@ -1396,7 +1396,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-ocd-no",
+            "id": "daily-2026-09-03-ocd-no",
             "name": "OCD No",
             "instructions": "Win with no horizontal garden symmetry (middle row ignored).",
             "type": "DAILY",
@@ -1411,7 +1411,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-cloudy-day",
+            "id": "daily-2026-09-03-cloudy-day",
             "name": "Cloudy Day",
             "instructions": "Win using exactly 3 plants, all of them sun producers.",
             "type": "DAILY",
@@ -1426,13 +1426,13 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-one-less-column",
+            "id": "daily-2026-09-03-one-less-column",
             "name": "One Less Column",
-            "instructions": "Win without ever planting in column 4.",
+            "instructions": "Win without ever planting in column 5.",
             "type": "DAILY",
             "priority": "HIGH",
             "condition": "WIN_WITH_EMPTY_COLUMN",
-            "parameter": "4",
+            "parameter": "5",
             "target": 1,
             "progress": 0,
             "rewardType": "DIAMONDS",
@@ -1441,7 +1441,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-undefended-row",
+            "id": "daily-2026-09-03-undefended-row",
             "name": "Undefended Row",
             "instructions": "Win without ever planting in row 2.",
             "type": "DAILY",
@@ -1456,7 +1456,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-undefended-cross",
+            "id": "daily-2026-09-03-undefended-cross",
             "name": "Undefended Cross",
             "instructions": "Win without ever planting in row and column 5.",
             "type": "DAILY",
@@ -2251,7 +2251,7 @@
         "completedDailyQuests": 0,
         "completedNonDailyQuests": 0,
         "maximumDifficultyWinStreak": 0,
-        "lastDailyRefresh": "2026-09-01",
+        "lastDailyRefresh": "2026-09-03",
         "quests": [
           {
             "id": "chapter-hunter",
@@ -2329,22 +2329,22 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-sun-collector",
+            "id": "daily-2026-09-03-sun-collector",
             "name": "Daily Sun Collector",
-            "instructions": "Collect 5000 sun during this day.",
+            "instructions": "Collect 4000 sun during this day.",
             "type": "DAILY",
             "priority": "AVARAGE",
             "condition": "COLLECT_SUN",
-            "parameter": "5000",
-            "target": 5000,
+            "parameter": "4000",
+            "target": 4000,
             "progress": 0,
             "rewardType": "COINS",
-            "rewardAmount": 50,
+            "rewardAmount": 40,
             "completed": false,
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-plant-pro",
+            "id": "daily-2026-09-03-plant-pro",
             "name": "Plant Pro",
             "instructions": "Kill 10 zombies using only Peashooter.",
             "type": "DAILY",
@@ -2359,7 +2359,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-only-cactus",
+            "id": "daily-2026-09-03-only-cactus",
             "name": "Only Cactus",
             "instructions": "Kill 10 zombies using only Cactus.",
             "type": "DAILY",
@@ -2374,7 +2374,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-demolition-pro",
+            "id": "daily-2026-09-03-demolition-pro",
             "name": "Demolition Pro",
             "instructions": "Use 3 explosive plants in one level.",
             "type": "DAILY",
@@ -2389,7 +2389,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-symmetry",
+            "id": "daily-2026-09-03-symmetry",
             "name": "Symmetry",
             "instructions": "Win with a horizontally symmetrical final garden.",
             "type": "DAILY",
@@ -2404,7 +2404,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-family-massacre",
+            "id": "daily-2026-09-03-family-massacre",
             "name": "Family Massacre",
             "instructions": "Kill 10 zombies using only the SHOOTER family.",
             "type": "DAILY",
@@ -2419,7 +2419,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-limitations-bloom",
+            "id": "daily-2026-09-03-limitations-bloom",
             "name": "Limitations Bloom",
             "instructions": "Win without planting a member of the LOBBER family.",
             "type": "DAILY",
@@ -2434,7 +2434,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-win-streak",
+            "id": "daily-2026-09-03-win-streak",
             "name": "Win Streak",
             "instructions": "Win 5 consecutive stages at maximum difficulty.",
             "type": "DAILY",
@@ -2449,7 +2449,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-almost-won",
+            "id": "daily-2026-09-03-almost-won",
             "name": "Almost Won",
             "instructions": "Kill 10 zombies in column one of a row whose mower is gone.",
             "type": "DAILY",
@@ -2464,7 +2464,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-ocd-no",
+            "id": "daily-2026-09-03-ocd-no",
             "name": "OCD No",
             "instructions": "Win with no horizontal garden symmetry (middle row ignored).",
             "type": "DAILY",
@@ -2479,7 +2479,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-cloudy-day",
+            "id": "daily-2026-09-03-cloudy-day",
             "name": "Cloudy Day",
             "instructions": "Win using exactly 3 plants, all of them sun producers.",
             "type": "DAILY",
@@ -2494,7 +2494,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-one-less-column",
+            "id": "daily-2026-09-03-one-less-column",
             "name": "One Less Column",
             "instructions": "Win without ever planting in column 6.",
             "type": "DAILY",
@@ -2509,7 +2509,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-undefended-row",
+            "id": "daily-2026-09-03-undefended-row",
             "name": "Undefended Row",
             "instructions": "Win without ever planting in row 2.",
             "type": "DAILY",
@@ -2524,7 +2524,7 @@
             "rewardGranted": false
           },
           {
-            "id": "daily-2026-09-01-undefended-cross",
+            "id": "daily-2026-09-03-undefended-cross",
             "name": "Undefended Cross",
             "instructions": "Win without ever planting in row and column 4.",
             "type": "DAILY",

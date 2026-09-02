@@ -27,17 +27,24 @@ class MultiplayerLoadoutRenderingTest {
     }
 
     @Test
-    void liveLayoutKeepsRoleTrayAndTransparentReactionsBesideBoard()
+    void liveLayoutReusesTheSinglePlayerGameScreenAndItsCardTrays()
             throws IOException {
-        String source = Files.readString(Path.of("src", "main", "java",
+        String multiplayerSource = Files.readString(Path.of("src", "main", "java",
                 "io", "github", "Plants_Vs_Zombies_2", "view", "screens",
                 "MultiplayerIZombieGameScreen.java"));
+        String gameSource = Files.readString(Path.of("src", "main", "java",
+                "io", "github", "Plants_Vs_Zombies_2", "view", "screens",
+                "GameScreen.java"));
 
-        assertTrue(source.contains("matchBody.add(createControlSidebar())"));
-        assertTrue(source.contains("matchBody.add(boardStack)"));
-        assertTrue(source.contains("new ScrollPane(cardTable, skin)"));
-        assertTrue(source.contains("Deliberately transparent"));
-        assertTrue(source.contains("new ZombiePamActor"));
-        assertTrue(source.contains("new PlantPacketCard"));
+        assertTrue(multiplayerSource.contains("extends GameScreen"));
+        assertTrue(multiplayerSource.contains(
+                "super(navigator, assignment, initialSnapshot, plantLoadout)"));
+        assertTrue(gameSource.contains("installChapterBoard(null)"));
+        assertTrue(gameSource.contains("installGameHud()"));
+        assertTrue(gameSource.contains("installSeedTray()"));
+        assertTrue(gameSource.contains("installIZombieTray()"));
+        assertTrue(gameSource.contains("createGameSeedSlot(plant)"));
+        assertTrue(gameSource.contains("new IZombieCardActor(card)"));
+        assertTrue(gameSource.contains("installMultiplayerChat()"));
     }
 }

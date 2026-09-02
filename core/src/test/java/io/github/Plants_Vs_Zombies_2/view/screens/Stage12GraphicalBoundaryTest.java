@@ -11,20 +11,23 @@ import org.junit.jupiter.api.Test;
 
 class Stage12GraphicalBoundaryTest {
     @Test
-    void liveBoardUsesGraphicalCatalogWithoutTextualBoardPlaceholders()
+    void liveBoardUsesTheExistingGameRendererWithoutStatusOverlays()
             throws IOException {
-        String source = source("MultiplayerIZombieGameScreen.java");
+        String multiplayerSource = source("MultiplayerIZombieGameScreen.java");
+        String gameSource = source("GameScreen.java");
 
-        assertTrue(source.contains("MultiplayerVisualCatalog"));
-        assertTrue(source.contains("PamAnimationActor"));
-        assertTrue(source.contains("EntityReconciliation"));
-        assertFalse(source.contains("new Label(\"*\""));
-        assertFalse(source.contains("[B]"));
-        assertFalse(source.contains("[eaten]"));
-        assertFalse(source.contains("new Label(\"RED LINE\""));
-        assertFalse(source.contains("getSimulationTick()"));
-        assertFalse(source.contains("getRevision()"));
-        assertFalse(source.contains("TextField"));
+        assertTrue(multiplayerSource.contains("extends GameScreen"));
+        assertTrue(gameSource.contains("MultiplayerIZombieRenderModel"));
+        assertTrue(gameSource.contains("refreshPlantedPlantLayerIfNeeded()"));
+        assertTrue(gameSource.contains("refreshZombieRendering()"));
+        assertTrue(gameSource.contains("refreshProjectileRendering()"));
+        assertTrue(gameSource.contains("PamAnimationActor"));
+        assertFalse(multiplayerSource.contains("boardStack"));
+        assertFalse(multiplayerSource.contains("Connection:"));
+        assertFalse(multiplayerSource.contains("Opponent:"));
+        assertFalse(multiplayerSource.contains("getSimulationTick()"));
+        assertFalse(multiplayerSource.contains("getRevision()"));
+        assertFalse(gameSource.contains("TextField"));
     }
 
     @Test
