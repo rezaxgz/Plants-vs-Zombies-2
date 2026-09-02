@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -76,7 +77,9 @@ import io.github.Plants_Vs_Zombies_2.model.game.tile.Tile;
 import io.github.Plants_Vs_Zombies_2.model.game.tile.TileType;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombie;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombieCard;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombiePresentationModel;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.IZombiePlacementResult;
+import io.github.Plants_Vs_Zombies_2.model.game.minigame.multiplayer.MultiplayerIZombieRenderModel;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.BowlingWallnut;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.BowlingWallnutType;
 import io.github.Plants_Vs_Zombies_2.model.game.minigame.VaseBreakResult;
@@ -98,9 +101,18 @@ import io.github.Plants_Vs_Zombies_2.model.roadmap.ChapterCatalog;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.Level;
 import io.github.Plants_Vs_Zombies_2.model.roadmap.LevelKind;
 import io.github.Plants_Vs_Zombies_2.model.user.User;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchAssignment;
+import io.github.Plants_Vs_Zombies_2.network.matchmaking.MatchRole;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionEvent;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionKind;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchReactionType;
+import io.github.Plants_Vs_Zombies_2.network.multiplayer.MatchStateSnapshot;
+import io.github.Plants_Vs_Zombies_2.view.multiplayer.ClientMultiplayerTransport;
+import io.github.Plants_Vs_Zombies_2.view.multiplayer.LiveMatchController;
+import io.github.Plants_Vs_Zombies_2.view.presentation.Phase3Text;
 
 /** Graphical shell for the active game and chapter board preview. */
-public final class GameScreen extends AbstractScreen {
+public class GameScreen extends AbstractScreen {
     private static final int BOARD_COLUMNS = 9;
     private static final int BOARD_ROWS = 5;
     private static final int PLANTS_PER_ROW = 6;
@@ -326,6 +338,14 @@ public final class GameScreen extends AbstractScreen {
     private static final float PLANT_FOOD_HUD_Y = 586f;
     private static final float PLANT_FOOD_HUD_WIDTH = SUN_HUD_WIDTH;
     private static final float PLANT_FOOD_HUD_HEIGHT = SUN_HUD_HEIGHT;
+    private static final float MULTIPLAYER_TIMER_X = 526f;
+    private static final float MULTIPLAYER_TIMER_Y = 654f;
+    private static final float MULTIPLAYER_TIMER_WIDTH = 228f;
+    private static final float MULTIPLAYER_TIMER_HEIGHT = 48f;
+    private static final float MULTIPLAYER_CHAT_X = 852f;
+    private static final float MULTIPLAYER_CHAT_Y = 8f;
+    private static final float MULTIPLAYER_CHAT_WIDTH = 316f;
+    private static final float MULTIPLAYER_CHAT_HEIGHT = 142f;
     private static final float TIMED_WAR_HUD_X = 440f;
     private static final float TIMED_WAR_HUD_Y = 566f;
     private static final float TIMED_WAR_HUD_WIDTH = 276f;
@@ -406,6 +426,23 @@ public final class GameScreen extends AbstractScreen {
     private boolean plantFoodHudDebugMode;
     private int previewSunCount;
     private int previewPlantFoodCount;
+
+    // Populated only by the server-authoritative multiplayer constructor.
+    private MatchAssignment multiplayerAssignment;
+    private MultiplayerIZombieRenderModel multiplayerGame;
+    private LiveMatchController multiplayerController;
+    private List<PlantCollectionItem> multiplayerPlantCards = List.of();
+    private Label multiplayerTimerLabel;
+    private Table multiplayerChatHistory;
+    private Label multiplayerChatStatus;
+    private final List<Button> multiplayerChatButtons = new ArrayList<>();
+    private final List<MultiplayerIZombieRenderModel.RemoteProjectileLaunch>
+            pendingRemoteProjectileLaunches = new ArrayList<>();
+    private String multiplayerControllerStatus;
+    private long multiplayerRenderedReactionSequence = -1L;
+    private int multiplayerRenderedReactionCount = -1;
+    private boolean multiplayerFinishShown;
+    private boolean multiplayerDisposed;
 
     private Texture plantingOverlayPixel;
     private Group plantedPlantLayer;
@@ -589,6 +626,339 @@ public final class GameScreen extends AbstractScreen {
                     VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
                     () -> gamePaused = false));
         }
+    }
+
+    /**
+     * Server-authoritative I, Zombie rendered through the normal game screen.
+     * The local mirror never advances combat; snapshots only update the real
+     * model entities consumed by the existing animation pipeline.
+     */
+    protected GameScreen(ScreenNavigator navigator, MatchAssignment assignment,
+            MatchStateSnapshot initialSnapshot, List<String> plantLoadout) {
+        super(navigator, "");
+        if (assignment == null || initialSnapshot == null) {
+            throw new IllegalArgumentException(
+                    "match assignment and initial snapshot are required");
+        }
+        if (navigator.getAccountSession().getMultiplayerGameClient() == null) {
+            throw new IllegalStateException(
+                    "Authoritative multiplayer client is unavailable");
+        }
+
+        multiplayerAssignment = assignment;
+        multiplayerPlantCards = resolveMultiplayerPlantCards(plantLoadout);
+        multiplayerGame = new MultiplayerIZombieRenderModel(initialSnapshot,
+                assignment.getRole(), multiplayerPlantLoadoutLevels());
+
+        installChapterBoard(null);
+        installGameHud();
+        if (assignment.getRole() == MatchRole.PLANTS) {
+            installSeedTray();
+            rebuildSeedTray();
+        }
+        installStructureRendering();
+        addBackgroundOverlay(new LawnMowerRenderer(
+                navigator.getPamPlayer(), multiplayerGame, null));
+        installPlantingInteraction();
+        installIZombieBoardOverlay();
+        installIZombieTray();
+        if (assignment.getRole() == MatchRole.PLANTS) {
+            installShovelButton();
+        }
+        installZombieRendering();
+        installProjectileRendering();
+        installSunRendering();
+        installCollectibleDropRendering();
+        installRewardNotice();
+        installMultiplayerTimer();
+        installMultiplayerChat();
+
+        multiplayerController = new LiveMatchController(
+                new ClientMultiplayerTransport(navigator.getAccountSession()
+                        .getMultiplayerGameClient()),
+                navigator.getUiDispatcher(), assignment, initialSnapshot,
+                this::applyMultiplayerState);
+    }
+
+    private List<PlantCollectionItem> resolveMultiplayerPlantCards(
+            List<String> requestedNames) {
+        User user = currentUser();
+        if (user == null) return List.of();
+
+        List<PlantCollectionItem> resolved = new ArrayList<>();
+        if (requestedNames != null) {
+            for (String requestedName : requestedNames) {
+                PlantCollectionItem item = user.getPlantCollection()
+                        .findPlant(requestedName);
+                if (item != null && !resolved.contains(item)) {
+                    resolved.add(item);
+                }
+            }
+        }
+        if (!resolved.isEmpty()) return List.copyOf(resolved);
+
+        List<PlantCollectionItem> unlocked = user.getPlantCollection()
+                .getUnlockedPlants();
+        return List.copyOf(unlocked.subList(0,
+                Math.min(8, unlocked.size())));
+    }
+
+    private Map<String, Integer> multiplayerPlantLoadoutLevels() {
+        Map<String, Integer> levels = new LinkedHashMap<>();
+        for (PlantCollectionItem card : multiplayerPlantCards) {
+            levels.put(card.getName(), card.getCurrentLevel());
+        }
+        return levels;
+    }
+
+    private void installMultiplayerTimer() {
+        multiplayerTimerLabel = new Label("0:00", skin, "big_outline");
+        multiplayerTimerLabel.setAlignment(Align.center);
+        multiplayerTimerLabel.setFontScale(0.72f);
+
+        Stack timer = new Stack();
+        timer.setBounds(MULTIPLAYER_TIMER_X, MULTIPLAYER_TIMER_Y,
+                MULTIPLAYER_TIMER_WIDTH, MULTIPLAYER_TIMER_HEIGHT);
+        Image background = createAssetImage(GAME_SUN_BACKGROUND);
+        background.setScaling(Scaling.stretch);
+        timer.add(background);
+        timer.add(multiplayerTimerLabel);
+        timer.setTouchable(Touchable.disabled);
+        stage.addActor(timer);
+        refreshMultiplayerTimer();
+    }
+
+    private void refreshMultiplayerTimer() {
+        if (multiplayerTimerLabel == null || multiplayerGame == null) return;
+        int seconds = Math.max(0,
+                (int) Math.ceil(multiplayerGame.getRemainingSeconds()));
+        multiplayerTimerLabel.setText(String.format(java.util.Locale.ROOT,
+                "%d:%02d", seconds / 60, seconds % 60));
+    }
+
+    private void installMultiplayerChat() {
+        Table panel = new Table();
+        panel.setBackground(skin.getDrawable(
+                "image_ui_dialog_asset_inner_bkgd_10"));
+        panel.pad(5f);
+        panel.setBounds(MULTIPLAYER_CHAT_X, MULTIPLAYER_CHAT_Y,
+                MULTIPLAYER_CHAT_WIDTH, MULTIPLAYER_CHAT_HEIGHT);
+
+        multiplayerChatHistory = new Table();
+        multiplayerChatHistory.top().left();
+        ScrollPane messages = new ScrollPane(multiplayerChatHistory, skin);
+        messages.setFadeScrollBars(false);
+        messages.setScrollingDisabled(true, false);
+        panel.add(messages).growX().height(66f).row();
+
+        Table reactions = new Table();
+        int index = 0;
+        for (MatchReactionType type : MatchReactionType.values()) {
+            Button button;
+            if (type.getKind() == MatchReactionKind.EMOJI) {
+                button = new Button(skin.get(
+                        "brown", TextButtonStyle.class));
+                Image emoji = createAssetImage(
+                        MultiplayerVisualCatalog.reactionAsset(type));
+                emoji.setScaling(Scaling.fit);
+                emoji.setTouchable(Touchable.disabled);
+                button.add(emoji).size(20f);
+                button.addListener(new TextTooltip(
+                        type.getDisplayText(), skin));
+            } else {
+                TextButton textButton = new TextButton(
+                        type.getDisplayText(), skin, "brown");
+                textButton.getLabel().setFontScale(0.48f);
+                button = textButton;
+            }
+            button.addListener(new ClickListener() {
+                @Override public void clicked(InputEvent event,
+                        float x, float y) {
+                    if (multiplayerController != null) {
+                        multiplayerController.sendReaction(type);
+                    }
+                }
+            });
+            multiplayerChatButtons.add(button);
+            reactions.add(button).width(96f).height(24f).pad(1f);
+            if (++index % 3 == 0) reactions.row();
+        }
+        panel.add(reactions).growX().height(52f).row();
+
+        multiplayerChatStatus = new Label("", skin, "secondary");
+        multiplayerChatStatus.setFontScale(0.52f);
+        multiplayerChatStatus.setAlignment(Align.center);
+        panel.add(multiplayerChatStatus).growX().height(14f);
+        stage.addActor(panel);
+    }
+
+    private void applyMultiplayerState(LiveMatchController.State state) {
+        if (multiplayerDisposed || state == null) return;
+        if (state.snapshot() != null) {
+            List<MultiplayerIZombieRenderModel.RemoteProjectileLaunch>
+                    launches = multiplayerGame.applySnapshot(state.snapshot());
+            pendingRemoteProjectileLaunches.addAll(launches);
+            refreshMultiplayerTimer();
+        }
+
+        renderMultiplayerChat(state.recentReactions());
+        boolean interactionsDisabled = state.reactionInFlight()
+                || state.terminalKind()
+                        != LiveMatchController.TerminalKind.NONE;
+        for (Button button : multiplayerChatButtons) {
+            setButtonEnabled(button, !interactionsDisabled);
+        }
+        if (multiplayerChatStatus != null) {
+            multiplayerChatStatus.setText(chatStatusText(state));
+        }
+
+        if (state.status() != null
+                && !state.status().equals(multiplayerControllerStatus)) {
+            multiplayerControllerStatus = state.status();
+            if (!isRoutineMultiplayerStatus(state.status())) {
+                showGameNotice(state.status(), Color.SCARLET);
+            }
+        }
+        if (state.terminalKind() != LiveMatchController.TerminalKind.NONE) {
+            showMultiplayerTerminal(state);
+        }
+    }
+
+    private void renderMultiplayerChat(List<MatchReactionEvent> reactions) {
+        if (multiplayerChatHistory == null) return;
+        int count = reactions == null ? 0 : reactions.size();
+        long newestSequence = count == 0 ? 0L
+                : reactions.get(count - 1).getSequence();
+        if (count == multiplayerRenderedReactionCount
+                && newestSequence == multiplayerRenderedReactionSequence) {
+            return;
+        }
+        multiplayerRenderedReactionCount = count;
+        multiplayerRenderedReactionSequence = newestSequence;
+        multiplayerChatHistory.clearChildren();
+        if (reactions == null) return;
+        for (MatchReactionEvent reaction : reactions) {
+            Table line = new Table();
+            Label sender = new Label(reaction.getSenderUsername() + ":",
+                    skin, "secondary");
+            sender.setFontScale(0.58f);
+            line.add(sender).left().padRight(3f);
+            if (reaction.getReactionKind() == MatchReactionKind.EMOJI) {
+                Image emoji = createAssetImage(
+                        MultiplayerVisualCatalog.reactionAsset(
+                                reaction.getReactionType()));
+                emoji.setScaling(Scaling.fit);
+                line.add(emoji).size(17f).left();
+            } else {
+                Label message = new Label(
+                        reaction.getReactionType().getDisplayText(),
+                        skin, "secondary");
+                message.setFontScale(0.58f);
+                message.setEllipsis(true);
+                line.add(message).growX().left();
+            }
+            multiplayerChatHistory.add(line).growX().left().height(18f).row();
+        }
+    }
+
+    private void playPendingRemotePlantAttacks() {
+        if (pendingRemoteProjectileLaunches.isEmpty()) return;
+        for (MultiplayerIZombieRenderModel.RemoteProjectileLaunch launch
+                : List.copyOf(pendingRemoteProjectileLaunches)) {
+            playRemotePlantAttack(launch);
+        }
+        pendingRemoteProjectileLaunches.clear();
+    }
+
+    private String chatStatusText(LiveMatchController.State state) {
+        if (state.reactionInFlight()) return "Sending...";
+        String status = state.reactionStatus();
+        if (status == null || status.startsWith("Choose")
+                || status.startsWith("Reaction delivered")
+                || status.startsWith("Reaction confirmed")
+                || status.startsWith("Reaction received")
+                || status.startsWith("Reaction state cleared")) {
+            return "";
+        }
+        return status;
+    }
+
+    private static boolean isRoutineMultiplayerStatus(String status) {
+        return status.startsWith("Waiting for authoritative")
+                || status.startsWith("Board synchronized")
+                || status.startsWith("Server accepted")
+                || status.startsWith("Waiting for server command")
+                || status.startsWith("Leaving match")
+                || status.startsWith("Match finished")
+                || status.startsWith("Match cancelled");
+    }
+
+    private void playRemotePlantAttack(
+            MultiplayerIZombieRenderModel.RemoteProjectileLaunch launch) {
+        if (launch == null || multiplayerGame == null) return;
+        for (BasePlant plant : multiplayerGame.getBoard().getPlants()) {
+            EntityPosition position = plant.getEntityPosition();
+            if (position == null || position.getRow() != launch.lane()
+                    || !plant.getName().equalsIgnoreCase(
+                            launch.sourcePlant())) {
+                continue;
+            }
+            Actor actor = plantedPlantActors.get(plant);
+            if (!(actor instanceof PamAnimationActor)) return;
+            PlantAnimationCatalog.AttackAnimation animation = null;
+            if (plant instanceof Shooter) {
+                animation = PlantAnimationCatalog.shooterAttackAnimation(
+                        (Shooter) plant);
+            } else if (plant instanceof Lobber) {
+                animation = PlantAnimationCatalog.lobberAttackAnimation(
+                        (Lobber) plant);
+            }
+            if (animation != null) {
+                ((PamAnimationActor) actor).playOnce(
+                        animation.getAttackClip(), animation.getIdleClip());
+            }
+            return;
+        }
+    }
+
+    private void showMultiplayerTerminal(LiveMatchController.State state) {
+        if (multiplayerFinishShown) return;
+        multiplayerFinishShown = true;
+        gamePaused = true;
+        if (pauseModal != null) {
+            pauseModal.remove();
+            pauseModal = null;
+        }
+
+        boolean finished = state.terminalKind()
+                == LiveMatchController.TerminalKind.VICTORY;
+        MatchStateSnapshot snapshot = state.snapshot();
+        String message;
+        if (finished && snapshot != null && snapshot.getWinner() != null) {
+            boolean localWon = snapshot.getWinner()
+                    == multiplayerAssignment.getRole();
+            message = localWon ? "You won!" : "You lost.";
+            message += "\n" + Phase3Text.finishReason(
+                    snapshot.getFinishReason());
+        } else {
+            message = Phase3Text.cancellationReason(
+                    state.cancellationReason());
+        }
+
+        PvzDialog dialog = new PvzDialog(
+                finished ? "Match Finished" : "Match Cancelled", skin) {
+            @Override protected void result(Object object) {
+                if (!multiplayerDisposed) {
+                    navigator.showMultiplayerIZombieMenu(finished
+                            ? "Previous match finished."
+                            : "Previous match was cancelled.");
+                }
+            }
+        };
+        dialog.message(message);
+        dialog.action("Return to Multiplayer", Boolean.TRUE, "green");
+        dialog.setModal(true);
+        dialog.show(stage);
     }
 
     /** Empty level preview for levels that do not use normal plant choosing. */
@@ -789,7 +1159,7 @@ public final class GameScreen extends AbstractScreen {
         if (sunHud == null || sunAmountLabel == null) {
             return;
         }
-        boolean debugMode = isDebugMode();
+        boolean debugMode = multiplayerGame == null && isDebugMode();
         sunAmountLabel.setText(Integer.toString(currentSunCount()));
         if (sunHud.getChildren().size > 0
                 && debugMode == sunHudDebugMode) {
@@ -826,7 +1196,7 @@ public final class GameScreen extends AbstractScreen {
         if (plantFoodHud == null || plantFoodAmountLabel == null) {
             return;
         }
-        boolean debugMode = isDebugMode();
+        boolean debugMode = multiplayerGame == null && isDebugMode();
         plantFoodAmountLabel.setText(currentPlantFoodCount() + "/"
                 + currentMaximumPlantFoodCount());
         if (plantFoodHud.getChildren().size > 0
@@ -864,7 +1234,9 @@ public final class GameScreen extends AbstractScreen {
         if (previewLevel != null) {
             return Math.min(previewPlantFoodCount, PREVIEW_MAX_PLANT_FOOD);
         }
-        return Math.min(currentGameMenu().getGame().getPlantFoodCount(),
+        Game game = activeGame();
+        if (game == null) return 0;
+        return Math.min(game.getPlantFoodCount(),
                 currentMaximumPlantFoodCount());
     }
 
@@ -872,19 +1244,21 @@ public final class GameScreen extends AbstractScreen {
         if (previewLevel != null) {
             return PREVIEW_MAX_PLANT_FOOD;
         }
-        return currentGameMenu().getGame().getMaximumPlantFoodCount();
+        Game game = activeGame();
+        return game == null ? PREVIEW_MAX_PLANT_FOOD
+                : game.getMaximumPlantFoodCount();
     }
 
     private int currentSunCount() {
         if (previewLevel != null) {
             return previewSunCount;
         }
-        GameMenu menu = currentGameMenu();
-        return menu.getGame().getSunCount();
+        Game game = activeGame();
+        return game == null ? 0 : game.getSunCount();
     }
 
     private void addDebugSuns() {
-        if (!isDebugMode()) {
+        if (!isDebugMode() || multiplayerGame != null) {
             return;
         }
         if (previewLevel != null) {
@@ -892,26 +1266,30 @@ public final class GameScreen extends AbstractScreen {
                 previewSunCount += DEBUG_SUN_INCREMENT;
             }
         } else {
-            currentGameMenu().getGame().addSun(DEBUG_SUN_INCREMENT);
+            activeGame().addSun(DEBUG_SUN_INCREMENT);
         }
         refreshSunHud();
     }
 
     private void addDebugPlantFood() {
-        if (!isDebugMode()) {
+        if (!isDebugMode() || multiplayerGame != null) {
             return;
         }
         if (previewLevel != null) {
             previewPlantFoodCount = Math.min(PREVIEW_MAX_PLANT_FOOD,
                     previewPlantFoodCount + DEBUG_PLANT_FOOD_INCREMENT);
         } else {
-            currentGameMenu().getGame().addPlantFood();
+            activeGame().addPlantFood();
         }
         refreshPlantFoodHud();
     }
 
     private void showPauseModal() {
         if (pauseModal != null || plantSelectionModal != null) {
+            return;
+        }
+        if (multiplayerGame != null) {
+            showMultiplayerPauseModal();
             return;
         }
         if (shovelMode) {
@@ -977,6 +1355,55 @@ public final class GameScreen extends AbstractScreen {
             }
         });
         actions.add(resume).width(132f).height(52f);
+        panel.add(actions).center();
+
+        pauseModal.addActor(panel);
+        stage.addActor(pauseModal);
+    }
+
+    private void showMultiplayerPauseModal() {
+        if (shovelMode) setShovelMode(false);
+        gamePaused = true;
+
+        pauseModal = new Group();
+        pauseModal.setBounds(0f, 0f, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+        pauseModal.setTouchable(Touchable.enabled);
+
+        Table panel = new Table();
+        panel.setBackground(skin.getDrawable(
+                "image_ui_dialog_asset_inner_bkgd_10"));
+        panel.pad(22f);
+        panel.setBounds(360f, 220f, 560f, 300f);
+
+        Label title = new Label("MATCH MENU", skin, "big_outline");
+        title.setAlignment(Align.center);
+        panel.add(title).growX().height(58f).padBottom(18f).row();
+
+        Label hint = new Label("The online match continues on the server.",
+                skin, "medium_outline");
+        hint.setAlignment(Align.center);
+        panel.add(hint).growX().height(44f).padBottom(24f).row();
+
+        Table actions = new Table();
+        TextButton exit = new TextButton("EXIT MATCH", skin, "brown");
+        exit.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                if (multiplayerController != null) {
+                    setButtonEnabled(exit, false);
+                    hint.setText("Leaving match...");
+                    multiplayerController.leave();
+                }
+            }
+        });
+        actions.add(exit).width(170f).height(52f).padRight(12f);
+
+        TextButton resume = new TextButton("RESUME", skin, "purple");
+        resume.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                closePauseModal();
+            }
+        });
+        actions.add(resume).width(150f).height(52f);
         panel.add(actions).center();
 
         pauseModal.addActor(panel);
@@ -1242,7 +1669,8 @@ public final class GameScreen extends AbstractScreen {
         BoardLayout layout = layoutForChapter(chapter);
         if (layout == null && isModelBackedGame()) {
             GameMenu menu = currentGameMenu();
-            if (menu != null && menu.isMinigame()) {
+            if (multiplayerGame != null
+                    || menu != null && menu.isMinigame()) {
                 // Minigames have no adventure chapter metadata. Phase 2
                 // allows an arbitrary minigame background, so use the Egypt
                 // lawn to keep their 5x9 board visible and interactive.
@@ -2172,6 +2600,9 @@ public final class GameScreen extends AbstractScreen {
         if (previewSelection != null) {
             return previewSelection.getSelectedPlants();
         }
+        if (multiplayerGame != null) {
+            return multiplayerPlantCards;
+        }
         List<PlantCollectionItem> selected = new ArrayList<>();
         User user = currentUser();
         if (user == null) {
@@ -2192,6 +2623,7 @@ public final class GameScreen extends AbstractScreen {
         if (previewSelection != null) {
             return previewSelection.getSlotCount();
         }
+        if (multiplayerGame != null) return multiplayerPlantCards.size();
         Level level = currentGameMenu().getLevel();
         return level == null ? 0 : level.getPlantSlotCount();
     }
@@ -2214,7 +2646,7 @@ public final class GameScreen extends AbstractScreen {
         // has no adventure chapter. Coordinate conversion must use the same
         // fallback, otherwise minigame entities can exist in the model but
         // cannot be positioned, hovered, or clicked on the graphical board.
-        return menu != null && menu.isMinigame()
+        return multiplayerGame != null || menu != null && menu.isMinigame()
                 ? EGYPT_BOARD : null;
     }
 
@@ -2394,12 +2826,20 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private boolean isModelBackedGame() {
-        return previewLevel == null
+        return multiplayerGame != null || previewLevel == null
                 && App.getInstance().getCurrentMenu() instanceof GameMenu;
     }
 
     private Game activeGame() {
-        return isModelBackedGame() ? currentGameMenu().getGame() : null;
+        if (multiplayerGame != null) return multiplayerGame;
+        GameMenu menu = currentGameMenu();
+        return previewLevel == null && menu != null ? menu.getGame() : null;
+    }
+
+    private IZombiePresentationModel iZombiePresentation() {
+        Game game = activeGame();
+        return game instanceof IZombiePresentationModel
+                ? (IZombiePresentationModel) game : null;
     }
 
     private boolean canInteractWithBoard() {
@@ -2408,9 +2848,34 @@ public final class GameScreen extends AbstractScreen {
                 && !gamePaused
                 && pauseModal == null
                 && plantSelectionModal == null
+                && (multiplayerController == null
+                        || !multiplayerController.getState().commandInFlight()
+                                && multiplayerController.getState()
+                                        .terminalKind()
+                                        == LiveMatchController.TerminalKind.NONE)
                 && (game.allowsDirectPlanting() || game.hasConveyorBelt()
                         || game instanceof VaseBreaker
-                        || game instanceof IZombie);
+                        || iZombiePresentation() != null);
+    }
+
+    private boolean canSubmitMultiplayerPlacement(EntityPosition position,
+            MatchRole role) {
+        if (multiplayerAssignment == null || multiplayerController == null
+                || role != multiplayerAssignment.getRole()
+                || !canInteractWithBoard()
+                || !isPlacementSideAllowed(position, role)) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isPlacementSideAllowed(EntityPosition position,
+            MatchRole role) {
+        IZombiePresentationModel iZombie = iZombiePresentation();
+        if (position == null || role == null || iZombie == null) return false;
+        return role == MatchRole.PLANTS
+                ? position.getColumn() <= iZombie.getRedLineColumn()
+                : position.getColumn() > iZombie.getRedLineColumn();
     }
 
     private BasePlant loadoutPrototypeFor(String plantName) {
@@ -2546,11 +3011,11 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void selectIZombieCard(IZombieCard card) {
-        if (card == null || !(activeGame() instanceof IZombie)
+        IZombiePresentationModel iZombie = iZombiePresentation();
+        if (card == null || iZombie == null
                 || !canInteractWithBoard()) {
             return;
         }
-        IZombie iZombie = (IZombie) activeGame();
         double remaining = iZombie.getCardCooldownRemainingSeconds(card);
         if (remaining > 0.001) {
             showGameNotice(card.getType().getAlias()
@@ -2559,7 +3024,7 @@ public final class GameScreen extends AbstractScreen {
                     + ")!", Color.RED);
             return;
         }
-        if (iZombie.getSunCount() < card.getCost()) {
+        if (currentSunCount() < card.getCost()) {
             showGameNotice("Not enough sun for "
                     + card.getType().getAlias() + "!", Color.RED);
             return;
@@ -2579,7 +3044,18 @@ public final class GameScreen extends AbstractScreen {
     private void placeSelectedIZombieAt(EntityPosition position) {
         Game game = activeGame();
         IZombieCard card = selectedIZombieCard;
-        if (!(game instanceof IZombie) || card == null || position == null) {
+        if (iZombiePresentation() == null || card == null || position == null) {
+            return;
+        }
+        if (multiplayerController != null) {
+            if (!canSubmitMultiplayerPlacement(position, MatchRole.ZOMBIES)) {
+                return;
+            }
+            multiplayerController.placeZombie(card.getType().name(),
+                    position.getRow(), position.getColumn());
+            selectedIZombieCard = null;
+            rebuildCursorPlantActor();
+            rebuildIZombieTray();
             return;
         }
         IZombiePlacementResult result = ((IZombie) game).placeZombie(
@@ -2615,7 +3091,9 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void installIZombieTray() {
-        if (!(activeGame() instanceof IZombie) || iZombieTray != null) {
+        if (iZombiePresentation() == null || iZombieTray != null
+                || multiplayerAssignment != null
+                        && multiplayerAssignment.getRole() == MatchRole.PLANTS) {
             return;
         }
         iZombieTray = new Table();
@@ -2627,7 +3105,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void installIZombieBoardOverlay() {
-        if (!(activeGame() instanceof IZombie)
+        if (iZombiePresentation() == null
                 || iZombieBoardOverlay != null
                 || plantingOverlayPixel == null) {
             return;
@@ -2673,11 +3151,10 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void refreshIZombieBoardOverlay() {
-        if (iZombieBoardOverlay == null
-                || !(activeGame() instanceof IZombie)) {
+        IZombiePresentationModel game = iZombiePresentation();
+        if (iZombieBoardOverlay == null || game == null) {
             return;
         }
-        IZombie game = (IZombie) activeGame();
 
         CellBounds topLeft = screenBoundsForCell(
                 new EntityPosition(0, 0));
@@ -2719,10 +3196,10 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void rebuildIZombieTray() {
-        if (iZombieTray == null || !(activeGame() instanceof IZombie)) {
+        IZombiePresentationModel game = iZombiePresentation();
+        if (iZombieTray == null || game == null) {
             return;
         }
-        IZombie game = (IZombie) activeGame();
         iZombieTray.clearChildren();
 
         Label heading = new Label("ZOMBIES", skin, "medium_outline");
@@ -2769,6 +3246,17 @@ public final class GameScreen extends AbstractScreen {
         }
         if (selectedConveyorPacketSequence != null) {
             plantSelectedConveyorPacketAt(position);
+            return;
+        }
+
+        if (multiplayerController != null) {
+            if (!canSubmitMultiplayerPlacement(position, MatchRole.PLANTS)) {
+                return;
+            }
+            multiplayerController.placePlant(
+                    selectedPlantForPlacement.getName(), position.getRow(),
+                    position.getColumn());
+            clearSelectedPlantForPlacement();
             return;
         }
 
@@ -2929,6 +3417,12 @@ public final class GameScreen extends AbstractScreen {
                 || game.isProtectedSeedAt(position)) {
             return;
         }
+        if (multiplayerController != null && multiplayerGame != null) {
+            BasePlant plant = game.getBoard().getPlantAt(position);
+            String entityId = multiplayerGame.getPlantEntityId(plant);
+            if (entityId != null) multiplayerController.removePlant(entityId);
+            return;
+        }
         BasePlant removed = game.pluckPlantAt(position);
         if (removed == null) {
             return;
@@ -3006,10 +3500,11 @@ public final class GameScreen extends AbstractScreen {
             hoveredBoardCell.setVisible(false);
             return;
         }
-        if (selectedIZombieCard != null
-                && activeGame() instanceof IZombie
-                && position.getColumn()
-                        <= ((IZombie) activeGame()).getRedLineColumn()) {
+        MatchRole placementRole = selectedIZombieCard != null
+                ? MatchRole.ZOMBIES
+                : hasPlantPlacementSelection() ? MatchRole.PLANTS : null;
+        if (placementRole != null && iZombiePresentation() != null
+                && !isPlacementSideAllowed(position, placementRole)) {
             hoveredBoardCell.setVisible(false);
             return;
         }
@@ -6015,7 +6510,7 @@ public final class GameScreen extends AbstractScreen {
 
     private static Chapter chapterForCurrentGame() {
         GameMenu menu = currentGameMenu();
-        if (menu.getChapterId() == null) {
+        if (menu == null || menu.getChapterId() == null) {
             return null;
         }
         return ChapterCatalog.findById(menu.getChapterId());
@@ -6041,7 +6536,8 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private static GameMenu currentGameMenu() {
-        return (GameMenu) App.getInstance().getCurrentMenu();
+        Object menu = App.getInstance().getCurrentMenu();
+        return menu instanceof GameMenu ? (GameMenu) menu : null;
     }
 
     private void setButtonEnabled(Button button, boolean enabled) {
@@ -6085,7 +6581,11 @@ public final class GameScreen extends AbstractScreen {
 
     @Override
     public void render(float delta) {
-        if (isModelBackedGame() && !gamePaused) {
+        if (multiplayerGame != null && !multiplayerFinishShown) {
+            multiplayerGame.advancePresentation(Math.min(delta, 0.10f));
+            refreshMultiplayerTimer();
+        }
+        if (isModelBackedGame() && multiplayerGame == null && !gamePaused) {
             updateGameAnnouncement(Math.min(delta, 0.10f));
             updateRewardNotice(Math.min(delta, 0.10f));
             float gameDelta = Math.min(delta, 1f / 15f)
@@ -6124,9 +6624,11 @@ public final class GameScreen extends AbstractScreen {
         refreshCursorPlantPosition();
         refreshFallbackShovelCursorPosition();
         refreshPlantedPlantLayerIfNeeded();
+        playPendingRemotePlantAttacks();
         refreshFrostbitePlantIceRendering();
-        if (previewLevel == null) {
-            currentGameMenu().synchronizeProgress();
+        if (previewLevel == null && multiplayerGame == null) {
+            GameMenu menu = currentGameMenu();
+            if (menu != null) menu.synchronizeProgress();
             showFinishedGameMenuIfNeeded();
         }
         super.render(delta);
@@ -6198,6 +6700,7 @@ public final class GameScreen extends AbstractScreen {
     }
 
     private void showFinishedGameMenuIfNeeded() {
+        if (multiplayerGame != null) return;
         Game game = activeGame();
         if (game == null
                 || game.getStatus()
@@ -6263,6 +6766,13 @@ public final class GameScreen extends AbstractScreen {
 
     @Override
     public void dispose() {
+        multiplayerDisposed = true;
+        if (multiplayerController != null) {
+            multiplayerController.close();
+            multiplayerController = null;
+        }
+        multiplayerChatButtons.clear();
+        pendingRemoteProjectileLaunches.clear();
         if (gridActor != null) {
             gridActor.dispose();
             gridActor = null;
@@ -6702,10 +7212,8 @@ public final class GameScreen extends AbstractScreen {
         }
 
         private void refreshState() {
-            if (!(activeGame() instanceof IZombie)) {
-                return;
-            }
-            IZombie game = (IZombie) activeGame();
+            IZombiePresentationModel game = iZombiePresentation();
+            if (game == null) return;
             double remaining = game.getCardCooldownRemainingSeconds(card);
             float fraction = card.getRechargeSeconds() <= 0.0
                     ? 0f
@@ -6720,7 +7228,7 @@ public final class GameScreen extends AbstractScreen {
                 cooldownLabel.setText("");
                 cooldownLabel.setVisible(false);
             }
-            costLabel.setColor(game.getSunCount() >= card.getCost()
+            costLabel.setColor(currentSunCount() >= card.getCost()
                     ? Color.WHITE : Color.RED);
         }
     }

@@ -585,14 +585,22 @@ class MultiplayerStage7ControllerTest {
     void liveScreenReactionBoundaryHasSixCatalogControlsAndNoFreeFormChat() throws Exception {
         Path screen = Path.of("src", "main", "java", "io", "github",
                 "Plants_Vs_Zombies_2", "view", "screens",
-                "MultiplayerIZombieGameScreen.java");
+                "GameScreen.java");
         String source = Files.readString(screen);
+        String chatSource = source.substring(
+                source.indexOf("private void installMultiplayerChat()"),
+                source.indexOf("private void applyMultiplayerState"));
         assertEquals(6, MatchReactionType.values().length);
-        assertTrue(source.contains("MatchReactionType.values()"));
-        assertTrue(source.contains("controller.sendReaction(type)"));
-        assertFalse(source.contains("TextField"));
-        assertFalse(source.contains("UserManager"));
-        assertFalse(source.contains("NetworkClient"));
+        assertTrue(chatSource.contains("MatchReactionType.values()"));
+        assertTrue(chatSource.contains(
+                "multiplayerController.sendReaction(type)"));
+        assertTrue(chatSource.contains(
+                "MultiplayerVisualCatalog.reactionAsset(type)"));
+        assertTrue(source.contains(
+                "reaction.getReactionKind() == MatchReactionKind.EMOJI"));
+        assertFalse(chatSource.contains("TextField"));
+        assertFalse(chatSource.contains("UserManager"));
+        assertFalse(chatSource.contains("NetworkClient"));
     }
 
     private static Invitation invitation(String id, InvitationStatus status) {

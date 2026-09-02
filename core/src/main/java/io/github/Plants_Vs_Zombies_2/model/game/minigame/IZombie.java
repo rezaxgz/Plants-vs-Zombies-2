@@ -19,7 +19,7 @@ import io.github.Plants_Vs_Zombies_2.model.game.entities.zombies.ZombieType;
 /**
  * Reverse-defense minigame: the player buys zombies and eats five brains.
  */
-public final class IZombie extends Game {
+public final class IZombie extends Game implements IZombiePresentationModel {
     public static final int INITIAL_SUN = 150;
     public static final int PRODUCED_SUN_AMOUNT = 25;
 
